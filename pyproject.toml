@@ -42,24 +42,24 @@ sentence-transformers = ["sentence-transformers>=3.0"]
 # --- Optional capabilities ---
 rerank = ["sentence-transformers>=3.0"]         # cross-encoder reranking
 redis = ["redis>=5.0"]                            # RedisCache / AWS ElastiCache
-mcp = ["mcp>=1.0"]                                # MCP client ingestion
+mcp = ["mcp>=1.0; python_version >= '3.10'"]       # MCP client ingestion
 pinecone = ["pinecone>=5.0"]                      # for benchmarks/examples comparison
 ingest = ["pypdf>=4.0", "python-docx>=1.1", "python-pptx>=0.6", "openpyxl>=3.1"]
 
 # --- Agent framework integrations ---
 langchain = ["langchain-core>=0.3"]
 llamaindex = ["llama-index-core>=0.11"]
-crewai = ["crewai>=0.70"]
+crewai = ["crewai>=0.70; python_version >= '3.10'"]
 all = [
     "openai>=1.40",
     "google-generativeai>=0.8",
     "cohere>=5.0",
     "sentence-transformers>=3.0",
     "redis>=5.0",
-    "mcp>=1.0",
+    "mcp>=1.0; python_version >= '3.10'",
     "langchain-core>=0.3",
     "llama-index-core>=0.11",
-    "crewai>=0.70",
+    "crewai>=0.70; python_version >= '3.10'",
 ]
 
 # --- Dev / test / benchmark ---

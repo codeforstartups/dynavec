@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Configuration · dynavec docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="../index.html">
+        <svg class="brand__mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+          <rect x="1" y="1" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="1" y1="11" x2="21" y2="11" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="11" y1="1" x2="11" y2="21" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="6" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/>
+        </svg>
+        <span class="brand__name">dynavec</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="../index.html#why">Why</a>
+        <a href="../index.html#benchmarks">Benchmarks</a>
+        <a href="index.html">Docs</a>
+      </nav>
+      <a class="btn btn--ghost star" href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">
+        <span aria-hidden="true">&#9733;</span> Star <span class="star__count" data-stars>&mdash;</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docshell">
+    <button class="side__toggle">☰ Menu</button>
+<nav class="side" aria-label="Docs">
+<div class="side__group"><p class="side__title">Getting started</p><ul class="side__list">
+<li><a href="index.html">Overview</a></li>
+<li><a href="installation.html">Installation</a></li>
+<li><a href="quickstart.html">Quickstart</a></li>
+<li><a href="configuration.html" class="is-current">Configuration</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Writing data</p><ul class="side__list">
+<li><a href="embeddings.html">Embeddings</a></li>
+<li><a href="upsert.html">Upsert</a></li>
+<li><a href="update-and-lambda.html">Update & Lambda</a></li>
+<li><a href="ingestion.html">Ingestion & MCP</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Searching</p><ul class="side__list">
+<li><a href="search.html">Search</a></li>
+<li><a href="metrics-and-rerank.html">Metrics & rerank</a></li>
+<li><a href="namespaces.html">Namespaces</a></li>
+<li><a href="streaming.html">Streaming</a></li>
+<li><a href="caching.html">Caching</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Advanced</p><ul class="side__list">
+<li><a href="knowledge-graph.html">Knowledge graph</a></li>
+<li><a href="quantization.html">Product quantization</a></li>
+<li><a href="concurrency.html">Concurrency</a></li>
+<li><a href="credentials.html">Credentials & IAM</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Ecosystem</p><ul class="side__list">
+<li><a href="integrations.html">Framework integrations</a></li>
+<li><a href="benchmarking.html">Benchmarking</a></li>
+</ul></div>
+</nav>
+    <main class="doc">
+      <div class="doc__crumbs"><a href="../index.html">dynavec</a> / <a href="index.html">Docs</a> / Configuration</div>
+      <h1>Configuration</h1>
+      <p class="doc__sub">Everything the client needs, in one frozen dataclass.</p>
+      
+<p><code>DynavecConfig</code> is an immutable description of your resources and tuning. It never holds secrets —
+credentials are passed separately (see <a href="credentials.html">Credentials &amp; IAM</a>).</p>
+<pre class="code"><code>from dynavec import DynavecConfig
+
+cfg = DynavecConfig(
+    vector_bucket="my-vectors",   # S3 vector bucket name
+    index="docs",                 # vector index name
+    table="dynavec_docs",         # DynamoDB table name
+    dimension=1536,               # must match your embedder
+    distance_metric="cosine",     # "cosine" or "euclidean" (S3 Vectors native)
+    region="us-east-1",
+    filterable_keys=["topic"],    # metadata keys pushed to S3 Vectors for filtering
+    over_fetch=4,                 # candidate multiplier when reranking
+    max_workers=8,                # thread pool for parallel I/O
+    auto_provision=True,
+)</code></pre>
+<h2>Key parameters</h2>
+<table class="doc__params">
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td><code>dimension</code></td><td>Embedding size; must match the embedder and the index.</td></tr>
+<tr><td><code>distance_metric</code></td><td>The S3 Vectors index metric. Other metrics are available at rerank time — see <a href="metrics-and-rerank.html">Metrics</a>.</td></tr>
+<tr><td><code>filterable_keys</code></td><td>Small allowlist of metadata pushed to S3 Vectors. Everything else lives only in DynamoDB. Keep it small.</td></tr>
+<tr><td><code>over_fetch</code></td><td>How many extra candidates to pull before reranking/rescoring.</td></tr>
+<tr><td><code>max_workers</code>, <code>parallel_writes</code></td><td>Thread-pool <a href="concurrency.html">concurrency</a> controls.</td></tr>
+</table>
+
+      <div class="doc__next"><a href="quickstart.html"><span>Previous</span>Quickstart</a><a href="embeddings.html" style="text-align:right"><span>Next</span>Embeddings</a></div>
+    </main>
+  </div>
+
+  <script src="docs.js"></script>
+</body>
+</html>

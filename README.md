@@ -146,11 +146,11 @@ Every write/read takes a `namespace`. dynavec tags each vector with its namespac
 
 dynavec has **no idle floor** — you pay storage + per-request, so it stays far below cluster- and OCU-based systems, and tracks serverless Pinecone while keeping your data in-account.
 
-![Monthly cost by scale](docs/assets/cost_by_scale.png)
+![Monthly cost by scale](https://raw.githubusercontent.com/codeforstartups/dynavec/development/docs/assets/cost_by_scale.png)
 
 ### Quality & latency
 
-![Recall and latency](docs/assets/quality_latency.png)
+![Recall and latency](https://raw.githubusercontent.com/codeforstartups/dynavec/development/docs/assets/quality_latency.png)
 
 ### Comparison (1M × 768d, 1M queries/mo)
 
@@ -169,11 +169,11 @@ dynavec has **no idle floor** — you pay storage + per-request, so it stays far
 
 Cost across the common embedding dimensions (384 / 768 / 1024 / 1536 / 3072) and the full scale ladder. dynavec stays lowest at **every** point because its storage is priced like S3, not RAM — while cluster/OCU systems grow linearly with data held in memory.
 
-![Cost by scale and dimension](docs/assets/cost_matrix_by_dim.png)
+![Cost by scale and dimension](https://raw.githubusercontent.com/codeforstartups/dynavec/development/docs/assets/cost_matrix_by_dim.png)
 
 | | Cost by dimension @ 100M vectors | Raw storage footprint |
 |---|---|---|
-| | ![Cost by dimension](docs/assets/cost_by_dimension.png) | ![Storage footprint](docs/assets/storage_footprint.png) |
+| | ![Cost by dimension](https://raw.githubusercontent.com/codeforstartups/dynavec/development/docs/assets/cost_by_dimension.png) | ![Storage footprint](https://raw.githubusercontent.com/codeforstartups/dynavec/development/docs/assets/storage_footprint.png) |
 
 **1536-dim (e.g. OpenAI `text-embedding-3-small`) — $/month @ 1M queries/mo:**
 
@@ -187,7 +187,7 @@ Cost across the common embedding dimensions (384 / 768 / 1024 / 1536 / 3072) and
 | Milvus/Zilliz | $150 | $150 | $900 | $8,100 | $80,550 |
 | _raw float32 size_ | 1 GB | 6 GB | 57 GB | 572 GB | 5,722 GB |
 
-Full tables for all five dimensions: [docs/assets/scaling.md](docs/assets/scaling.md). At 1B × 1536-d that's ~5.7 TB of raw vectors — where dynavec's product quantization and the S3-priced tier matter most.
+Full tables for all five dimensions: [scaling.md](https://github.com/codeforstartups/dynavec/blob/development/docs/assets/scaling.md). At 1B × 1536-d that's ~5.7 TB of raw vectors — where dynavec's product quantization and the S3-priced tier matter most.
 
 ```bash
 pip install "dynavec[benchmark]"          # or: uv add "dynavec[benchmark]"

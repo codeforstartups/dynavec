@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>dynavec documentation · dynavec docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="../index.html">
+        <svg class="brand__mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+          <rect x="1" y="1" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="1" y1="11" x2="21" y2="11" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="11" y1="1" x2="11" y2="21" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="6" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/>
+        </svg>
+        <span class="brand__name">dynavec</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="../index.html#why">Why</a>
+        <a href="../index.html#benchmarks">Benchmarks</a>
+        <a href="index.html">Docs</a>
+      </nav>
+      <a class="btn btn--ghost star" href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">
+        <span aria-hidden="true">&#9733;</span> Star <span class="star__count" data-stars>&mdash;</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docshell">
+    <button class="side__toggle">☰ Menu</button>
+<nav class="side" aria-label="Docs">
+<div class="side__group"><p class="side__title">Getting started</p><ul class="side__list">
+<li><a href="index.html" class="is-current">Overview</a></li>
+<li><a href="installation.html">Installation</a></li>
+<li><a href="quickstart.html">Quickstart</a></li>
+<li><a href="configuration.html">Configuration</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Writing data</p><ul class="side__list">
+<li><a href="embeddings.html">Embeddings</a></li>
+<li><a href="upsert.html">Upsert</a></li>
+<li><a href="update-and-lambda.html">Update & Lambda</a></li>
+<li><a href="ingestion.html">Ingestion & MCP</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Searching</p><ul class="side__list">
+<li><a href="search.html">Search</a></li>
+<li><a href="metrics-and-rerank.html">Metrics & rerank</a></li>
+<li><a href="namespaces.html">Namespaces</a></li>
+<li><a href="streaming.html">Streaming</a></li>
+<li><a href="caching.html">Caching</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Advanced</p><ul class="side__list">
+<li><a href="knowledge-graph.html">Knowledge graph</a></li>
+<li><a href="quantization.html">Product quantization</a></li>
+<li><a href="concurrency.html">Concurrency</a></li>
+<li><a href="credentials.html">Credentials & IAM</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Ecosystem</p><ul class="side__list">
+<li><a href="integrations.html">Framework integrations</a></li>
+<li><a href="benchmarking.html">Benchmarking</a></li>
+</ul></div>
+</nav>
+    <main class="doc">
+      <div class="doc__crumbs"><a href="../index.html">dynavec</a> / Docs</div>
+      <h1>dynavec documentation</h1>
+      <p class="doc__sub">A serverless hybrid vector database that runs inside your own AWS account.</p>
+      
+<p>dynavec fuses <a href="https://aws.amazon.com/dynamodb/">Amazon DynamoDB</a> (single-digit-millisecond
+metadata &amp; document store) with <a href="https://aws.amazon.com/s3/features/vectors/">Amazon S3 Vectors</a>
+(billion-scale serverless ANN) into one Python client — a drop-in alternative to Pinecone, Qdrant, Milvus,
+Weaviate, and OpenSearch that bills only when you use it.</p>
+<div class="callout">New here? Start with <a href="installation.html">Installation</a> then the
+<a href="quickstart.html">Quickstart</a>. Every feature has its own page in the sidebar.</div>
+<h2>Explore by feature</h2>
+<div class="docgrid">
+  <a href="embeddings.html"><h3>Embeddings</h3><p>Pluggable, bring-your-own-key: OpenAI, Gemini, Cohere, Bedrock, local.</p></a>
+  <a href="search.html"><h3>Search</h3><p>Semantic search with metadata pre-filtering and document hydration.</p></a>
+  <a href="metrics-and-rerank.html"><h3>Metrics &amp; rerank</h3><p>Cosine, dot, euclidean, manhattan, weighted combos, and MMR.</p></a>
+  <a href="namespaces.html"><h3>Namespaces</h3><p>Per-tenant / per-collection isolation on one index.</p></a>
+  <a href="knowledge-graph.html"><h3>Knowledge graph</h3><p>Entity-relationship traversal that guides the vector search.</p></a>
+  <a href="caching.html"><h3>Caching</h3><p>Semantic, DynamoDB-TTL, or Redis / ElastiCache query caches.</p></a>
+  <a href="quantization.html"><h3>Product quantization</h3><p>Compress cached vectors up to 32× with ADC distance.</p></a>
+  <a href="ingestion.html"><h3>Ingestion &amp; MCP</h3><p>Pull, chunk, embed from any source — including any MCP server.</p></a>
+  <a href="credentials.html"><h3>Credentials &amp; IAM</h3><p>Access keys, profiles, cross-account assume-role, least-privilege policy.</p></a>
+  <a href="integrations.html"><h3>Integrations</h3><p>LangChain, LlamaIndex, and a tool for LangGraph / CrewAI / Strands.</p></a>
+</div>
+
+      <div class="doc__next"><span></span><a href="installation.html" style="text-align:right"><span>Next</span>Installation</a></div>
+    </main>
+  </div>
+
+  <script src="docs.js"></script>
+</body>
+</html>

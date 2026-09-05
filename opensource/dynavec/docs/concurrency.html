@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Concurrency · dynavec docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="../index.html">
+        <svg class="brand__mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+          <rect x="1" y="1" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="1" y1="11" x2="21" y2="11" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="11" y1="1" x2="11" y2="21" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="6" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/>
+        </svg>
+        <span class="brand__name">dynavec</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="../index.html#why">Why</a>
+        <a href="../index.html#benchmarks">Benchmarks</a>
+        <a href="index.html">Docs</a>
+      </nav>
+      <a class="btn btn--ghost star" href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">
+        <span aria-hidden="true">&#9733;</span> Star <span class="star__count" data-stars>&mdash;</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docshell">
+    <button class="side__toggle">☰ Menu</button>
+<nav class="side" aria-label="Docs">
+<div class="side__group"><p class="side__title">Getting started</p><ul class="side__list">
+<li><a href="index.html">Overview</a></li>
+<li><a href="installation.html">Installation</a></li>
+<li><a href="quickstart.html">Quickstart</a></li>
+<li><a href="configuration.html">Configuration</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Writing data</p><ul class="side__list">
+<li><a href="embeddings.html">Embeddings</a></li>
+<li><a href="upsert.html">Upsert</a></li>
+<li><a href="update-and-lambda.html">Update & Lambda</a></li>
+<li><a href="ingestion.html">Ingestion & MCP</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Searching</p><ul class="side__list">
+<li><a href="search.html">Search</a></li>
+<li><a href="metrics-and-rerank.html">Metrics & rerank</a></li>
+<li><a href="namespaces.html">Namespaces</a></li>
+<li><a href="streaming.html">Streaming</a></li>
+<li><a href="caching.html">Caching</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Advanced</p><ul class="side__list">
+<li><a href="knowledge-graph.html">Knowledge graph</a></li>
+<li><a href="quantization.html">Product quantization</a></li>
+<li><a href="concurrency.html" class="is-current">Concurrency</a></li>
+<li><a href="credentials.html">Credentials & IAM</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Ecosystem</p><ul class="side__list">
+<li><a href="integrations.html">Framework integrations</a></li>
+<li><a href="benchmarking.html">Benchmarking</a></li>
+</ul></div>
+</nav>
+    <main class="doc">
+      <div class="doc__crumbs"><a href="../index.html">dynavec</a> / <a href="index.html">Docs</a> / Concurrency</div>
+      <h1>Concurrency</h1>
+      <p class="doc__sub">GIL-aware thread pool for I/O-bound AWS calls.</p>
+      
+<p>dynavec's workload is I/O-bound (network calls to AWS), and Python releases the GIL during those calls — so
+a thread pool gives real parallelism without an async rewrite. Batched writes fan out across threads, and
+<code>search_many</code> runs several queries concurrently.</p>
+<pre class="code"><code># many queries at once
+results = db.search_many(["q1", "q2", "q3"], top_k=5, namespace="kb")
+
+# tune the pool
+cfg = DynavecConfig(..., max_workers=16, parallel_writes=True)
+
+# clean up the pool (or use the client as a context manager)
+with Dynavec(cfg, embedder=emb) as db:
+    ...</code></pre>
+<div class="callout">A native asyncio client (<code>aioboto3</code>) is on the roadmap for very high
+concurrency.</div>
+
+      <div class="doc__next"><a href="quantization.html"><span>Previous</span>Product quantization</a><a href="credentials.html" style="text-align:right"><span>Next</span>Credentials & IAM</a></div>
+    </main>
+  </div>
+
+  <script src="docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Framework integrations · dynavec docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="../index.html">
+        <svg class="brand__mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+          <rect x="1" y="1" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="1" y1="11" x2="21" y2="11" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="11" y1="1" x2="11" y2="21" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="6" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/>
+        </svg>
+        <span class="brand__name">dynavec</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="../index.html#why">Why</a>
+        <a href="../index.html#benchmarks">Benchmarks</a>
+        <a href="index.html">Docs</a>
+      </nav>
+      <a class="btn btn--ghost star" href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">
+        <span aria-hidden="true">&#9733;</span> Star <span class="star__count" data-stars>&mdash;</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docshell">
+    <button class="side__toggle">☰ Menu</button>
+<nav class="side" aria-label="Docs">
+<div class="side__group"><p class="side__title">Getting started</p><ul class="side__list">
+<li><a href="index.html">Overview</a></li>
+<li><a href="installation.html">Installation</a></li>
+<li><a href="quickstart.html">Quickstart</a></li>
+<li><a href="configuration.html">Configuration</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Writing data</p><ul class="side__list">
+<li><a href="embeddings.html">Embeddings</a></li>
+<li><a href="upsert.html">Upsert</a></li>
+<li><a href="update-and-lambda.html">Update & Lambda</a></li>
+<li><a href="ingestion.html">Ingestion & MCP</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Searching</p><ul class="side__list">
+<li><a href="search.html">Search</a></li>
+<li><a href="metrics-and-rerank.html">Metrics & rerank</a></li>
+<li><a href="namespaces.html">Namespaces</a></li>
+<li><a href="streaming.html">Streaming</a></li>
+<li><a href="caching.html">Caching</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Advanced</p><ul class="side__list">
+<li><a href="knowledge-graph.html">Knowledge graph</a></li>
+<li><a href="quantization.html">Product quantization</a></li>
+<li><a href="concurrency.html">Concurrency</a></li>
+<li><a href="credentials.html">Credentials & IAM</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Ecosystem</p><ul class="side__list">
+<li><a href="integrations.html" class="is-current">Framework integrations</a></li>
+<li><a href="benchmarking.html">Benchmarking</a></li>
+</ul></div>
+</nav>
+    <main class="doc">
+      <div class="doc__crumbs"><a href="../index.html">dynavec</a> / <a href="index.html">Docs</a> / Framework integrations</div>
+      <h1>Framework integrations</h1>
+      <p class="doc__sub">LangChain, LlamaIndex, and a tool for any agent framework.</p>
+      
+<h2>LangChain</h2>
+<pre class="code"><code>from dynavec.integrations.langchain import DynavecVectorStore
+store = DynavecVectorStore(db, namespace="kb")
+retriever = store.as_retriever(search_kwargs={"k": 4})</code></pre>
+<h2>LlamaIndex</h2>
+<pre class="code"><code>from dynavec.integrations.llamaindex import DynavecLlamaStore
+from llama_index.core import VectorStoreIndex, StorageContext
+
+store = DynavecLlamaStore(db, namespace="kb")
+ctx = StorageContext.from_defaults(vector_store=store)
+index = VectorStoreIndex.from_documents(docs, storage_context=ctx)</code></pre>
+<h2>LangGraph / CrewAI / Strands</h2>
+<p>A framework-agnostic retriever tool — just a callable that takes a query and returns text.</p>
+<pre class="code"><code>from dynavec.integrations.tools import make_retriever_fn
+retrieve = make_retriever_fn(db, top_k=4)   # fn(query: str) -> str
+# also: as_langchain_tool(db), as_crewai_tool(db)</code></pre>
+      <div class="doc__next"><a href="credentials.html"><span>Previous</span>Credentials & IAM</a><a href="benchmarking.html" style="text-align:right"><span>Next</span>Benchmarking</a></div>
+    </main>
+  </div>
+
+  <script src="docs.js"></script>
+</body>
+</html>

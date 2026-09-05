@@ -14,8 +14,6 @@ All scorers return **higher = more similar** so they compose cleanly.
 
 from __future__ import annotations
 
-from typing import Union
-
 import numpy as np
 
 Metric = str  # "cosine" | "dot" | "euclidean" | "manhattan"
@@ -79,7 +77,7 @@ def composite_score(
 def rescore(
     query: np.ndarray,
     candidate_vectors: np.ndarray,
-    spec: Union[Metric, dict[str, float]],
+    spec: Metric | dict[str, float],
 ) -> np.ndarray:
     """Return an ordering (indices, best first) for the candidates under ``spec``.
 

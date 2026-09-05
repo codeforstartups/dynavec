@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from ..exceptions import MissingDependencyError
 from .base import Embedder, Vector
 
@@ -32,9 +30,9 @@ class OpenAIEmbedder(Embedder):
     def __init__(
         self,
         model: str = "text-embedding-3-small",
-        api_key: Optional[str] = None,
-        dimension: Optional[int] = None,
-        base_url: Optional[str] = None,
+        api_key: str | None = None,
+        dimension: int | None = None,
+        base_url: str | None = None,
         batch_size: int = 256,
     ) -> None:
         try:

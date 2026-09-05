@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 Vector = list[float]
 Metadata = dict[str, Any]
@@ -18,8 +18,8 @@ class Document:
     """
 
     id: str
-    text: Optional[str] = None
-    vector: Optional[Vector] = None
+    text: str | None = None
+    vector: Vector | None = None
     metadata: Metadata = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -39,10 +39,10 @@ class SearchResult:
 
     id: str
     score: float
-    distance: Optional[float] = None
-    text: Optional[str] = None
+    distance: float | None = None
+    text: str | None = None
     metadata: Metadata = field(default_factory=dict)
-    vector: Optional[Vector] = None
+    vector: Vector | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {

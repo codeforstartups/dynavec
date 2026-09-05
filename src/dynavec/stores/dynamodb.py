@@ -13,7 +13,7 @@ can filter on metadata fields directly in DynamoDB.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 from ..config import DynavecConfig
 from ..utils import retry
@@ -64,7 +64,7 @@ class DynamoDBStore:
     def put_many(
         self,
         namespace: str,
-        items: list[tuple[str, Optional[str], Metadata]],
+        items: list[tuple[str, str | None, Metadata]],
     ) -> None:
         """Upsert (id, text, metadata) triples. Uses batch writer (auto-retry)."""
         with self._table.batch_writer(overwrite_by_pkeys=["pk"]) as batch:

@@ -284,7 +284,7 @@ def scaling_tables_md(qpm: int = 1_000_000, wpm: int = 100_000) -> str:
         best_per_col = [min(cc, key=cc.get) for cc in col_costs]
         for p in products:
             cells = []
-            for j, n in enumerate(SCALES):
+            for j, _n in enumerate(SCALES):
                 v = col_costs[j][p]
                 s = f"${v:,.0f}" if v >= 1 else f"${v:.2f}"
                 if p == best_per_col[j]:
@@ -293,7 +293,7 @@ def scaling_tables_md(qpm: int = 1_000_000, wpm: int = 100_000) -> str:
             out.append(f"| {_LABELS[p]} | " + " | ".join(cells) + " |")
         # dynavec raw footprint row (informational)
         gb = [f"{_raw_gb(n, dim):,.0f} GB" for n in SCALES]
-        out.append(f"| _raw float32 size_ | " + " | ".join(gb) + " |")
+        out.append("| _raw float32 size_ | " + " | ".join(gb) + " |")
     return "\n".join(out)
 
 

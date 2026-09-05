@@ -7,7 +7,6 @@ for DynamoDB and S3 Vectors. Great for the compliance-first story.
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 from .base import Embedder, Vector
 
@@ -35,8 +34,8 @@ class BedrockEmbedder(Embedder):
     def __init__(
         self,
         model_id: str = "amazon.titan-embed-text-v2:0",
-        region: Optional[str] = None,
-        dimension: Optional[int] = None,
+        region: str | None = None,
+        dimension: int | None = None,
         boto_session=None,
     ) -> None:
         import boto3  # local import keeps base import cheap

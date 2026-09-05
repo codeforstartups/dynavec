@@ -8,18 +8,18 @@ native tool in LangChain and CrewAI when those are installed.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable
 
 from ..client import Dynavec
 from ..namespace import NamespaceView
 
 
 def make_retriever_fn(
-    source: Union[Dynavec, NamespaceView],
+    source: Dynavec | NamespaceView,
     *,
     top_k: int = 4,
     namespace: str = "default",
-    filter: Optional[dict] = None,
+    filter: dict | None = None,
     rescore=None,
     join: str = "\n\n",
     include_scores: bool = False,

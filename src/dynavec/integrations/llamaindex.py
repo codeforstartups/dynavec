@@ -14,7 +14,7 @@ vectors directly (no re-embedding).
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any
 
 from ..client import Dynavec
 from ..exceptions import MissingDependencyError
@@ -51,7 +51,7 @@ class DynavecLlamaStore(BasePydanticVectorStore):
     def client(self) -> Any:
         return self._client
 
-    def add(self, nodes: List[BaseNode], **kwargs: Any) -> List[str]:
+    def add(self, nodes: list[BaseNode], **kwargs: Any) -> list[str]:
         docs = []
         for node in nodes:
             meta = node.metadata or {}

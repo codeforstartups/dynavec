@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from ..exceptions import MissingDependencyError
 from .base import Embedder, Vector
 
@@ -28,8 +26,8 @@ class GeminiEmbedder(Embedder):
     def __init__(
         self,
         model: str = "text-embedding-004",
-        api_key: Optional[str] = None,
-        dimension: Optional[int] = None,
+        api_key: str | None = None,
+        dimension: int | None = None,
     ) -> None:
         try:
             import google.generativeai as genai

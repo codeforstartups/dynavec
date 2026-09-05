@@ -7,8 +7,6 @@ testable without AWS.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 
 from .config import DistanceMetric
@@ -30,7 +28,7 @@ def distance_to_score(distance: float, metric: DistanceMetric) -> float:
 def reciprocal_rank_fusion(
     result_lists: list[list[SearchResult]],
     k: int = 60,
-    weights: Optional[list[float]] = None,
+    weights: list[float] | None = None,
 ) -> list[SearchResult]:
     """Fuse multiple ranked result lists with Reciprocal Rank Fusion.
 

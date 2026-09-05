@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import re
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 from .config import NS_METADATA_KEY, TEXT_METADATA_KEY, DynavecConfig
 
@@ -23,7 +23,7 @@ _WORD_RE = re.compile(r"\w+")
 _S3_SCALAR = (str, int, float, bool)
 
 
-def generate_auto_metadata(text: Optional[str]) -> Metadata:
+def generate_auto_metadata(text: str | None) -> Metadata:
     """Derive lightweight, useful metadata from raw text.
 
     This is what dynavec attaches when the caller sets ``auto_metadata=True`` and
@@ -51,7 +51,7 @@ def split_metadata(
     metadata: Metadata,
     config: DynavecConfig,
     namespace: str,
-    text: Optional[str] = None,
+    text: str | None = None,
 ) -> tuple[Metadata, Metadata]:
     """Split metadata into (s3_vectors_metadata, dynamodb_metadata).
 
@@ -83,7 +83,7 @@ def split_metadata(
     return s3_meta, dynamo_meta
 
 
-def build_s3_filter(user_filter: Optional[Metadata], namespace: str) -> Metadata:
+def build_s3_filter(user_filter: Metadata | None, namespace: str) -> Metadata:
     """Combine a user metadata filter with the mandatory namespace scope.
 
     Accepts the S3 Vectors filter dialect (MongoDB-style operators such as

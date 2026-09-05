@@ -8,7 +8,7 @@ separated on the same infrastructure.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from .models import SearchResult
 
@@ -21,7 +21,7 @@ class NamespaceView:
 
     __slots__ = ("_db", "_ns")
 
-    def __init__(self, db: "Dynavec", namespace: str) -> None:
+    def __init__(self, db: Dynavec, namespace: str) -> None:
         self._db = db
         self._ns = namespace
 
@@ -35,10 +35,10 @@ class NamespaceView:
     def update(self, *args, **kw) -> Any:
         return self._db.update(*args, namespace=self._ns, **kw)
 
-    def search(self, query: Optional[str] = None, **kw) -> list[SearchResult]:
+    def search(self, query: str | None = None, **kw) -> list[SearchResult]:
         return self._db.search(query, namespace=self._ns, **kw)
 
-    def search_stream(self, query: Optional[str] = None, **kw):
+    def search_stream(self, query: str | None = None, **kw):
         yield from self._db.search_stream(query, namespace=self._ns, **kw)
 
     def get(self, ids, **kw) -> list[SearchResult]:

@@ -25,8 +25,9 @@ rewrite. (A native asyncio client is on the roadmap.)
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Iterator, Optional, Union
+from typing import Any, Union
 
 import numpy as np
 
@@ -60,9 +61,9 @@ class Dynavec:
     def __init__(
         self,
         config: DynavecConfig,
-        embedder: Optional[Embedder] = None,
+        embedder: Embedder | None = None,
         *,
-        credentials: Optional[AWSCredentials] = None,
+        credentials: AWSCredentials | None = None,
         boto_session=None,
         transform=None,
         cache=None,
@@ -74,8 +75,8 @@ class Dynavec:
         self._docs = DynamoDBStore(config, boto_session=self._session)
         self._default_transform = as_pipeline(transform)
         self._cache = cache
-        self._graph_store: Optional[GraphStore] = None
-        self._pool: Optional[ThreadPoolExecutor] = None
+        self._graph_store: GraphStore | None = None
+        self._pool: ThreadPoolExecutor | None = None
 
         if embedder is not None and embedder.dimension != config.dimension:
             raise ConfigurationError(
@@ -98,7 +99,7 @@ class Dynavec:
             self._pool.shutdown(wait=True)
             self._pool = None
 
-    def __enter__(self) -> "Dynavec":
+    def __enter__(self) -> Dynavec:
         return self
 
     def __exit__(self, *exc) -> None:
@@ -205,7 +206,7 @@ class Dynavec:
 
     def upsert(
         self,
-        documents: Optional[list[Union[Document, dict]]] = None,
+        documents: list[Document | dict] | None = None,
         *,
         namespace: str = "default",
         auto_metadata: bool = False,
@@ -224,9 +225,9 @@ class Dynavec:
         id: str,
         *,
         namespace: str = "default",
-        text: Optional[str] = None,
-        vector: Optional[list[float]] = None,
-        metadata: Optional[Metadata] = None,
+        text: str | None = None,
+        vector: list[float] | None = None,
+        metadata: Metadata | None = None,
         merge_metadata: bool = True,
         transform=None,
         upsert_if_missing: bool = False,
@@ -279,17 +280,17 @@ class Dynavec:
     # ---------------------------------------------------------------- read path
     def search(
         self,
-        query: Optional[str] = None,
+        query: str | None = None,
         *,
-        vector: Optional[list[float]] = None,
+        vector: list[float] | None = None,
         top_k: int = 10,
         namespace: str = "default",
-        filter: Optional[Metadata] = None,
-        rescore: Optional[RescoreSpec] = None,
-        rerank: Optional[str] = None,  # None | "mmr"
+        filter: Metadata | None = None,
+        rescore: RescoreSpec | None = None,
+        rerank: str | None = None,  # None | "mmr"
         mmr_lambda: float = 0.5,
         include_vectors: bool = False,
-        use_cache: Optional[bool] = None,
+        use_cache: bool | None = None,
     ) -> list[SearchResult]:
         """Semantic search. Provide ``query`` (embedded) or a raw ``vector``.
 
@@ -385,12 +386,12 @@ class Dynavec:
 
     def search_stream(
         self,
-        query: Optional[str] = None,
+        query: str | None = None,
         *,
-        vector: Optional[list[float]] = None,
+        vector: list[float] | None = None,
         top_k: int = 50,
         namespace: str = "default",
-        filter: Optional[Metadata] = None,
+        filter: Metadata | None = None,
     ) -> Iterator[SearchResult]:
         """Stream results to the agent page-by-page as S3 Vectors returns them.
 
@@ -434,7 +435,7 @@ class Dynavec:
         return [f.result() for f in futures]
 
     def _resolve_query_vector(
-        self, query: Optional[str], vector: Optional[list[float]]
+        self, query: str | None, vector: list[float] | None
     ) -> list[float]:
         if vector is not None:
             if len(vector) != self.config.dimension:
@@ -499,12 +500,12 @@ class Dynavec:
 
     def graph_search(
         self,
-        query: Optional[str] = None,
+        query: str | None = None,
         *,
         seed_entities: list[str],
-        vector: Optional[list[float]] = None,
+        vector: list[float] | None = None,
         namespace: str = "default",
-        relation: Optional[str] = None,
+        relation: str | None = None,
         hops: int = 1,
         top_k: int = 10,
         metric: str = "cosine",

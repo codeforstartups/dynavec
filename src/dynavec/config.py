@@ -8,7 +8,7 @@ and dynavec only ever calls them with the caller's credentials.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Literal
 
 DistanceMetric = Literal["cosine", "euclidean"]
 
@@ -55,10 +55,10 @@ class DynavecConfig:
     table: str
     dimension: int
     distance_metric: DistanceMetric = "cosine"
-    region: Optional[str] = None
+    region: str | None = None
 
     # metadata split between the two stores
-    filterable_keys: Optional[list[str]] = None
+    filterable_keys: list[str] | None = None
     non_filterable_keys: list[str] = field(default_factory=list)
     store_text_in_s3vectors: bool = False
     text_mirror_max_chars: int = 2048

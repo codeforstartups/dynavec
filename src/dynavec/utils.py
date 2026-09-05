@@ -9,7 +9,8 @@ from __future__ import annotations
 import functools
 import random
 import time
-from typing import Any, Callable, Iterable, Iterator, Optional, TypeVar
+from collections.abc import Iterable, Iterator
+from typing import Any, Callable, TypeVar
 
 T = TypeVar("T")
 
@@ -66,7 +67,7 @@ def retry(
     return decorator
 
 
-def timed(sink: Optional[Callable[[str, float], None]] = None):
+def timed(sink: Callable[[str, float], None] | None = None):
     """Decorator: report wall-clock seconds to ``sink(name, seconds)``.
 
     Handy for wiring dynavec latency into an agent's tracing/telemetry.

@@ -64,7 +64,7 @@ class ProductQuantizer:
         self._dsub: int | None = None
 
     # ------------------------------------------------------------------ train
-    def fit(self, vectors: np.ndarray) -> "ProductQuantizer":
+    def fit(self, vectors: np.ndarray) -> ProductQuantizer:
         x = np.asarray(vectors, dtype=np.float32)
         dim = x.shape[1]
         if dim % self.m != 0:

@@ -24,7 +24,6 @@ from .cache import DynamoDBCache, RedisCache, SemanticCache
 from .client import Dynavec
 from .config import DynavecConfig
 from .credentials import AWSCredentials
-from .graph import GraphStore
 from .exceptions import (
     ConfigurationError,
     DimensionMismatchError,
@@ -34,6 +33,7 @@ from .exceptions import (
     NotFoundError,
     ProvisioningError,
 )
+from .graph import GraphStore
 from .models import Document, SearchResult, UpsertResult
 from .namespace import NamespaceView
 from .quantization import ProductQuantizer

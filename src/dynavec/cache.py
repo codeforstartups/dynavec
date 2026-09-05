@@ -20,7 +20,6 @@ import json
 import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from typing import Optional
 
 import numpy as np
 
@@ -28,7 +27,7 @@ from .exceptions import MissingDependencyError
 from .models import SearchResult
 
 
-def _signature(namespace: str, top_k: int, filter: Optional[dict]) -> str:
+def _signature(namespace: str, top_k: int, filter: dict | None) -> str:
     payload = json.dumps(
         {"ns": namespace, "k": top_k, "f": filter or {}}, sort_keys=True
     )
@@ -56,7 +55,7 @@ def _deserialize(blob: str) -> list[SearchResult]:
 
 class BaseCache(ABC):
     @abstractmethod
-    def get(self, namespace, query_vector, top_k, filter) -> Optional[list[SearchResult]]:
+    def get(self, namespace, query_vector, top_k, filter) -> list[SearchResult] | None:
         ...
 
     @abstractmethod
@@ -76,7 +75,7 @@ class SemanticCache(BaseCache):
         self.threshold = threshold
         self.max_size = max_size
         # key: signature -> OrderedDict[vec_key -> (unit_vec, results)]
-        self._buckets: dict[str, "OrderedDict[str, tuple]"] = {}
+        self._buckets: dict[str, OrderedDict[str, tuple]] = {}
 
     @staticmethod
     def _unit(v: np.ndarray) -> np.ndarray:

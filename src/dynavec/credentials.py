@@ -13,21 +13,20 @@ The resulting object is a frozen, side-effect-free description; call
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
 class AWSCredentials:
-    access_key_id: Optional[str] = None
-    secret_access_key: Optional[str] = None
-    session_token: Optional[str] = None
-    profile_name: Optional[str] = None
-    region: Optional[str] = None
+    access_key_id: str | None = None
+    secret_access_key: str | None = None
+    session_token: str | None = None
+    profile_name: str | None = None
+    region: str | None = None
 
     # cross-account assume-role
-    assume_role_arn: Optional[str] = None
+    assume_role_arn: str | None = None
     role_session_name: str = "dynavec"
-    external_id: Optional[str] = None
+    external_id: str | None = None
 
     def session(self):
         """Build a ``boto3.Session`` from this credential description."""
@@ -80,7 +79,7 @@ class AWSCredentials:
         )
 
 
-def resolve_session(credentials: Optional[AWSCredentials], boto_session):
+def resolve_session(credentials: AWSCredentials | None, boto_session):
     """Pick a boto3 session: explicit session > credentials > default chain."""
     if boto_session is not None:
         return boto_session

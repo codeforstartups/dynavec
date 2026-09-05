@@ -13,7 +13,8 @@ is wrapped to satisfy dynavec's :class:`~dynavec.embeddings.base.Embedder`).
 from __future__ import annotations
 
 import uuid
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 
 from ..client import Dynavec
 from ..embeddings.base import Embedder
@@ -55,8 +56,8 @@ class DynavecVectorStore(VectorStore):
     def add_texts(
         self,
         texts: Iterable[str],
-        metadatas: Optional[list[dict]] = None,
-        ids: Optional[list[str]] = None,
+        metadatas: list[dict] | None = None,
+        ids: list[str] | None = None,
         **kwargs: Any,
     ) -> list[str]:
         texts = list(texts)
@@ -69,14 +70,14 @@ class DynavecVectorStore(VectorStore):
         self._client.upsert(docs, namespace=self._namespace)
         return ids
 
-    def delete(self, ids: Optional[list[str]] = None, **kwargs: Any) -> Optional[bool]:
+    def delete(self, ids: list[str] | None = None, **kwargs: Any) -> bool | None:
         if not ids:
             return False
         self._client.delete(ids, namespace=self._namespace)
         return True
 
     def similarity_search(
-        self, query: str, k: int = 4, filter: Optional[dict] = None, **kwargs: Any
+        self, query: str, k: int = 4, filter: dict | None = None, **kwargs: Any
     ) -> list[LCDocument]:
         results = self._client.search(
             query, top_k=k, namespace=self._namespace, filter=filter
@@ -87,7 +88,7 @@ class DynavecVectorStore(VectorStore):
         ]
 
     def similarity_search_with_score(
-        self, query: str, k: int = 4, filter: Optional[dict] = None, **kwargs: Any
+        self, query: str, k: int = 4, filter: dict | None = None, **kwargs: Any
     ) -> list[tuple[LCDocument, float]]:
         results = self._client.search(
             query, top_k=k, namespace=self._namespace, filter=filter
@@ -106,7 +107,7 @@ class DynavecVectorStore(VectorStore):
         k: int = 4,
         fetch_k: int = 20,
         lambda_mult: float = 0.5,
-        filter: Optional[dict] = None,
+        filter: dict | None = None,
         **kwargs: Any,
     ) -> list[LCDocument]:
         results = self._client.search(
@@ -127,12 +128,12 @@ class DynavecVectorStore(VectorStore):
         cls,
         texts: list[str],
         embedding,
-        metadatas: Optional[list[dict]] = None,
+        metadatas: list[dict] | None = None,
         *,
-        client: Optional[Dynavec] = None,
+        client: Dynavec | None = None,
         namespace: str = "default",
         **kwargs: Any,
-    ) -> "DynavecVectorStore":
+    ) -> DynavecVectorStore:
         if client is None:
             raise ValueError(
                 "DynavecVectorStore.from_texts requires a configured `client=Dynavec(...)`."

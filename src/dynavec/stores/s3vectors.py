@@ -8,7 +8,8 @@ lives in DynamoDB.
 
 from __future__ import annotations
 
-from typing import Any, Iterator, Optional
+from collections.abc import Iterator
+from typing import Any
 
 import numpy as np
 
@@ -76,7 +77,7 @@ class S3VectorsStore:
         self,
         query_vector: list[float],
         top_k: int,
-        filter: Optional[Metadata] = None,
+        filter: Metadata | None = None,
         return_metadata: bool = True,
         return_distance: bool = True,
     ) -> list[dict[str, Any]]:
@@ -91,7 +92,7 @@ class S3VectorsStore:
         self,
         query_vector: list[float],
         top_k: int,
-        filter: Optional[Metadata] = None,
+        filter: Metadata | None = None,
         return_metadata: bool = True,
         return_distance: bool = True,
     ) -> Iterator[list[dict[str, Any]]]:

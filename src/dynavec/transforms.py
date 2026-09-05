@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 Vector = list[float]
 Metadata = dict[str, Any]
@@ -25,8 +25,8 @@ class TransformContext:
     """Mutable carrier passed through the pipeline for one document."""
 
     id: str
-    text: Optional[str] = None
-    vector: Optional[Vector] = None
+    text: str | None = None
+    vector: Vector | None = None
     metadata: Metadata = field(default_factory=dict)
     namespace: str = "default"
     op: str = "upsert"  # "upsert" | "update"
@@ -38,10 +38,10 @@ Transform = Callable[[TransformContext], TransformContext]
 class TransformPipeline:
     """Ordered chain of transforms. Callable and iterable."""
 
-    def __init__(self, transforms: Optional[list[Transform]] = None) -> None:
+    def __init__(self, transforms: list[Transform] | None = None) -> None:
         self._transforms: list[Transform] = list(transforms or [])
 
-    def add(self, transform: Transform) -> "TransformPipeline":
+    def add(self, transform: Transform) -> TransformPipeline:
         self._transforms.append(transform)
         return self
 
@@ -57,7 +57,7 @@ class TransformPipeline:
         return ctx
 
 
-def as_pipeline(spec) -> Optional[TransformPipeline]:
+def as_pipeline(spec) -> TransformPipeline | None:
     """Coerce ``None`` / a single callable / a list into a pipeline."""
     if spec is None:
         return None
@@ -75,7 +75,7 @@ class LambdaTransform:
     as JSON and must return the same shape (any subset it wants to change).
     """
 
-    def __init__(self, function_name: str, session, qualifier: Optional[str] = None) -> None:
+    def __init__(self, function_name: str, session, qualifier: str | None = None) -> None:
         self._client = session.client("lambda")
         self._function_name = function_name
         self._qualifier = qualifier

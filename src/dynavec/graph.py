@@ -23,7 +23,7 @@ fan-out entities want a sort-key adjacency design (roadmap).
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from .config import DynavecConfig
 from .utils import retry
@@ -49,7 +49,7 @@ class GraphStore:
     # --------------------------------------------------------------- mutations
     @retry()
     def add_node(
-        self, ns: str, entity_id: str, ntype: Optional[str] = None, props: Optional[Props] = None
+        self, ns: str, entity_id: str, ntype: str | None = None, props: Props | None = None
     ) -> None:
         self._table.update_item(
             Key={"pk": self._node_pk(ns, entity_id)},
@@ -92,11 +92,11 @@ class GraphStore:
 
     # ------------------------------------------------------------------ reads
     @retry()
-    def get_node(self, ns: str, entity_id: str) -> Optional[dict]:
+    def get_node(self, ns: str, entity_id: str) -> dict | None:
         resp = self._table.get_item(Key={"pk": self._node_pk(ns, entity_id)})
         return resp.get("Item")
 
-    def neighbors(self, ns: str, entity_id: str, relation: Optional[str] = None) -> list[str]:
+    def neighbors(self, ns: str, entity_id: str, relation: str | None = None) -> list[str]:
         node = self.get_node(ns, entity_id)
         if not node:
             return []

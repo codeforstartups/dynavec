@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>dynavec — serverless hybrid vector database on AWS</title>
+  <meta name="description" content="dynavec fuses DynamoDB and Amazon S3 Vectors into a serverless, in-your-own-account vector database. An open-source alternative to Pinecone, Qdrant, Milvus, Weaviate, and OpenSearch." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <!-- ============ NAV ============ -->
+  <header class="nav" id="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="#top" aria-label="dynavec home">
+        <svg class="brand__mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+          <rect x="1" y="1" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="1" y1="11" x2="21" y2="11" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="11" y1="1" x2="11" y2="21" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="6" cy="6" r="2" fill="currentColor"/>
+          <circle cx="16" cy="16" r="2" fill="currentColor"/>
+        </svg>
+        <span class="brand__name">dynavec</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="#why">Why</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#benchmarks">Benchmarks</a>
+        <a href="#docs">Docs</a>
+        <a href="#contribute">Contribute</a>
+      </nav>
+      <a class="btn btn--ghost star" href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">
+        <span aria-hidden="true">★</span> Star
+        <span class="star__count" data-stars>—</span>
+      </a>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- ============ HERO ============ -->
+    <section class="hero" id="top">
+      <div class="wrap">
+        <p class="eyebrow">Open source · Apache-2.0 · runs in your AWS account</p>
+        <h1 class="hero__title">The serverless vector database<br />that lives in <span class="u">your</span> AWS account.</h1>
+        <p class="hero__lede">
+          dynavec fuses <strong>Amazon DynamoDB</strong> (single-digit-millisecond metadata &amp; document store)
+          with <strong>Amazon S3 Vectors</strong> (billion-scale, serverless ANN) into one Python client —
+          a drop-in alternative to Pinecone, Qdrant, Milvus, Weaviate, and OpenSearch that
+          <strong>bills only when you use it</strong> and keeps every byte in your own region.
+        </p>
+
+        <div class="install">
+          <div class="install__row">
+            <code>pip install dynavec</code>
+            <button class="copy" data-copy="pip install dynavec" aria-label="Copy">copy</button>
+          </div>
+          <div class="install__row">
+            <code>uv add dynavec</code>
+            <button class="copy" data-copy="uv add dynavec" aria-label="Copy">copy</button>
+          </div>
+        </div>
+
+        <div class="hero__cta">
+          <a class="btn btn--solid" href="#docs">Read the docs</a>
+          <a class="btn btn--ghost" href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">View on GitHub</a>
+        </div>
+
+        <ul class="hero__stats">
+          <li><span class="stat__n" data-stars>—</span><span class="stat__l">GitHub stars</span></li>
+          <li><span class="stat__n">$469</span><span class="stat__l">/mo at 1B vectors*</span></li>
+          <li><span class="stat__n">100%</span><span class="stat__l">in your account</span></li>
+          <li><span class="stat__n">0</span><span class="stat__l">servers to run</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============ WHY ============ -->
+    <section class="section" id="why">
+      <div class="wrap">
+        <h2 class="section__title">Why dynavec</h2>
+        <div class="grid grid--3">
+          <article class="card">
+            <span class="card__no">01</span>
+            <h3>Cost-effective</h3>
+            <p>No always-on cluster, no managed-service premium. You pay S3-priced vector storage plus DynamoDB on-demand. Idle cost approaches storage only.</p>
+          </article>
+          <article class="card">
+            <span class="card__no">02</span>
+            <h3>Lowest latency</h3>
+            <p>S3 Vectors returns the nearest keys; the actual documents are hydrated from DynamoDB in single-digit milliseconds via <code>BatchGetItem</code>.</p>
+          </article>
+          <article class="card">
+            <span class="card__no">03</span>
+            <h3>Billion-scale</h3>
+            <p>Amazon S3 Vectors searches across billions of vectors with 90%+ recall — the serverless ANN engine, managed by AWS.</p>
+          </article>
+          <article class="card">
+            <span class="card__no">04</span>
+            <h3>Data compliance</h3>
+            <p>Everything stays in <em>your</em> account, <em>your</em> region, <em>your</em> availability zones. dynavec only ever calls AWS with your credentials.</p>
+          </article>
+          <article class="card">
+            <span class="card__no">05</span>
+            <h3>Secure &amp; elastic</h3>
+            <p>Serverless primitives scale to zero and back automatically. IAM is the only access boundary; assume-role and per-tenant namespaces built in.</p>
+          </article>
+          <article class="card">
+            <span class="card__no">06</span>
+            <h3>Framework-native</h3>
+            <p>LangChain and LlamaIndex vector stores plus a framework-agnostic retriever tool for LangGraph, CrewAI, and Strands.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ARCHITECTURE ============ -->
+    <section class="section section--alt" id="architecture">
+      <div class="wrap">
+        <h2 class="section__title">How it works</h2>
+        <p class="section__lede">Two AWS primitives, each doing the one job it is best at, joined by a shared key.</p>
+
+        <div class="arch">
+          <svg viewBox="0 0 900 300" class="arch__svg" role="img" aria-label="dynavec architecture diagram">
+            <!-- query in -->
+            <text x="10" y="40" class="d-label">query</text>
+            <line x1="60" y1="35" x2="150" y2="35" class="d-line" marker-end="url(#arrow)"/>
+            <!-- embedder -->
+            <rect x="150" y="12" width="150" height="46" class="d-box"/>
+            <text x="225" y="40" class="d-text" text-anchor="middle">Embedder (BYO key)</text>
+            <line x1="300" y1="35" x2="390" y2="35" class="d-line" marker-end="url(#arrow)"/>
+            <!-- s3 vectors -->
+            <rect x="390" y="12" width="200" height="66" class="d-box d-box--em"/>
+            <text x="490" y="38" class="d-text" text-anchor="middle">S3 Vectors</text>
+            <text x="490" y="58" class="d-sub" text-anchor="middle">ANN · nearest keys</text>
+            <!-- keys down to dynamo -->
+            <line x1="490" y1="78" x2="490" y2="150" class="d-line" marker-end="url(#arrow)"/>
+            <text x="500" y="120" class="d-sub">keys + distance</text>
+            <!-- dynamodb -->
+            <rect x="390" y="150" width="200" height="66" class="d-box"/>
+            <text x="490" y="176" class="d-text" text-anchor="middle">DynamoDB</text>
+            <text x="490" y="196" class="d-sub" text-anchor="middle">BatchGetItem · documents</text>
+            <!-- rank out -->
+            <line x1="590" y1="183" x2="690" y2="183" class="d-line" marker-end="url(#arrow)"/>
+            <rect x="690" y="160" width="200" height="46" class="d-box"/>
+            <text x="790" y="188" class="d-text" text-anchor="middle">rerank · results</text>
+            <!-- graph note -->
+            <rect x="150" y="150" width="150" height="66" class="d-box d-box--dash"/>
+            <text x="225" y="176" class="d-text" text-anchor="middle">Graph / ER</text>
+            <text x="225" y="196" class="d-sub" text-anchor="middle">traverse → scope</text>
+            <line x1="300" y1="183" x2="390" y2="183" class="d-line" marker-end="url(#arrow)"/>
+            <defs>
+              <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+                <path d="M0,0 L9,4.5 L0,9 z" fill="currentColor"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+
+        <div class="grid grid--2 arch__notes">
+          <div>
+            <h3 class="tick">S3 Vectors — the scale tier</h3>
+            <p>Holds the vector plus a small filterable metadata subset. AWS-managed approximate-nearest-neighbor over billions of vectors. Cosine or euclidean natively; cosine / dot / euclidean / manhattan (and weighted combinations) available as client-side rescoring.</p>
+          </div>
+          <div>
+            <h3 class="tick">DynamoDB — the speed &amp; meaning tier</h3>
+            <p>Canonical store for full text and rich metadata, hydrated by key in single-digit ms. Also holds the knowledge-graph adjacency lists that connect entities to embeddings, so you can traverse structure first and narrow the vector search.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ BENCHMARKS ============ -->
+    <section class="section" id="benchmarks">
+      <div class="wrap">
+        <h2 class="section__title">Benchmarks</h2>
+        <p class="section__lede">
+          Cost across every common embedding dimension (384–3072) and 100K → 1&nbsp;billion vectors.
+          dynavec stays lowest at every point because its storage is priced like S3, not RAM.
+        </p>
+
+        <figure class="fig">
+          <img src="images/cost_matrix_by_dim.png" alt="Estimated monthly cost by scale and embedding dimension across vector databases" loading="lazy" />
+          <figcaption>Monthly cost by scale &amp; dimension. dynavec (red) is the lowest line in every panel.</figcaption>
+        </figure>
+
+        <div class="grid grid--2">
+          <figure class="fig">
+            <img src="images/cost_by_scale.png" alt="Monthly cost by number of vectors, log-log" loading="lazy" />
+            <figcaption>Cost by scale (768-d, 1M queries/mo).</figcaption>
+          </figure>
+          <figure class="fig">
+            <img src="images/storage_footprint.png" alt="Raw float32 storage footprint by scale and dimension" loading="lazy" />
+            <figcaption>Raw float32 footprint — up to ~5.7&nbsp;TB at 1B × 1536-d.</figcaption>
+          </figure>
+        </div>
+
+        <h3 class="table__title">1536-dim (e.g. OpenAI <code>text-embedding-3-small</code>) — $/month @ 1M queries/mo</h3>
+        <div class="table__scroll">
+          <table class="table">
+            <thead>
+              <tr><th>Product</th><th>100K</th><th>1M</th><th>10M</th><th>100M</th><th>1B</th></tr>
+            </thead>
+            <tbody>
+              <tr class="is-best"><td>dynavec</td><td>$3</td><td>$3</td><td>$8</td><td>$50</td><td>$469</td></tr>
+              <tr><td>Pinecone</td><td>$9</td><td>$10</td><td>$27</td><td>$197</td><td>$1,897</td></tr>
+              <tr><td>OpenSearch</td><td>$701</td><td>$701</td><td>$877</td><td>$8,423</td><td>$83,708</td></tr>
+              <tr><td>Qdrant</td><td>$160</td><td>$160</td><td>$960</td><td>$8,640</td><td>$85,920</td></tr>
+              <tr><td>Weaviate</td><td>$175</td><td>$175</td><td>$1,050</td><td>$9,450</td><td>$93,975</td></tr>
+              <tr><td>Milvus/Zilliz</td><td>$150</td><td>$150</td><td>$900</td><td>$8,100</td><td>$80,550</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          Cost is computed by the repository's transparent cost model from public list prices —
+          order-of-magnitude, verify before quoting. Recall and latency figures in the repo are
+          representative until a live AWS run replaces them. Reproduce everything with
+          <code>python -m benchmarks.report</code>.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ DOCS / QUICKSTART ============ -->
+    <section class="section section--alt" id="docs">
+      <div class="wrap">
+        <h2 class="section__title">Pythonic by design</h2>
+        <p class="section__lede">Clean, explicit, and framework-friendly. Bring your own embedder and API key, or your own vectors.</p>
+
+        <div class="tabs" data-tabs>
+          <div class="tabs__list" role="tablist" aria-label="Examples">
+            <button class="tab is-active" role="tab" aria-selected="true" data-tab="t-start">Quickstart</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="t-search">Search &amp; rerank</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="t-ns">Namespaces</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="t-graph">Knowledge graph</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="t-cache">Caching</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="t-lc">LangChain</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="t-mcp">MCP ingest</button>
+          </div>
+
+          <div class="tabs__panels">
+            <pre class="code" id="t-start" role="tabpanel"><code>from dynavec import Dynavec, DynavecConfig, Document
+from dynavec.embeddings import OpenAIEmbedder
+
+cfg = DynavecConfig(
+    vector_bucket="my-vectors",
+    index="docs",
+    table="dynavec_docs",
+    dimension=1536,
+    region="us-east-1",
+    auto_provision=True,        # creates bucket + index + table
+)
+db = Dynavec(cfg, embedder=OpenAIEmbedder(model="text-embedding-3-small"))
+
+db.upsert([
+    Document(id="a", text="Mitochondria power the cell.", metadata={"topic": "bio"}),
+    Document(id="b", text="Rockets reach orbit at ~28,000 km/h.", metadata={"topic": "space"}),
+], auto_metadata=True)
+
+for hit in db.search("how do cells make energy?", top_k=3):
+    print(hit.score, hit.id, hit.text)</code></pre>
+
+            <pre class="code is-hidden" id="t-search" role="tabpanel"><code># metadata pre-filter + client-side metric rescoring + MMR diversity
+hits = db.search(
+    "fast serverless storage on AWS",
+    top_k=5,
+    filter={"topic": "aws"},
+    rescore={"cosine": 0.7, "manhattan": 0.3},   # weighted combination
+    rerank="mmr",
+)
+
+# bring your own vector (no embedder required)
+hits = db.search(vector=my_1536d_vector, top_k=10)</code></pre>
+
+            <pre class="code is-hidden" id="t-ns" role="tabpanel"><code># one index, many tenants — clean isolation + even partitioning
+kb = db.namespace("tenant-42")
+kb.upsert([Document(id="1", text="private doc")])
+kb.search("query scoped to this tenant only", top_k=4)
+
+# stream results to an agent as pages arrive
+for hit in db.search_stream("large query", top_k=100):
+    handle(hit)</code></pre>
+
+            <pre class="code is-hidden" id="t-graph" role="tabpanel"><code># attach meaning: entities, relations, and links to documents
+db.graph_add_edge("acme", "competes_with", "globex", namespace="kb")
+db.graph_link("acme", ["doc-1", "doc-2"], namespace="kb")
+
+# GraphRAG: traverse structure first, then rank only related docs
+hits = db.graph_search(
+    "recent product launches",
+    seed_entities=["acme"],
+    hops=2,
+    top_k=10,
+)</code></pre>
+
+            <pre class="code is-hidden" id="t-cache" role="tabpanel"><code>from dynavec import Dynavec, SemanticCache, DynamoDBCache
+
+# serve near-duplicate queries from memory (no vector search)
+db = Dynavec(cfg, embedder=embedder, cache=SemanticCache(threshold=0.97))
+
+# or a shared, durable cache in your own DynamoDB table (TTL expiry)
+db = Dynavec(cfg, embedder=embedder, cache=DynamoDBCache(cfg))
+# RedisCache(...) targets AWS ElastiCache for sub-millisecond shared cache</code></pre>
+
+            <pre class="code is-hidden" id="t-lc" role="tabpanel"><code>from dynavec.integrations.langchain import DynavecVectorStore
+
+store = DynavecVectorStore(db, namespace="kb")
+retriever = store.as_retriever(search_kwargs={"k": 4})
+
+# framework-agnostic tool for LangGraph / CrewAI / Strands
+from dynavec.integrations.tools import make_retriever_fn
+retrieve = make_retriever_fn(db, top_k=4)   # fn(query: str) -> str</code></pre>
+
+            <pre class="code is-hidden" id="t-mcp" role="tabpanel"><code>from dynavec.ingest import ingest, MCPResourceSource
+
+# turn ANY MCP server (Notion, Confluence, Drive, ...) into a corpus:
+# chunk, embed, and upsert its resources in one call
+ingest(db, MCPResourceSource(mcp_session), namespace="kb")</code></pre>
+          </div>
+        </div>
+
+        <div class="features">
+          <h3 class="features__title">Everything in the box</h3>
+          <ul class="features__grid">
+            <li>Cosine · dot · euclidean · manhattan · weighted combos</li>
+            <li>GIL-aware thread concurrency for I/O-bound calls</li>
+            <li>Streaming, page-by-page result delivery</li>
+            <li>Namespace RAG &amp; multi-tenancy</li>
+            <li>Product quantization for compact caching</li>
+            <li>Knowledge graph / entity-relationship traversal</li>
+            <li>Semantic · DynamoDB-TTL · Redis/ElastiCache caching</li>
+            <li>Update + in-account AWS Lambda transforms</li>
+            <li>IAM keys · profiles · cross-account assume-role</li>
+            <li>MCP ingestion from external sources</li>
+            <li>LangChain · LlamaIndex · LangGraph · CrewAI · Strands</li>
+            <li>Pluggable embedders: OpenAI · Gemini · Cohere · Bedrock · local</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CONTRIBUTE ============ -->
+    <section class="section" id="contribute">
+      <div class="wrap">
+        <h2 class="section__title">Contribute</h2>
+        <p class="section__lede">dynavec is Apache-2.0 and community-built. Issues, PRs, and ideas are welcome.</p>
+
+        <div class="grid grid--3">
+          <article class="card">
+            <span class="card__no">→</span>
+            <h3>Get set up</h3>
+            <pre class="code code--sm"><code>git clone https://github.com/\
+codeforstartups/dynavec
+cd dynavec
+uv pip install -e ".[dev]"
+pytest -q</code></pre>
+          </article>
+          <article class="card">
+            <span class="card__no">→</span>
+            <h3>Good first issues</h3>
+            <p>Async client, an hnswlib hot tier, sort-key graph adjacency, file-parser ingestion sources, and a live-AWS test matrix are all open on the roadmap.</p>
+            <a class="link" href="https://github.com/codeforstartups/dynavec/issues" target="_blank" rel="noopener">Browse issues →</a>
+          </article>
+          <article class="card">
+            <span class="card__no">→</span>
+            <h3>Star &amp; share</h3>
+            <p>Stars help other developers find dynavec. If it saves you money or keeps your data in-account, let people know.</p>
+            <a class="link" href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">Star on GitHub (<span data-stars>—</span>) →</a>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <div class="wrap footer__inner">
+      <div>
+        <span class="brand__name">dynavec</span>
+        <p class="footer__tag">Serverless hybrid vector database · DynamoDB + Amazon S3 Vectors</p>
+      </div>
+      <nav class="footer__links" aria-label="Footer">
+        <a href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/codeforstartups/dynavec#readme" target="_blank" rel="noopener">README</a>
+        <a href="https://github.com/codeforstartups/dynavec/blob/development/ARCHITECTURE.md" target="_blank" rel="noopener">Architecture</a>
+        <a href="https://github.com/codeforstartups/dynavec/issues" target="_blank" rel="noopener">Issues</a>
+      </nav>
+      <p class="footer__legal">Apache-2.0 · *cost figures are cost-model estimates from public list prices.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

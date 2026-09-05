@@ -18,10 +18,8 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Create venv + install (with dev extras)
-        run: |
-          uv venv
-          uv pip install -e ".[dev]"
+      - name: Install (with dev extras)
+        run: uv pip install -e ".[dev]"
       - name: Lint
         run: uv run ruff check src benchmarks
       - name: Test

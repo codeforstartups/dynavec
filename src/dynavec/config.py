@@ -17,7 +17,7 @@ NS_METADATA_KEY = "_dv_ns"
 TEXT_METADATA_KEY = "_dv_text"  # optional truncated text mirror (non-filterable)
 
 
-@dataclass
+@dataclass(frozen=True)
 class DynavecConfig:
     """Top-level configuration for a :class:`~dynavec.client.Dynavec` client.
 
@@ -65,6 +65,11 @@ class DynavecConfig:
 
     # retrieval tuning
     over_fetch: int = 4
+
+    # concurrency (I/O-bound: threads give real parallelism as boto3 releases
+    # the GIL during network calls). See client._executor.
+    max_workers: int = 8
+    parallel_writes: bool = True
 
     # provisioning
     auto_provision: bool = False

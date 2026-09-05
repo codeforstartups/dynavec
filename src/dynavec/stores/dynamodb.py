@@ -16,6 +16,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from ..config import DynavecConfig
+from ..utils import retry
 
 Metadata = dict[str, Any]
 
@@ -78,6 +79,7 @@ class DynamoDBStore:
                     item["text"] = text
                 batch.put_item(Item=item)
 
+    @retry()
     def get_many(self, namespace: str, ids: list[str]) -> dict[str, dict[str, Any]]:
         """Hydrate documents by id. Returns ``{id: {"text":..., "metadata":...}}``."""
         if not ids:

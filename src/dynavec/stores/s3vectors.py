@@ -8,11 +8,12 @@ lives in DynamoDB.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 import numpy as np
 
 from ..config import DynavecConfig
+from ..utils import retry
 
 Metadata = dict[str, Any]
 
@@ -34,6 +35,14 @@ class S3VectorsStore:
         self._config = config
         self._client = session.client("s3vectors", region_name=config.region)
 
+    @retry()
+    def _put_batch(self, payload: list[dict]) -> None:
+        self._client.put_vectors(
+            vectorBucketName=self._config.vector_bucket,
+            indexName=self._config.index,
+            vectors=payload,
+        )
+
     def put_vectors(
         self,
         vectors: list[tuple[str, list[float], Metadata]],
@@ -45,21 +54,11 @@ class S3VectorsStore:
                 {"key": key, "data": {"float32": _f32(vec)}, "metadata": meta}
                 for key, vec, meta in chunk
             ]
-            self._client.put_vectors(
-                vectorBucketName=self._config.vector_bucket,
-                indexName=self._config.index,
-                vectors=payload,
-            )
+            self._put_batch(payload)
 
-    def query(
-        self,
-        query_vector: list[float],
-        top_k: int,
-        filter: Optional[Metadata] = None,
-        return_metadata: bool = True,
-        return_distance: bool = True,
-    ) -> list[dict[str, Any]]:
-        """Run an ANN query. Returns a list of ``{key, distance?, metadata?}``."""
+    def _query_kwargs(
+        self, query_vector, top_k, filter, return_metadata, return_distance
+    ) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "vectorBucketName": self._config.vector_bucket,
             "indexName": self._config.index,
@@ -70,9 +69,47 @@ class S3VectorsStore:
         }
         if filter:
             kwargs["filter"] = filter
+        return kwargs
+
+    @retry()
+    def query(
+        self,
+        query_vector: list[float],
+        top_k: int,
+        filter: Optional[Metadata] = None,
+        return_metadata: bool = True,
+        return_distance: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Run an ANN query. Returns a list of ``{key, distance?, metadata?}``."""
+        kwargs = self._query_kwargs(
+            query_vector, top_k, filter, return_metadata, return_distance
+        )
         resp = self._client.query_vectors(**kwargs)
         return resp.get("vectors", [])
 
+    def query_pages(
+        self,
+        query_vector: list[float],
+        top_k: int,
+        filter: Optional[Metadata] = None,
+        return_metadata: bool = True,
+        return_distance: bool = True,
+    ) -> Iterator[list[dict[str, Any]]]:
+        """Yield result **pages** as the S3 Vectors paginator returns them.
+
+        This is what powers streaming search: an agent can begin consuming the
+        first page while later pages are still in flight.
+        """
+        kwargs = self._query_kwargs(
+            query_vector, top_k, filter, return_metadata, return_distance
+        )
+        paginator = self._client.get_paginator("query_vectors")
+        for page in paginator.paginate(**kwargs):
+            vectors = page.get("vectors", [])
+            if vectors:
+                yield vectors
+
+    @retry()
     def get_vectors(
         self, keys: list[str], return_metadata: bool = False
     ) -> dict[str, dict[str, Any]]:

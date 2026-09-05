@@ -20,8 +20,11 @@ Quick start
 
 from __future__ import annotations
 
+from .cache import DynamoDBCache, RedisCache, SemanticCache
 from .client import Dynavec
 from .config import DynavecConfig
+from .credentials import AWSCredentials
+from .graph import GraphStore
 from .exceptions import (
     ConfigurationError,
     DimensionMismatchError,
@@ -32,21 +35,34 @@ from .exceptions import (
     ProvisioningError,
 )
 from .models import Document, SearchResult, UpsertResult
+from .namespace import NamespaceView
+from .quantization import ProductQuantizer
 from .retrieval import (
     maximal_marginal_relevance,
     reciprocal_rank_fusion,
 )
+from .transforms import LambdaTransform, TransformContext, TransformPipeline
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "Dynavec",
     "DynavecConfig",
+    "AWSCredentials",
     "Document",
     "SearchResult",
     "UpsertResult",
+    "NamespaceView",
+    "ProductQuantizer",
+    "GraphStore",
+    "SemanticCache",
+    "DynamoDBCache",
+    "RedisCache",
     "reciprocal_rank_fusion",
     "maximal_marginal_relevance",
+    "TransformPipeline",
+    "TransformContext",
+    "LambdaTransform",
     # exceptions
     "DynavecError",
     "ConfigurationError",

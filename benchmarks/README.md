@@ -35,6 +35,21 @@ Estimates \$/month for dynavec vs Pinecone (serverless), OpenSearch Serverless, 
 
 > ⚠️ **Pricing is approximate.** The constants in `cost_model.py` are public list prices for order-of-magnitude comparison, and they go stale. Update `PRICING` before quoting anything externally. The structural point holds regardless: dynavec has **no idle floor** (you pay storage + per-request), whereas cluster- and OCU-based systems bill for provisioned capacity around the clock.
 
+## 3. Report (tables + charts)
+
+```bash
+python -m benchmarks.report --vectors 1_000_000 --dim 768 --qpm 1_000_000
+```
+
+Writes to `benchmarks/out/`:
+- `comparison.md` — a comparison table (best value per row **bolded**)
+- `quality_latency.png` — recall + p50/p95/p99 latency bars
+- `cost_by_scale.png` — cost vs number of vectors on log-log axes
+
+Cost is computed by the real `cost_model`. Recall/latency for competitors are
+**representative constants** in `report.py` (`_PROFILE`) — replace them with your
+measured numbers from `run_benchmark.py --backend dynavec` before publishing.
+
 ## Running a fair comparison
 
 To benchmark competitors head-to-head, run each on the **same dataset and query set** (`datasets.make_synthetic(...)` with a fixed seed) and record recall@k + latency the same way. Keep embedding out of the timed loop (embed once, store vectors) so you measure the index, not the embedder.

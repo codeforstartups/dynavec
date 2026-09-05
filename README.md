@@ -159,11 +159,35 @@ dynavec has **no idle floor** — you pay storage + per-request, so it stays far
 | Recall@10 | 0.90 | 0.95 | 0.97 | **0.98** | 0.97 | 0.98 |
 | Latency p50 (ms) | 45 | 30 | 15 | 8 | 10 | **7** |
 | Latency p95 (ms) | 120 | 70 | 40 | 20 | 25 | **18** |
-| Cost ($/mo) | **$4** | $9 | $701 | $160 | $175 | $150 |
+| Cost ($/mo) | **$3** | $9 | $701 | $160 | $175 | $150 |
 | Serverless (scale-to-zero) | Yes | Yes | No (OCU floor) | No (nodes) | No (nodes) | No (CU) |
 | Data in your AWS account | Yes | No | Yes | Self-host only | Self-host only | Self-host only |
 
 > **Honesty note:** the **cost** row is computed by the repo's cost model from public list prices (order-of-magnitude; verify before quoting). **Recall/latency** are representative figures pending a live AWS run — regenerate real numbers with the commands below.
+
+### Scaling: every embedding dimension, 100K → 1 billion vectors
+
+Cost across the common embedding dimensions (384 / 768 / 1024 / 1536 / 3072) and the full scale ladder. dynavec stays lowest at **every** point because its storage is priced like S3, not RAM — while cluster/OCU systems grow linearly with data held in memory.
+
+![Cost by scale and dimension](docs/assets/cost_matrix_by_dim.png)
+
+| | Cost by dimension @ 100M vectors | Raw storage footprint |
+|---|---|---|
+| | ![Cost by dimension](docs/assets/cost_by_dimension.png) | ![Storage footprint](docs/assets/storage_footprint.png) |
+
+**1536-dim (e.g. OpenAI `text-embedding-3-small`) — $/month @ 1M queries/mo:**
+
+| Product | 100K | 1M | 10M | 100M | 1B |
+|---|---|---|---|---|---|
+| **dynavec** | **$3** | **$3** | **$8** | **$50** | **$469** |
+| Pinecone | $9 | $10 | $27 | $197 | $1,897 |
+| OpenSearch | $701 | $701 | $877 | $8,423 | $83,708 |
+| Qdrant | $160 | $160 | $960 | $8,640 | $85,920 |
+| Weaviate | $175 | $175 | $1,050 | $9,450 | $93,975 |
+| Milvus/Zilliz | $150 | $150 | $900 | $8,100 | $80,550 |
+| _raw float32 size_ | 1 GB | 6 GB | 57 GB | 572 GB | 5,722 GB |
+
+Full tables for all five dimensions: [docs/assets/scaling.md](docs/assets/scaling.md). At 1B × 1536-d that's ~5.7 TB of raw vectors — where dynavec's product quantization and the S3-priced tier matter most.
 
 ```bash
 pip install "dynavec[benchmark]"          # or: uv add "dynavec[benchmark]"

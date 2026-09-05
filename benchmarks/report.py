@@ -169,6 +169,134 @@ def cost_scale_chart(inp: ReportInputs, out_path: str) -> str:
     return out_path
 
 
+# Common embedding dimensions and the 100K -> 1B scale ladder.
+DIMENSIONS = [384, 768, 1024, 1536, 3072]
+SCALES = [100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000]
+
+
+def _fmt_count(n: int) -> str:
+    for div, suf in ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K")):
+        if n >= div:
+            v = n / div
+            return f"{v:.0f}{suf}" if v == int(v) else f"{v:.1f}{suf}"
+    return str(n)
+
+
+def _raw_gb(vectors: int, dim: int) -> float:
+    return vectors * dim * 4 / (1024**3)
+
+
+def cost_matrix_chart(out_path: str, qpm: int = 1_000_000, wpm: int = 100_000) -> str:
+    """Grid of cost-vs-scale panels, one per embedding dimension."""
+    products = list(_PROFILE.keys())
+    rows, cols = 2, 3
+    fig, axes = plt.subplots(rows, cols, figsize=(16, 9), sharex=True)
+    axes = axes.flatten()
+
+    for ax, dim in zip(axes, DIMENSIONS):
+        for p in products:
+            ys = [compare(Workload(n, dim, qpm, wpm))[p] for n in SCALES]
+            ax.plot(SCALES, ys, marker="o",
+                    color=_COLORS[p], linewidth=2.4 if p == "dynavec" else 1.4,
+                    label=_LABELS[p])
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_title(f"{dim}-dim embeddings", weight="bold")
+        ax.grid(True, which="both", alpha=0.22)
+        ax.set_xticks(SCALES)
+        ax.set_xticklabels([_fmt_count(n) for n in SCALES], rotation=30)
+
+    # last panel: legend + notes
+    legend_ax = axes[-1]
+    legend_ax.axis("off")
+    handles, labels = axes[0].get_legend_handles_labels()
+    legend_ax.legend(handles, labels, loc="center", fontsize=12, title="Product")
+
+    fig.suptitle(f"Estimated monthly cost by scale & dimension  ·  {qpm:,} queries/mo",
+                 fontsize=16, weight="bold")
+    fig.supxlabel("Number of vectors (log scale)")
+    fig.supylabel("Cost $/month (log scale)")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
+
+
+def cost_by_dimension_chart(out_path: str, scale: int = 100_000_000, qpm: int = 1_000_000) -> str:
+    """Cost vs embedding dimension at a fixed (large) scale."""
+    products = list(_PROFILE.keys())
+    fig, ax = plt.subplots(figsize=(11, 6))
+    for p in products:
+        ys = [compare(Workload(scale, d, qpm, 100_000))[p] for d in DIMENSIONS]
+        ax.plot(DIMENSIONS, ys, marker="s",
+                color=_COLORS[p], linewidth=2.4 if p == "dynavec" else 1.4,
+                label=_LABELS[p])
+    ax.set_yscale("log")
+    ax.set_xticks(DIMENSIONS)
+    ax.set_xlabel("Embedding dimension")
+    ax.set_ylabel("Cost $/month (log scale)")
+    ax.set_title(f"Cost by embedding dimension @ {_fmt_count(scale)} vectors",
+                 fontsize=14, weight="bold")
+    ax.grid(True, which="both", alpha=0.25)
+    ax.legend()
+    fig.text(0.5, -0.02, "APPROX list prices — see cost_model.py.", ha="center",
+             fontsize=8, style="italic")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
+
+
+def storage_footprint_chart(out_path: str) -> str:
+    """Raw float32 storage (GB) by scale, per dimension — shows why RAM clusters
+    get expensive and why dynavec's S3-priced storage wins at scale."""
+    fig, ax = plt.subplots(figsize=(11, 6))
+    for dim in DIMENSIONS:
+        ys = [_raw_gb(n, dim) for n in SCALES]
+        ax.plot(SCALES, ys, marker="o", linewidth=1.8, label=f"{dim}-d")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xticks(SCALES)
+    ax.set_xticklabels([_fmt_count(n) for n in SCALES])
+    ax.set_xlabel("Number of vectors (log scale)")
+    ax.set_ylabel("Raw float32 size (GB, log scale)")
+    ax.set_title("Vector storage footprint (raw float32)", fontsize=14, weight="bold")
+    ax.grid(True, which="both", alpha=0.25)
+    ax.legend(title="dimension")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
+
+
+def scaling_tables_md(qpm: int = 1_000_000, wpm: int = 100_000) -> str:
+    """One cost table per dimension: rows = product, cols = scale (100K -> 1B)."""
+    products = list(_PROFILE.keys())
+    out = []
+    for dim in DIMENSIONS:
+        out.append(f"\n### {dim}-dim embeddings — $/month ({qpm:,} queries/mo)\n")
+        header = "| Product | " + " | ".join(_fmt_count(n) for n in SCALES) + " |"
+        sep = "|" + "---|" * (len(SCALES) + 1)
+        out.append(header)
+        out.append(sep)
+        # per-column best (min) for bolding
+        col_costs = [compare(Workload(n, dim, qpm, wpm)) for n in SCALES]
+        best_per_col = [min(cc, key=cc.get) for cc in col_costs]
+        for p in products:
+            cells = []
+            for j, n in enumerate(SCALES):
+                v = col_costs[j][p]
+                s = f"${v:,.0f}" if v >= 1 else f"${v:.2f}"
+                if p == best_per_col[j]:
+                    s = f"**{s}**"
+                cells.append(s)
+            out.append(f"| {_LABELS[p]} | " + " | ".join(cells) + " |")
+        # dynavec raw footprint row (informational)
+        gb = [f"{_raw_gb(n, dim):,.0f} GB" for n in SCALES]
+        out.append(f"| _raw float32 size_ | " + " | ".join(gb) + " |")
+    return "\n".join(out)
+
+
 def generate(out_dir: str = "benchmarks/out", inp: ReportInputs | None = None) -> dict:
     inp = inp or ReportInputs()
     os.makedirs(out_dir, exist_ok=True)
@@ -180,7 +308,24 @@ def generate(out_dir: str = "benchmarks/out", inp: ReportInputs | None = None) -
         f.write(table_md + "\n")
     bars = bar_chart(inp, os.path.join(out_dir, "quality_latency.png"))
     cost = cost_scale_chart(inp, os.path.join(out_dir, "cost_by_scale.png"))
-    return {"table_md": table_path, "bar_chart": bars, "cost_chart": cost}
+
+    # dimension × scale (100K -> 1B) sweep
+    matrix = cost_matrix_chart(os.path.join(out_dir, "cost_matrix_by_dim.png"), qpm=inp.qpm)
+    by_dim = cost_by_dimension_chart(os.path.join(out_dir, "cost_by_dimension.png"), qpm=inp.qpm)
+    footprint = storage_footprint_chart(os.path.join(out_dir, "storage_footprint.png"))
+    scaling_path = os.path.join(out_dir, "scaling.md")
+    with open(scaling_path, "w") as f:
+        f.write("# dynavec scaling: dimensions × vector count (100K → 1B)\n")
+        f.write("\n_Cost from the cost model (APPROX public list prices). "
+                "Recall/latency unaffected by this sweep._\n")
+        f.write(scaling_tables_md(qpm=inp.qpm))
+        f.write("\n")
+
+    return {
+        "table_md": table_path, "bar_chart": bars, "cost_chart": cost,
+        "cost_matrix": matrix, "cost_by_dimension": by_dim,
+        "storage_footprint": footprint, "scaling_md": scaling_path,
+    }
 
 
 def main() -> None:

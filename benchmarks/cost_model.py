@@ -36,7 +36,9 @@ class Workload:
 
     @property
     def doc_store_gb(self) -> float:
-        return self.vectors * (self.metadata_bytes + self.vector_bytes) / GB
+        # DynamoDB holds text + metadata ONLY — the vector lives in S3 Vectors,
+        # so it is never duplicated here.
+        return self.vectors * self.metadata_bytes / GB
 
 
 def dynavec_cost(w: Workload) -> dict[str, float]:
@@ -79,10 +81,19 @@ def pinecone_serverless_cost(w: Workload) -> float:
 
 
 def opensearch_serverless_cost(w: Workload) -> float:
-    """APPROX OpenSearch Serverless: min 2 OCU indexing + 2 OCU search, ~$0.24/OCU-hr.
-    Floor is ~4 OCU * 730h * $0.24 ≈ $700/mo even when idle."""
-    ocu_hours = 4 * 730
-    return ocu_hours * 0.24
+    """APPROX OpenSearch Serverless: ~$0.24/OCU-hr, min 4 OCU (2 index + 2 search)
+    even when idle, and OCUs must scale with data kept hot for vector search.
+
+    Model: OCUs = max(4, ceil(hot_gb / 6)), hot_gb = raw * 0.5 (rest tiers to
+    disk/quantized). ~6 GB working memory per OCU. Plus cheap S3 storage.
+    """
+    import math
+
+    hot_gb = w.raw_vector_gb * 0.5
+    ocus = max(4, math.ceil(hot_gb / 6.0))
+    compute = ocus * 730 * 0.24
+    storage = w.raw_vector_gb * 0.024  # managed S3-backed storage
+    return compute + storage
 
 
 def _managed_node_cost(w: Workload, gb_per_node: float, node_monthly: float) -> float:

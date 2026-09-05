@@ -21,6 +21,6 @@ jobs:
       - name: Install (with dev extras)
         run: uv pip install -e ".[dev]"
       - name: Lint
-        run: uv run ruff check src benchmarks
+        run: uv run --no-sync ruff check src benchmarks
       - name: Test
-        run: uv run pytest -q
+        run: uv run --no-sync pytest -q

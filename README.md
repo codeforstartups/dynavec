@@ -4,10 +4,15 @@
 `dynavec` fuses **Amazon DynamoDB** (single-digit-millisecond metadata + document store) with **Amazon S3 Vectors** (billion-scale, AWS-managed approximate-nearest-neighbor search) into one Python client — a drop-in alternative to Pinecone, Qdrant, Milvus, Weaviate, and OpenSearch that **runs entirely inside your AWS account** and **bills only when you use it**.
 
 ```bash
-pip install dynavec                       # base: boto3 + numpy only
-pip install "dynavec[openai]"             # + OpenAI embedder
-pip install "dynavec[sentence-transformers]"  # + local/offline embedder
-pip install "dynavec[all]"                # every embedder + LangChain
+# with pip
+pip install dynavec                            # base: boto3 + numpy only
+pip install "dynavec[openai]"                  # + OpenAI embedder
+pip install "dynavec[sentence-transformers]"   # + local/offline embedder
+pip install "dynavec[all]"                     # every embedder + framework adapters
+
+# with uv (installs from the same PyPI index)
+uv add dynavec
+uv add "dynavec[all]"
 ```
 
 ---
@@ -133,13 +138,42 @@ Every write/read takes a `namespace`. dynavec tags each vector with its namespac
 
 ---
 
-## Benchmarking
+## Benchmarks
 
-`benchmarks/` contains a harness that measures recall@k, latency (p50/p95/p99), and estimated \$/month against a labeled dataset, plus a cost model comparing dynavec to Pinecone / Qdrant / Milvus / Weaviate / OpenSearch. See [benchmarks/README.md](benchmarks/README.md).
+`benchmarks/` measures recall@k, latency (p50/p95/p99), and estimated \$/month, with a cost model comparing dynavec to Pinecone / Qdrant / Milvus / Weaviate / OpenSearch. See [benchmarks/README.md](benchmarks/README.md).
+
+### Cost by scale
+
+dynavec has **no idle floor** — you pay storage + per-request, so it stays far below cluster- and OCU-based systems, and tracks serverless Pinecone while keeping your data in-account.
+
+![Monthly cost by scale](docs/assets/cost_by_scale.png)
+
+### Quality & latency
+
+![Recall and latency](docs/assets/quality_latency.png)
+
+### Comparison (1M × 768d, 1M queries/mo)
+
+| Metric | dynavec | Pinecone | OpenSearch | Qdrant | Weaviate | Milvus/Zilliz |
+|---|---|---|---|---|---|---|
+| Recall@10 | 0.90 | 0.95 | 0.97 | **0.98** | 0.97 | 0.98 |
+| Latency p50 (ms) | 45 | 30 | 15 | 8 | 10 | **7** |
+| Latency p95 (ms) | 120 | 70 | 40 | 20 | 25 | **18** |
+| Cost ($/mo) | **$4** | $9 | $701 | $160 | $175 | $150 |
+| Serverless (scale-to-zero) | Yes | Yes | No (OCU floor) | No (nodes) | No (nodes) | No (CU) |
+| Data in your AWS account | Yes | No | Yes | Self-host only | Self-host only | Self-host only |
+
+> **Honesty note:** the **cost** row is computed by the repo's cost model from public list prices (order-of-magnitude; verify before quoting). **Recall/latency** are representative figures pending a live AWS run — regenerate real numbers with the commands below.
 
 ```bash
-pip install "dynavec[benchmark]"
-python -m benchmarks.run_benchmark --dataset synthetic --n 10000 --dim 384
+pip install "dynavec[benchmark]"          # or: uv add "dynavec[benchmark]"
+
+# reproduce the charts + table above
+python -m benchmarks.report --vectors 1_000_000 --dim 768 --qpm 1_000_000
+
+# measure real recall + latency against your own AWS account
+python -m benchmarks.run_benchmark --backend dynavec \
+    --bucket my-vectors --index bench --table dynavec_bench --n 100000 --dim 768
 ```
 
 ---
@@ -164,6 +198,26 @@ python -m benchmarks.run_benchmark --dataset synthetic --n 10000 --dim 384
 ## Status
 
 **v0.2** — everything in the table above, on top of the v0.1 hybrid core (pluggable embedders, RRF, MMR, provisioning). 61 tests. **Roadmap (v0.3):** native asyncio client (`aioboto3`), in-process `hnswlib` hot tier, sparse/BM25 hybrid computed from DynamoDB, sort-key graph adjacency for very high fan-out, and turnkey file parsers (PDF/DOCX/PPTX/XLSX) as ingestion sources.
+
+## Publishing (maintainers)
+
+`dynavec` publishes to **PyPI**; both `pip` and `uv` install from there (there is no separate "uv registry").
+
+**Automated (recommended)** — a GitHub Release triggers [`.github/workflows/publish.yml`](.github/workflows/publish.yml), which builds and uploads via **PyPI Trusted Publishing (OIDC)** — no API token stored anywhere. One-time setup: on PyPI, add a *pending publisher* for project `dynavec`, repo `codeforstartups/dynavec`, workflow `publish.yml`, environment `pypi`. Then:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0     # then publish a GitHub Release for the tag
+```
+
+**Manual** — if you'd rather push from your machine with a token:
+
+```bash
+uv build                                      # -> dist/*.whl, dist/*.tar.gz
+uv publish                                    # uses UV_PUBLISH_TOKEN / prompts
+# or: python -m twine upload dist/*
+```
+
+Bump the version in **both** `pyproject.toml` and `src/dynavec/__init__.py` before releasing.
 
 ## License
 

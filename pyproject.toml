@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dynavec"
-version = "0.1.0"
+version = "0.2.0"
 description = "Serverless hybrid vector database for AWS: fuses DynamoDB (single-digit-ms metadata + document store) with Amazon S3 Vectors (billion-scale serverless ANN). A drop-in, in-your-own-account alternative to Pinecone / Qdrant / Milvus / Weaviate / OpenSearch."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -43,6 +43,7 @@ sentence-transformers = ["sentence-transformers>=3.0"]
 rerank = ["sentence-transformers>=3.0"]         # cross-encoder reranking
 redis = ["redis>=5.0"]                            # RedisCache / AWS ElastiCache
 mcp = ["mcp>=1.0"]                                # MCP client ingestion
+pinecone = ["pinecone>=5.0"]                      # for benchmarks/examples comparison
 ingest = ["pypdf>=4.0", "python-docx>=1.1", "python-pptx>=0.6", "openpyxl>=3.1"]
 
 # --- Agent framework integrations ---

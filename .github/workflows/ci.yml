@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [development, main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+      - name: Install (with dev extras)
+        run: uv pip install --system -e ".[dev]"
+      - name: Lint
+        run: ruff check src benchmarks
+      - name: Test
+        run: pytest -q

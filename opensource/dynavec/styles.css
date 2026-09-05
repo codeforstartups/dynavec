@@ -117,6 +117,32 @@ a { color: inherit; }
 .stat__n { font-family: var(--mono); font-size: 30px; font-weight: 700; letter-spacing: -.02em; color: var(--accent-ink); }
 .stat__l { font-size: 13px; color: var(--muted); }
 
+/* inline service links in prose */
+.svc-link { text-decoration: none; border-bottom: 2px solid var(--accent); transition: color .12s; }
+.svc-link:hover { color: var(--accent-ink); }
+
+/* ---------- built-on-AWS band ---------- */
+.builton { padding: 40px 0; border-bottom: 1px solid var(--line); background: var(--surface); }
+.builton__eyebrow { font-family: var(--mono); font-size: 12.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin: 0 0 20px; }
+.stack { display: flex; align-items: stretch; gap: 16px; flex-wrap: wrap; }
+.stack__plus { display: flex; align-items: center; font-family: var(--mono); font-size: 26px; color: var(--faint); }
+.svc {
+  flex: 1 1 340px; display: flex; align-items: center; gap: 16px;
+  text-decoration: none; color: inherit; padding: 18px 20px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+  transition: box-shadow .16s ease, transform .16s ease, border-color .16s ease;
+}
+.svc:hover { box-shadow: var(--shadow); transform: translateY(-2px); border-color: #ddd4cb; }
+.svc__icon { flex: 0 0 auto; line-height: 0; filter: drop-shadow(0 3px 8px rgba(20,17,15,.16)); }
+.svc__body { display: flex; flex-direction: column; gap: 3px; }
+.svc__name { font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
+.svc__ext { color: var(--muted); font-weight: 500; }
+.svc:hover .svc__ext { color: var(--accent); }
+.svc__role { font-size: 13.5px; color: var(--muted); }
+.builton__note { margin: 20px 0 0; font-size: 14.5px; color: var(--muted); }
+.builton__note strong { color: var(--fg); }
+@media (max-width: 620px) { .stack__plus { display: none; } }
+
 /* ---------- sections ---------- */
 .section { padding: 84px 0; border-bottom: 1px solid var(--line); }
 .section--alt { background: linear-gradient(180deg, #f7f2ec, var(--bg)); }

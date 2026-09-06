@@ -54,6 +54,10 @@ def _deserialize(blob: str) -> list[SearchResult]:
 
 
 class BaseCache(ABC):
+    def __init__(self) -> None:
+        self.hits: int = 0
+        self.misses: int = 0
+
     @abstractmethod
     def get(self, namespace, query_vector, top_k, filter) -> list[SearchResult] | None:
         ...
@@ -61,6 +65,21 @@ class BaseCache(ABC):
     @abstractmethod
     def put(self, namespace, query_vector, top_k, filter, results) -> None:
         ...
+
+    def stats(self) -> dict[str, int | float]:
+        """Return cache hit and miss statistics."""
+        total = self.hits + self.misses
+        hit_rate = (self.hits / total) if total > 0 else 0.0
+        return {
+            "hits": self.hits,
+            "misses": self.misses,
+            "hit_rate": hit_rate,
+        }
+
+    def reset_stats(self) -> None:
+        """Reset hit and miss counters."""
+        self.hits = 0
+        self.misses = 0
 
 
 class SemanticCache(BaseCache):
@@ -72,6 +91,7 @@ class SemanticCache(BaseCache):
     """
 
     def __init__(self, threshold: float = 0.97, max_size: int = 2048) -> None:
+        super().__init__()
         self.threshold = threshold
         self.max_size = max_size
         # key: signature -> OrderedDict[vec_key -> (unit_vec, results)]
@@ -85,6 +105,7 @@ class SemanticCache(BaseCache):
         sig = _signature(namespace, top_k, filter)
         bucket = self._buckets.get(sig)
         if not bucket:
+            self.misses += 1
             return None
         q = self._unit(np.asarray(query_vector, dtype=np.float32))
         best_key, best_sim = None, -1.0
@@ -95,7 +116,9 @@ class SemanticCache(BaseCache):
         if best_key is not None and best_sim >= self.threshold:
             vec, res = bucket.pop(best_key)
             bucket[best_key] = (vec, res)  # move to MRU
+            self.hits += 1
             return res
+        self.misses += 1
         return None
 
     def put(self, namespace, query_vector, top_k, filter, results):
@@ -120,6 +143,7 @@ class DynamoDBCache(BaseCache):
     """
 
     def __init__(self, config, boto_session=None, ttl_seconds: int = 3600) -> None:
+        super().__init__()
         import boto3
 
         session = boto_session or boto3.Session()
@@ -136,9 +160,12 @@ class DynamoDBCache(BaseCache):
         )
         item = resp.get("Item")
         if not item:
+            self.misses += 1
             return None
         if item.get("ttl") and int(item["ttl"]) < int(time.time()):
+            self.misses += 1
             return None  # expired but not yet reaped
+        self.hits += 1
         return _deserialize(item["results"])
 
     def put(self, namespace, query_vector, top_k, filter, results):
@@ -156,6 +183,7 @@ class RedisCache(BaseCache):
     """Shared exact-match cache on Redis / AWS ElastiCache."""
 
     def __init__(self, url: str = "redis://localhost:6379/0", ttl_seconds: int = 3600, client=None):
+        super().__init__()
         if client is not None:
             self._r = client
         else:
@@ -172,7 +200,11 @@ class RedisCache(BaseCache):
 
     def get(self, namespace, query_vector, top_k, filter):
         blob = self._r.get(self._key(namespace, query_vector, top_k, filter))
-        return _deserialize(blob) if blob else None
+        if blob:
+            self.hits += 1
+            return _deserialize(blob)
+        self.misses += 1
+        return None
 
     def put(self, namespace, query_vector, top_k, filter, results):
         self._r.set(

@@ -20,7 +20,7 @@ Quick start
 
 from __future__ import annotations
 
-from .cache import DynamoDBCache, RedisCache, SemanticCache
+from .cache import BaseCache, DynamoDBCache, RedisCache, SemanticCache
 from .client import Dynavec
 from .config import DynavecConfig
 from .credentials import AWSCredentials
@@ -55,6 +55,7 @@ __all__ = [
     "NamespaceView",
     "ProductQuantizer",
     "GraphStore",
+    "BaseCache",
     "SemanticCache",
     "DynamoDBCache",
     "RedisCache",

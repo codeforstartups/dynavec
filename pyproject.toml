@@ -75,10 +75,14 @@ benchmark = [
     "tabulate>=0.9",
 ]
 
+
 [project.urls]
 Homepage = "https://github.com/your-org/dynavec"
 Documentation = "https://github.com/your-org/dynavec#readme"
 Issues = "https://github.com/your-org/dynavec/issues"
+
+[project.scripts]
+dynavec = "dynavec.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dynavec"]

@@ -44,7 +44,11 @@ def score(query: np.ndarray, mat: np.ndarray, metric: Metric) -> np.ndarray:
     raise ValueError(f"unknown metric {metric!r}; expected one of {_VALID}")
 
 
-def _minmax(x: np.ndarray) -> np.ndarray:
+def normalize_scores(scores: np.ndarray) -> np.ndarray:
+    """Min-max normalize a result set to the inclusive ``[0, 1]`` range."""
+    x = np.asarray(scores, dtype=float)
+    if x.size == 0:
+        return x.copy()
     lo, hi = float(x.min()), float(x.max())
     if hi - lo < 1e-12:
         return np.zeros_like(x)
@@ -68,7 +72,7 @@ def composite_score(
     total = 0.0
     acc = None
     for metric, w in weights.items():
-        s = _minmax(score(query, mat, metric))
+        s = normalize_scores(score(query, mat, metric))
         acc = s * w if acc is None else acc + s * w
         total += w
     return acc / (total or 1.0)
@@ -78,13 +82,18 @@ def rescore(
     query: np.ndarray,
     candidate_vectors: np.ndarray,
     spec: Metric | dict[str, float],
+    *,
+    normalize: bool = False,
 ) -> np.ndarray:
     """Return an ordering (indices, best first) for the candidates under ``spec``.
 
     ``spec`` is a metric name or a ``{metric: weight}`` combination.
+    Set ``normalize`` to min-max normalize the returned score array to ``[0, 1]``.
     """
     if isinstance(spec, str):
         scores = score(query, candidate_vectors, spec)
     else:
         scores = composite_score(query, candidate_vectors, spec)
+    if normalize:
+        scores = normalize_scores(scores)
     return np.argsort(-scores), scores

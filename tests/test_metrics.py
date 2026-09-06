@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from dynavec.metrics import composite_score, rescore, score
+from dynavec.metrics import composite_score, normalize_scores, rescore, score
 
 
 @pytest.fixture
@@ -61,3 +61,17 @@ def test_rescore_returns_order_and_scores(data):
     order, scores = rescore(q, mat, "dot")
     assert list(order)[0] == 2  # largest magnitude first under dot
     assert len(scores) == 3
+
+
+def test_normalize_scores_maps_result_set_to_unit_interval():
+    normalized = normalize_scores(np.array([-2.0, 0.0, 6.0], dtype=np.float32))
+    assert normalized == pytest.approx([0.0, 0.25, 1.0])
+    assert normalize_scores(np.array([4.0, 4.0])) == pytest.approx([0.0, 0.0])
+    assert normalize_scores(np.array([])).size == 0
+
+
+def test_rescore_can_return_normalized_scores(data):
+    q, mat = data
+    order, scores = rescore(q, mat, "dot", normalize=True)
+    assert list(order)[0] == 2
+    assert scores == pytest.approx([0.5, 0.0, 1.0])

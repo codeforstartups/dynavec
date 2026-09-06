@@ -40,6 +40,7 @@ from .embeddings.base import Embedder
 from .exceptions import ConfigurationError, DimensionMismatchError, NotFoundError
 from .graph import GraphStore
 from .metadata import build_s3_filter, generate_auto_metadata, split_metadata
+from .metrics import normalize_scores as normalize_metric_scores
 from .metrics import rescore as metric_rescore
 from .metrics import score as metric_score
 from .models import Document, SearchResult, UpsertResult
@@ -299,12 +300,15 @@ class Dynavec:
         mmr_lambda: float = 0.5,
         include_vectors: bool = False,
         use_cache: bool | None = None,
+        normalize_scores: bool = False,
     ) -> list[SearchResult]:
         """Semantic search. Provide ``query`` (embedded) or a raw ``vector``.
 
         ``rescore`` re-orders the ANN candidates with a client-side metric
         (``"cosine"``, ``"dot"``, ``"euclidean"``, ``"manhattan"``) or a weighted
         combination like ``{"cosine": 0.7, "manhattan": 0.3}``.
+        Set ``normalize_scores=True`` to min-max normalize the final result set
+        to ``[0, 1]`` without changing its order.
 
         If a cache is configured, repeated/similar queries are served from it
         (set ``use_cache=False`` to force a fresh search).
@@ -317,7 +321,12 @@ class Dynavec:
         if cache_on and self._cache is not None:
             cache_filter = {
                 **(filter or {}),
-                "__rank": {"rescore": rescore, "rerank": rerank, "mmr": mmr_lambda},
+                "__rank": {
+                    "rescore": rescore,
+                    "rerank": rerank,
+                    "mmr": mmr_lambda,
+                    "normalize_scores": normalize_scores,
+                },
             }
             cached = self._cache.get(namespace, query_vector, top_k, cache_filter)
             if cached is not None:
@@ -368,6 +377,11 @@ class Dynavec:
             results = maximal_marginal_relevance(query_vector, results, top_k, mmr_lambda)
         else:
             results = results[:top_k]
+
+        if normalize_scores and results:
+            normalized = normalize_metric_scores(np.asarray([r.score for r in results]))
+            for result, normalized_score in zip(results, normalized):
+                result.score = float(normalized_score)
 
         if not include_vectors:
             for r in results:

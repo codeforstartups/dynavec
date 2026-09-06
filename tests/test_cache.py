@@ -1,4 +1,5 @@
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -133,6 +134,54 @@ def test_dynamodb_cache_stats():
     fake_table.items[pk]["ttl"] = int(time.time()) - 100
     assert cache.get("ns", [1.0, 0.0], 5, None) is None
     assert cache.stats() == {"hits": 1, "misses": 2, "hit_rate": pytest.approx(1 / 3)}
+
+
+def test_dynamodb_cache_ttl_jitter():
+    class FakeTable:
+        def __init__(self):
+            self.items = []
+
+        def put_item(self, Item):
+            self.items.append(Item)
+
+    class FakeSession:
+        def __init__(self, table):
+            self._table = table
+
+        def resource(self, name, region_name=None):
+            fake_table = self._table
+
+            class Resource:
+                def Table(self, table_name):
+                    return fake_table
+
+            return Resource()
+
+    cfg = DynavecConfig(vector_bucket="b", index="i", table="t", dimension=2)
+    fake_table = FakeTable()
+    session = FakeSession(fake_table)
+    cache = DynamoDBCache(
+        cfg,
+        boto_session=session,
+        ttl_seconds=60,
+        ttl_jitter_seconds=30,
+    )
+
+    with patch("dynavec.cache.time.time", return_value=1_000), patch(
+        "dynavec.cache.random.randint", side_effect=[0, 30]
+    ) as randint:
+        cache.put("ns", [1.0, 0.0], 5, None, _res("a"))
+        cache.put("ns", [0.0, 1.0], 5, None, _res("b"))
+
+    assert [item["ttl"] for item in fake_table.items] == [1_060, 1_090]
+    assert randint.call_args_list == [((0, 30),), ((0, 30),)]
+
+
+def test_dynamodb_cache_rejects_negative_ttl_jitter():
+    cfg = DynavecConfig(vector_bucket="b", index="i", table="t", dimension=2)
+
+    with pytest.raises(ValueError, match="ttl_jitter_seconds must be non-negative"):
+        DynamoDBCache(cfg, ttl_jitter_seconds=-1)
 
 
 def test_redis_cache_stats():

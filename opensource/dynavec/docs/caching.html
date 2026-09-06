@@ -77,15 +77,19 @@
 # 1) in-process semantic cache — also serves near-duplicate queries
 db = Dynavec(cfg, embedder=emb, cache=SemanticCache(threshold=0.97))
 
-# 2) durable, shared cache in your own DynamoDB table (TTL expiry)
-db = Dynavec(cfg, embedder=emb, cache=DynamoDBCache(cfg, ttl_seconds=3600))
+# 2) durable, shared cache with TTL jitter to spread simultaneous expiry
+db = Dynavec(
+    cfg,
+    embedder=emb,
+    cache=DynamoDBCache(cfg, ttl_seconds=3600, ttl_jitter_seconds=300),
+)
 
 # 3) sub-millisecond shared cache on Redis / AWS ElastiCache
 db = Dynavec(cfg, embedder=emb, cache=RedisCache("redis://my-elasticache:6379/0"))</code></pre>
 <table class="doc__params">
 <tr><th>Backend</th><th>Best for</th></tr>
 <tr><td><code>SemanticCache</code></td><td>single process; tolerant of near-duplicate hits; zero infra</td></tr>
-<tr><td><code>DynamoDBCache</code></td><td>durable, shared, no extra service; exact-match with TTL</td></tr>
+<tr><td><code>DynamoDBCache</code></td><td>durable, shared, no extra service; exact-match with TTL and optional expiry jitter</td></tr>
 <tr><td><code>RedisCache</code></td><td>many workers/hosts; lowest latency; AWS ElastiCache</td></tr>
 </table>
 <p>Force a fresh search per call with <code>db.search(..., use_cache=False)</code>.</p>

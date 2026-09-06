@@ -1,6 +1,7 @@
 """Tests for chunking + the MCP resource source (pure, no AWS)."""
 
-from dynavec.ingest import MCPResourceSource, Record, chunk_text
+from dynavec.ingest import MCPResourceSource, Record, chunk_text, ingest
+from dynavec.models import UpsertResult
 
 
 def test_chunk_text_windows_with_overlap():
@@ -79,3 +80,29 @@ def test_mcp_uri_filter():
     )
     records = list(MCPResourceSource(session, uri_filter=lambda u: u.startswith("notion")))
     assert [r.id for r in records] == ["notion://a"]
+
+
+class FakeIngestDB:
+    def __init__(self):
+        self.documents = []
+
+    def upsert(self, documents, **kwargs):
+        self.documents.extend(documents)
+        return UpsertResult(count=len(documents), ids=[document.id for document in documents])
+
+
+def test_ingest_deduplicates_identical_chunks_within_run():
+    db = FakeIngestDB()
+    source = [
+        Record(id="doc-a", text="duplicate text"),
+        Record(id="doc-b", text="duplicate text"),
+        Record(id="doc-c", text="unique text"),
+    ]
+
+    count = ingest(db, source, chunk_size=100, overlap=0)
+
+    assert count == 2
+    assert [document.text for document in db.documents] == [
+        "duplicate text",
+        "unique text",
+    ]

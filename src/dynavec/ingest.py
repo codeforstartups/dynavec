@@ -16,6 +16,7 @@ consumes it. Tools and prompts primitives can be adapted the same way.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
@@ -134,10 +135,18 @@ def ingest(
     Chunk ids are ``"{record_id}#chunk{n}"`` and each carries ``source_id`` /
     ``chunk`` metadata so you can group or delete a whole document later.
     """
+
+    seen_hashes: set[str] = set()
+
     def _documents() -> Iterator[Document]:
         for rec in source:
             rec = rec if isinstance(rec, Record) else Record(**rec)
             for n, piece in enumerate(chunk_text(rec.text, chunk_size, overlap)):
+                content_hash = hashlib.sha256(piece.encode("utf-8")).hexdigest()
+                if content_hash in seen_hashes:
+                    continue
+                seen_hashes.add(content_hash)
+
                 yield Document(
                     id=f"{rec.id}#chunk{n}",
                     text=piece,

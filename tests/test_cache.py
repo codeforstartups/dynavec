@@ -54,6 +54,44 @@ def test_lru_eviction():
     assert total <= 2
 
 
+def test_semantic_cache_evicts_oldest_entries_to_stay_within_byte_limit():
+    probe = SemanticCache()
+    probe.put("ns", [1.0, 0.0], 5, None, _res("a"))
+    one_entry_bytes = probe.size_bytes
+
+    cache = SemanticCache(threshold=0.999, max_bytes=one_entry_bytes * 2)
+    cache.put("first", [1.0, 0.0], 5, None, _res("a"))
+    cache.put("second", [0.0, 1.0], 5, None, _res("b"))
+    cache.put("third", [1.0, 1.0], 5, None, _res("c"))
+
+    assert cache.size_bytes <= one_entry_bytes * 2
+    assert cache.get("first", [1.0, 0.0], 5, None) is None
+    assert cache.get("second", [0.0, 1.0], 5, None)
+    assert cache.get("third", [1.0, 1.0], 5, None)
+
+
+def test_semantic_cache_byte_accounting_handles_replacement_and_oversized_entries():
+    cache = SemanticCache(max_bytes=10_000)
+    cache.put("ns", [1.0, 0.0], 5, None, _res("short"))
+    original_size = cache.size_bytes
+
+    cache.put("ns", [1.0, 0.0], 5, None, _res("a much longer result identifier"))
+
+    assert cache.size_bytes > original_size
+    assert sum(len(bucket) for bucket in cache._buckets.values()) == 1
+
+    too_small = SemanticCache(max_bytes=1)
+    too_small.put("ns", [1.0, 0.0], 5, None, _res("a"))
+    assert too_small.size_bytes == 0
+    assert too_small.get("ns", [1.0, 0.0], 5, None) is None
+
+    marker = object()
+    non_serializable = [SearchResult(id="x", score=1.0, metadata={"marker": marker})]
+    cache.put("ns", [0.0, 1.0], 5, None, non_serializable)
+    hit = cache.get("ns", [0.0, 1.0], 5, None)
+    assert hit and hit[0].metadata["marker"] is marker
+
+
 def test_semantic_cache_stats():
     c = SemanticCache(threshold=0.9)
     assert c.stats() == {"hits": 0, "misses": 0, "hit_rate": 0.0}

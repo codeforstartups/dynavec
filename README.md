@@ -219,6 +219,14 @@ python -m benchmarks.run_benchmark --backend dynavec \
 | **Frameworks** | LangChain + LlamaIndex vector stores; a framework-agnostic tool for LangGraph/CrewAI/Strands | `dynavec.integrations.*` |
 | **Benchmark report** | Comparison table + recall/latency + cost-by-scale (log) charts | `python -m benchmarks.report` |
 
+`SemanticCache` can be bounded by both entry count and approximate in-memory
+size. Pass `max_bytes` to account for each cached float32 query vector and its
+result object graph, and inspect `size_bytes` for the current accounted size:
+
+```python
+cache = SemanticCache(max_size=2_048, max_bytes=64 * 1024 * 1024)
+```
+
 ## Status
 
 **v0.2** — everything in the table above, on top of the v0.1 hybrid core (pluggable embedders, RRF, MMR, provisioning). 61 tests. **Roadmap (v0.3):** native asyncio client (`aioboto3`), in-process `hnswlib` hot tier, sparse/BM25 hybrid computed from DynamoDB, sort-key graph adjacency for very high fan-out, and turnkey file parsers (PDF/DOCX/PPTX/XLSX) as ingestion sources.

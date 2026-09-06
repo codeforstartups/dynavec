@@ -75,34 +75,162 @@ class DynamoDBStore:
                     "id": doc_id,
                     "metadata": _to_dynamo(metadata or {}),
                 }
+
                 if text is not None:
                     item["text"] = text
+
                 batch.put_item(Item=item)
 
     @retry()
-    def get_many(self, namespace: str, ids: list[str]) -> dict[str, dict[str, Any]]:
-        """Hydrate documents by id. Returns ``{id: {"text":..., "metadata":...}}``."""
+    def get_many(
+        self,
+        namespace: str,
+        ids: list[str],
+    ) -> dict[str, dict[str, Any]]:
+        """Hydrate documents by id.
+
+        Returns:
+            A mapping of document id to text and metadata.
+        """
         if not ids:
             return {}
-        keys = [{"pk": self._pk(namespace, doc_id)} for doc_id in ids]
+
+        keys = [
+            {"pk": self._pk(namespace, doc_id)}
+            for doc_id in ids
+        ]
+
         out: dict[str, dict[str, Any]] = {}
 
         for start in range(0, len(keys), _BATCH_GET_LIMIT):
-            chunk = keys[start : start + _BATCH_GET_LIMIT]
-            request = {self._config.table: {"Keys": chunk}}
+            chunk = keys[start:start + _BATCH_GET_LIMIT]
+            request = {
+                self._config.table: {
+                    "Keys": chunk
+                }
+            }
+
             while request:
-                resp = self._ddb.batch_get_item(RequestItems=request)
-                for item in resp["Responses"].get(self._config.table, []):
+                resp = self._ddb.batch_get_item(
+                    RequestItems=request
+                )
+
+                for item in resp["Responses"].get(
+                    self._config.table,
+                    [],
+                ):
                     out[item["id"]] = {
                         "text": item.get("text"),
-                        "metadata": _from_dynamo(item.get("metadata", {})),
+                        "metadata": _from_dynamo(
+                            item.get("metadata", {})
+                        ),
                     }
+
                 unprocessed = resp.get("UnprocessedKeys") or {}
                 request = unprocessed if unprocessed else None
 
         return out
 
-    def delete_many(self, namespace: str, ids: list[str]) -> None:
+    def delete_many(
+        self,
+        namespace: str,
+        ids: list[str],
+    ) -> None:
+        """Delete multiple documents from a namespace."""
         with self._table.batch_writer() as batch:
             for doc_id in ids:
-                batch.delete_item(Key={"pk": self._pk(namespace, doc_id)})
+                batch.delete_item(
+                    Key={"pk": self._pk(namespace, doc_id)}
+                )
+
+    def list_namespaces(
+        self,
+        search: str | None = None,
+    ) -> list[str]:
+        """Return all namespaces containing documents.
+
+        Namespace discovery is intended for observability and dashboard
+        functionality, so a DynamoDB scan is acceptable here.
+        """
+        namespaces: set[str] = set()
+
+        scan_kwargs: dict[str, Any] = {
+            "ProjectionExpression": "#ns",
+            "ExpressionAttributeNames": {
+                "#ns": "ns",
+            },
+        }
+
+        while True:
+            response = self._table.scan(**scan_kwargs)
+
+            for item in response.get("Items", []):
+                namespace = item.get("ns")
+
+                if namespace is not None:
+                    namespaces.add(str(namespace))
+
+            last_key = response.get("LastEvaluatedKey")
+
+            if not last_key:
+                break
+
+            scan_kwargs["ExclusiveStartKey"] = last_key
+
+        results = sorted(namespaces)
+
+        if search:
+            needle = search.lower()
+
+            results = [
+                namespace
+                for namespace in results
+                if needle in namespace.lower()
+            ]
+
+        return results
+
+    def namespace_stats(
+        self,
+        namespace: str,
+    ) -> dict[str, int]:
+        """Return document count and approximate text size for a namespace."""
+        document_count = 0
+        text_bytes = 0
+
+        scan_kwargs: dict[str, Any] = {
+            "ProjectionExpression": "#ns, #text",
+            "FilterExpression": "#ns = :namespace",
+            "ExpressionAttributeNames": {
+                "#ns": "ns",
+                "#text": "text",
+            },
+            "ExpressionAttributeValues": {
+                ":namespace": namespace,
+            },
+        }
+
+        while True:
+            response = self._table.scan(**scan_kwargs)
+
+            for item in response.get("Items", []):
+                document_count += 1
+
+                text = item.get("text")
+
+                if text is not None:
+                    text_bytes += len(
+                        str(text).encode("utf-8")
+                    )
+
+            last_key = response.get("LastEvaluatedKey")
+
+            if not last_key:
+                break
+
+            scan_kwargs["ExclusiveStartKey"] = last_key
+
+        return {
+            "document_count": document_count,
+            "text_bytes": text_bytes,
+        }

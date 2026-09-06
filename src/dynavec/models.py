@@ -60,3 +60,23 @@ class UpsertResult:
 
     count: int
     ids: list[str] = field(default_factory=list)
+    
+@dataclass
+class NamespaceStats:
+    """Summary statistics for a namespace."""
+
+    namespace: str
+    document_count: int
+    text_bytes: int = 0
+
+    @property
+    def approximate_size_bytes(self) -> int:
+        """Approximate size of stored document text."""
+        return self.text_bytes
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "namespace": self.namespace,
+            "document_count": self.document_count,
+            "approximate_size_bytes": self.approximate_size_bytes,
+        }

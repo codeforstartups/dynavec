@@ -374,3 +374,13 @@ def test_ingest_chunks_and_stores(db):
     got = db.get(["doc1#chunk0"])[0]
     assert got.metadata["source_id"] == "doc1"
     assert got.metadata["src"] == "wiki"
+
+
+def test_reserved_key_separator_is_escaped_before_writes(db):
+    db.upsert(
+        [Document(id="doc#one", vector=[1.0] * 8)],
+        namespace="tenant#one",
+    )
+
+    assert list(db._vectors._store) == ["tenant%23one#doc%23one"]
+    assert db._docs._store[("tenant#one", "doc#one")]["text"] is None

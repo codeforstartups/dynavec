@@ -24,3 +24,26 @@ jobs:
         run: uv run --no-sync ruff check src benchmarks
       - name: Test
         run: uv run --no-sync pytest -q
+
+  # Runs the real end-to-end path (provisioning -> upsert -> query -> hydrate)
+  # against a local AWS emulator. floci is used because it is currently the only
+  # emulator implementing s3vectors; LocalStack has it in backlog only.
+  integration-local:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ENDPOINT_URL: http://localhost:4566
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the local AWS emulator
+        run: docker compose up -d --wait   # --wait blocks on the compose healthcheck
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install (with dev extras)
+        run: uv pip install -e ".[dev]"
+      - name: Integration test
+        run: uv run --no-sync pytest tests/integration -v
+      - name: Emulator logs
+        if: failure()
+        run: docker compose logs floci

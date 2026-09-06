@@ -1,0 +1,25 @@
+# Local AWS for dynavec development — no account, no cost.
+#
+#   docker compose up -d --wait
+#   export AWS_ENDPOINT_URL=http://localhost:4566
+#   pytest tests/integration -v
+#
+# floci is used because it is currently the only emulator that implements
+# s3vectors; LocalStack has it in backlog only (localstack/localstack#13498).
+# boto3 reads AWS_ENDPOINT_URL natively, so dynavec needs no endpoint config.
+services:
+  floci:
+    image: floci/floci:latest
+    container_name: dynavec-floci
+    ports:
+      - "4566:4566"
+    environment:
+      FLOCI_DEFAULT_REGION: us-east-1
+      # in-memory: every `down` gives you a clean account back.
+      FLOCI_STORAGE_MODE: memory
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 3s

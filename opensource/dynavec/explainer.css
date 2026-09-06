@@ -1,0 +1,83 @@
+/* dynavec explainer — a self-playing, video-like walkthrough. Uses tokens from ../styles.css */
+
+.exp-top { border-bottom: 1px solid var(--line); background: var(--surface); }
+.exp-top .wrap { padding: 18px 24px; display: flex; align-items: center; gap: 16px; }
+.exp-top .brand { text-decoration: none; }
+.exp-top__title { font-weight: 600; font-size: 15px; margin-right: auto; }
+.exp-top a.mini { font-size: 14px; color: var(--muted); text-decoration: none; }
+.exp-top a.mini:hover { color: var(--accent-ink); }
+
+/* stage */
+.stage {
+  position: relative; max-width: 1000px; margin: 28px auto; padding: 0 24px;
+}
+.screen {
+  position: relative; aspect-ratio: 16 / 9; border: 1px solid var(--line-strong);
+  border-radius: 14px; overflow: hidden; background: var(--surface); box-shadow: var(--shadow);
+}
+.scene {
+  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center;
+  padding: 6% 8%; opacity: 0; transform: translateY(10px) scale(.995);
+  transition: opacity .6s ease, transform .6s ease; pointer-events: none;
+}
+.scene.is-active { opacity: 1; transform: none; pointer-events: auto; }
+.scene__kicker { font-family: var(--mono); font-size: clamp(11px, 1.4vw, 14px); letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); margin: 0 0 14px; }
+.scene__title { font-size: clamp(24px, 4.4vw, 52px); line-height: 1.05; letter-spacing: -.02em; font-weight: 700; margin: 0 0 16px; }
+.scene__title .u { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 4px; text-underline-offset: 5px; }
+.scene__lede { font-size: clamp(14px, 2vw, 22px); color: #3a332e; margin: 0; max-width: 32ch; }
+.scene__list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
+.scene__list li { font-size: clamp(13px, 1.8vw, 20px); color: #3a332e; display: flex; gap: 12px; align-items: baseline; }
+.scene__list li::before { content: attr(data-b); color: var(--accent); font-family: var(--mono); font-weight: 700; }
+
+/* problem grid */
+.probs { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-top: 6px; }
+.prob { border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.prob b { display: block; font-size: clamp(13px,1.7vw,18px); }
+.prob span { font-size: clamp(11px,1.4vw,14px); color: var(--muted); }
+
+/* how-it-works mini diagram */
+.flow { display: flex; align-items: center; gap: clamp(8px,1.5vw,18px); flex-wrap: wrap; margin-top: 10px; }
+.node { border: 1.5px solid var(--fg); border-radius: 10px; padding: 12px 16px; font-weight: 600; font-size: clamp(12px,1.6vw,17px); background: #fff; }
+.node--accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+.node small { display: block; font-family: var(--mono); font-weight: 400; font-size: 11px; color: var(--muted); }
+.node--accent small { color: rgba(255,255,255,.85); }
+.arrow { font-family: var(--mono); color: var(--faint); font-size: 20px; }
+
+/* proof stats */
+.stats2 { display: flex; gap: clamp(16px,4vw,60px); align-items: flex-end; margin-top: 8px; }
+.big { font-family: var(--mono); font-weight: 700; letter-spacing: -.02em; }
+.big .n { display: block; font-size: clamp(30px,7vw,72px); line-height: 1; }
+.big .l { display: block; font-size: clamp(11px,1.5vw,15px); color: var(--muted); margin-top: 8px; font-family: var(--sans); }
+.big--win .n { color: var(--accent-ink); }
+.vs { font-family: var(--mono); color: var(--faint); align-self: center; font-size: 18px; }
+
+.scene code { font-family: var(--mono); background: var(--accent-soft); color: var(--accent-ink); padding: 2px 8px; border-radius: 6px; font-size: .85em; }
+
+/* progress + controls */
+.bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.06); }
+.bar__fill { height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+.controls { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 16px 0 6px; }
+.controls button { font-family: var(--mono); font-size: 13px; font-weight: 600; border: 1.5px solid var(--line-strong); background: var(--surface); border-radius: 8px; padding: 9px 14px; cursor: pointer; transition: background .12s, color .12s; }
+.controls button:hover { background: var(--fg); color: var(--bg); }
+.controls .play { background: var(--accent); color: #fff; border-color: var(--accent); min-width: 96px; }
+.controls .play:hover { background: var(--accent-ink); }
+.dots { display: flex; gap: 7px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; border: none; background: var(--line); padding: 0; cursor: pointer; }
+.dot.is-active { background: var(--accent); }
+
+.exp-cta { text-align: center; margin: 10px auto 40px; }
+.exp-cta a { margin: 0 6px; }
+
+.recordcard { max-width: 1000px; margin: 0 auto 56px; padding: 0 24px; }
+.recordcard__box { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 10px; padding: 18px 22px; background: var(--surface); }
+.recordcard h3 { margin: 0 0 6px; font-size: 17px; }
+.recordcard p { margin: 0; color: var(--muted); font-size: 14.5px; }
+.recordcard code { font-family: var(--mono); background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .scene { transition: opacity .01s; transform: none; }
+}
+@media (max-width: 640px) {
+  .probs { grid-template-columns: 1fr; }
+  .scene__lede { max-width: none; }
+}

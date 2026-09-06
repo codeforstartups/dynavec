@@ -191,6 +191,22 @@ def test_dimension_mismatch_raises(db):
     with pytest.raises(DimensionMismatchError):
         db.upsert([Document(id="x", vector=[0.1, 0.2])])  # wrong dim (2 != 8)
 
+class WrongOutputEmbedder(HashEmbedder):
+    def embed_documents(self, texts):
+        return [[0.1, 0.2] for _ in texts]
+
+
+def test_embedder_output_dimension_mismatch_raises(db):
+    from dynavec.exceptions import DimensionMismatchError
+
+    db.embedder = WrongOutputEmbedder(8)
+
+    with pytest.raises(
+        DimensionMismatchError,
+        match=r"Document 'x' vector has dimension 2, expected 8",
+    ):
+        db.upsert([Document(id="x", text="hello")])
+
 
 def test_auto_metadata_switch(db):
     db.upsert([Document(id="1", text="hello world")], auto_metadata=True)

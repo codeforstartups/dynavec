@@ -8,7 +8,7 @@ dist/
 .venv/
 venv/
 env/
-
+myenv/
 # Test / coverage
 .pytest_cache/
 .coverage

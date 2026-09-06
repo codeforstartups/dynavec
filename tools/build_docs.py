@@ -581,10 +581,10 @@ def render(slug: str) -> str:
     # sidebar
     side = ['<button class="side__toggle">☰ Menu</button>', '<nav class="side" aria-label="Docs">']
     for group, items in NAV:
-        side.append('<div class="side__group"><p class="side__title">%s</p><ul class="side__list">' % group)
+        side.append(f'<div class="side__group"><p class="side__title">{group}</p><ul class="side__list">')
         for s, label in items:
             cur = ' class="is-current"' if s == slug else ""
-            side.append('<li><a href="%s.html"%s>%s</a></li>' % (s, cur, label))
+            side.append(f'<li><a href="{s}.html"{cur}>{label}</a></li>')
         side.append("</ul></div>")
     side.append("</nav>")
 
@@ -594,15 +594,15 @@ def render(slug: str) -> str:
     prev_a = next_a = ""
     if i > 0:
         p = ORDER[i - 1]
-        prev_a = '<a href="%s.html"><span>Previous</span>%s</a>' % (p, TITLES[p])
+        prev_a = f'<a href="{p}.html"><span>Previous</span>{TITLES[p]}</a>'
     else:
         prev_a = "<span></span>"
     if i < len(ORDER) - 1:
         n = ORDER[i + 1]
-        next_a = '<a href="%s.html" style="text-align:right"><span>Next</span>%s</a>' % (n, TITLES[n])
-    nxt = '<div class="doc__next">%s%s</div>' % (prev_a, next_a)
+        next_a = f'<a href="{n}.html" style="text-align:right"><span>Next</span>{TITLES[n]}</a>'
+    nxt = f'<div class="doc__next">{prev_a}{next_a}</div>'
 
-    crumbs = '<div class="doc__crumbs"><a href="../index.html">dynavec</a> / <a href="index.html">Docs</a> / %s</div>' % title
+    crumbs = f'<div class="doc__crumbs"><a href="../index.html">dynavec</a> / <a href="index.html">Docs</a> / {title}</div>'
 
     return TEMPLATE % {
         "title": title.replace("&amp;", "&"),
@@ -671,7 +671,7 @@ def main() -> None:
     for slug in PAGES:
         with open(os.path.join(OUT, slug + ".html"), "w") as f:
             f.write(render(slug))
-    print("Wrote %d docs pages to %s" % (len(PAGES), os.path.normpath(OUT)))
+    print(f"Wrote {len(PAGES)} docs pages to {os.path.normpath(OUT)}")
 
 
 if __name__ == "__main__":

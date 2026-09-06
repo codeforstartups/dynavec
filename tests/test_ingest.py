@@ -12,6 +12,14 @@ def test_chunk_text_windows_with_overlap():
     assert all(len(c) <= 4 for c in chunks)
 
 
+def test_chunk_text_whitespace_only_returns_no_chunks():
+    assert list(chunk_text("   \n\t")) == []
+
+
+def test_chunk_text_shorter_than_chunk_size_returns_one_chunk():
+    assert list(chunk_text("hello", chunk_size=100, overlap=10)) == ["hello"]
+
+
 def test_chunk_text_empty_and_validation():
     assert list(chunk_text("")) == []
     import pytest

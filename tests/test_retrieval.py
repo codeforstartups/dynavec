@@ -1,11 +1,25 @@
 """Tests for the retrieval algorithms (pure, no AWS)."""
 
+import pytest
+
 from dynavec.models import SearchResult
 from dynavec.retrieval import (
     distance_to_score,
     maximal_marginal_relevance,
     reciprocal_rank_fusion,
 )
+
+
+def test_rrf_rejects_wrong_weights_length():
+    with pytest.raises(ValueError):
+        reciprocal_rank_fusion(
+            [[_r("a")], [_r("b")]],
+            weights=[1.0],
+        )
+
+
+def test_rrf_with_empty_result_lists_returns_empty():
+    assert reciprocal_rank_fusion([[], []]) == []
 
 
 def test_distance_to_score_cosine_monotonic():

@@ -351,7 +351,7 @@ def test_ingest_chunks_and_stores(db):
         ]
     )
     n = ingest(db, source, chunk_size=10, overlap=0, batch_size=4)
-    assert n == 3 + 1  # doc1 -> 3 chunks, doc2 -> 1 chunk
+    assert n == 3  # doc1 -> 2 unique chunks, doc2 -> 1 chunk
     got = db.get(["doc1#chunk0"])[0]
     assert got.metadata["source_id"] == "doc1"
     assert got.metadata["src"] == "wiki"

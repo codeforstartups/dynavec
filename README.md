@@ -223,6 +223,36 @@ python -m benchmarks.run_benchmark --backend dynavec \
 
 **v0.2** — everything in the table above, on top of the v0.1 hybrid core (pluggable embedders, RRF, MMR, provisioning). 61 tests. **Roadmap (v0.3):** native asyncio client (`aioboto3`), in-process `hnswlib` hot tier, sparse/BM25 hybrid computed from DynamoDB, sort-key graph adjacency for very high fan-out, and turnkey file parsers (PDF/DOCX/PPTX/XLSX) as ingestion sources.
 
+## Local development (no AWS account)
+
+The unit suite needs nothing — `pytest -q` runs fully offline against in-memory fakes.
+To exercise the *real* path (provisioning → `s3vectors` → DynamoDB → hydration) without
+an AWS bill, run a local emulator. Use [floci](https://github.com/floci-io/floci): it is
+currently the only one that implements `s3vectors` (LocalStack has it in backlog only).
+
+```bash
+docker compose up -d --wait                    # starts floci, waits until healthy
+export AWS_ENDPOINT_URL=http://localhost:4566  # the only variable you need
+pytest tests/integration -v
+```
+
+`docker compose down` when you're done; storage is in-memory, so every restart gives
+you a clean account back.
+
+That is the whole setup — **dynavec needs no code change or endpoint config**. boto3
+reads `AWS_ENDPOINT_URL` natively, so every `session.client(...)` in `stores/` and
+`provisioning.py` points at the emulator on its own; the test module fills in dummy
+credentials when it sees that variable. The same variable makes the `examples/`
+scripts run locally (swap the embedder for a fake one, or set a real `OPENAI_API_KEY`
+— embedders call their provider, not AWS).
+
+CI runs this as the `integration-local` job on every push. It catches wiring bugs the
+fakes can't — wrong request shape, missing pagination, a provisioning call that never
+fires. It is **not** a substitute for real AWS: an emulator's cosine scan is not S3
+Vectors' ANN index and has none of its eventual-consistency behaviour, so keep
+`DYNAVEC_LIVE=1` (see [`tests/integration/test_live_aws.py`](tests/integration/test_live_aws.py))
+as the pre-release gate.
+
 ## Publishing (maintainers)
 
 `dynavec` publishes to **PyPI**; both `pip` and `uv` install from there (there is no separate "uv registry").

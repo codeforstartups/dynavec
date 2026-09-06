@@ -27,7 +27,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Union
+from typing import TYPE_CHECKING, Any, Union
+
+if TYPE_CHECKING:
+    from .cache import BaseCache
 
 import numpy as np
 
@@ -88,6 +91,11 @@ class Dynavec:
             self.provision()
 
     # ------------------------------------------------------------ lifecycle
+    @property
+    def cache(self) -> BaseCache | None:
+        """The configured query cache, if any."""
+        return self._cache
+
     @property
     def _executor(self) -> ThreadPoolExecutor:
         if self._pool is None:

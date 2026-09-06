@@ -351,10 +351,13 @@ def test_semantic_cache_hits_on_repeat(db):
 
     db._vectors.query = counting_query
 
+    assert db.cache is db._cache
     r1 = db.search("apple pie", top_k=3)
+    assert db.cache.stats() == {"hits": 0, "misses": 1, "hit_rate": 0.0}
     r2 = db.search("apple pie", top_k=3)  # identical -> cache hit
     assert calls["n"] == 1
     assert [x.id for x in r1] == [x.id for x in r2]
+    assert db.cache.stats() == {"hits": 1, "misses": 1, "hit_rate": 0.5}
 
 
 def test_ingest_chunks_and_stores(db):

@@ -206,7 +206,7 @@ python -m benchmarks.run_benchmark --backend dynavec \
 
 | Area | What you get | API |
 |------|--------------|-----|
-| **Distance metrics** | Index on cosine/euclidean (S3 Vectors native); client-side rescore in cosine / dot / euclidean / manhattan or a **weighted combination** | `search(..., rescore={"cosine":0.7,"manhattan":0.3})` |
+| **Distance metrics** | Index on cosine/euclidean (S3 Vectors native); client-side rescore in cosine / dot / euclidean / manhattan or a **weighted combination**, with optional result-set normalization | `search(..., rescore="dot", normalize_scores=True)` |
 | **Concurrency** | GIL-aware thread pool — real parallelism for I/O-bound AWS calls; parallel batched writes + `search_many` | `DynavecConfig(max_workers=8)`, `db.search_many([...])` |
 | **Streaming** | Results yielded page-by-page as S3 Vectors paginates, so agents start consuming early | `for hit in db.search_stream(q): ...` |
 | **Namespace RAG** | Per-tenant/collection handles; isolation + even partitioning | `kb = db.namespace("kb"); kb.search(...)` |

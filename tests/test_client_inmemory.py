@@ -9,7 +9,7 @@ import math
 import pytest
 
 import dynavec.client as client_mod
-from dynavec import Document, Dynavec, DynavecConfig
+from dynavec import Document, Dynavec, DynavecConfig, SemanticCache
 from dynavec.config import NS_METADATA_KEY
 from dynavec.embeddings.base import Embedder
 
@@ -285,6 +285,27 @@ def test_rescore_with_metric(db):
     )
     hits = db.search("apple", top_k=2, rescore={"cosine": 0.5, "manhattan": 0.5})
     assert len(hits) == 2
+
+
+def test_search_can_normalize_final_scores(db):
+    db.upsert(
+        [
+            Document(id="1", text="apple pie recipe"),
+            Document(id="2", text="apple orchard tour"),
+            Document(id="3", text="rocket to mars"),
+        ]
+    )
+
+    db._cache = SemanticCache(threshold=0.999)
+    db.search("apple", top_k=3, rescore="dot")
+
+    hits = db.search("apple", top_k=3, rescore="dot", normalize_scores=True)
+
+    assert db._cache.misses == 2
+    scores = [hit.score for hit in hits]
+    assert scores == sorted(scores, reverse=True)
+    assert max(scores) == pytest.approx(1.0)
+    assert min(scores) == pytest.approx(0.0)
 
 
 def test_transform_applied_on_upsert(db):

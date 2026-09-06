@@ -126,6 +126,12 @@ LlamaIndex, CrewAI, and Strands adapters are on the roadmap; the core client wor
 
 ---
 
+## Choosing an embedding dimension
+
+Embedding dimension trades off recall against storage cost and latency. A larger dimension usually gives higher recall, but the right choice is the **smallest dimension that meets your recall target** — not the largest. See [EMBEDDING_DIMENSIONS.md](docs/EMBEDDING_DIMENSIONS.md) for a comparison table, the S3 Vectors 4096-dim ceiling, and a step-by-step picking guide.
+
+---
+
 ## Namespaces & multi-tenancy
 
 Every write/read takes a `namespace`. dynavec tags each vector with its namespace and scopes queries to it automatically, so a single index can host many tenants (or many embedding "collections") with clean isolation. DynamoDB keys are `"{namespace}#{id}"` for even partition distribution.

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
@@ -51,6 +52,28 @@ def _deserialize(blob: str) -> list[SearchResult]:
         )
         for d in json.loads(blob)
     ]
+
+
+def _deep_size(value, seen: set[int] | None = None) -> int:
+    """Estimate an object graph's resident size without requiring serialization."""
+    if seen is None:
+        seen = set()
+    object_id = id(value)
+    if object_id in seen:
+        return 0
+    seen.add(object_id)
+
+    size = sys.getsizeof(value)
+    if isinstance(value, dict):
+        return size + sum(
+            _deep_size(key, seen) + _deep_size(item, seen)
+            for key, item in value.items()
+        )
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return size + sum(_deep_size(item, seen) for item in value)
+    if hasattr(value, "__dict__"):
+        return size + _deep_size(vars(value), seen)
+    return size
 
 
 class BaseCache(ABC):
@@ -90,12 +113,29 @@ class SemanticCache(BaseCache):
     a little exactness for a large latency win on paraphrases and repeats.
     """
 
-    def __init__(self, threshold: float = 0.97, max_size: int = 2048) -> None:
+    def __init__(
+        self,
+        threshold: float = 0.97,
+        max_size: int = 2048,
+        max_bytes: int | None = None,
+    ) -> None:
         super().__init__()
+        if max_size < 0:
+            raise ValueError("max_size must be non-negative")
+        if max_bytes is not None and max_bytes < 0:
+            raise ValueError("max_bytes must be non-negative")
         self.threshold = threshold
         self.max_size = max_size
-        # key: signature -> OrderedDict[vec_key -> (unit_vec, results)]
+        self.max_bytes = max_bytes
+        self._size_bytes = 0
+        self._lru: OrderedDict[tuple[str, str], None] = OrderedDict()
+        # key: signature -> OrderedDict[vec_key -> (unit_vec, results, size_bytes)]
         self._buckets: dict[str, OrderedDict[str, tuple]] = {}
+
+    @property
+    def size_bytes(self) -> int:
+        """Approximate bytes used by cached vectors and result object graphs."""
+        return self._size_bytes
 
     @staticmethod
     def _unit(v: np.ndarray) -> np.ndarray:
@@ -109,15 +149,16 @@ class SemanticCache(BaseCache):
             return None
         q = self._unit(np.asarray(query_vector, dtype=np.float32))
         best_key, best_sim = None, -1.0
-        for vk, (vec, _res) in bucket.items():
+        for vk, (vec, _res, _size) in bucket.items():
             sim = float(vec @ q)
             if sim > best_sim:
                 best_sim, best_key = sim, vk
         if best_key is not None and best_sim >= self.threshold:
-            vec, res = bucket.pop(best_key)
-            bucket[best_key] = (vec, res)  # move to MRU
+            entry = bucket.pop(best_key)
+            bucket[best_key] = entry  # move to MRU within this signature
+            self._lru.move_to_end((sig, best_key))
             self.hits += 1
-            return res
+            return entry[1]
         self.misses += 1
         return None
 
@@ -125,14 +166,26 @@ class SemanticCache(BaseCache):
         sig = _signature(namespace, top_k, filter)
         bucket = self._buckets.setdefault(sig, OrderedDict())
         vk = _vec_key(query_vector)
-        bucket[vk] = (self._unit(np.asarray(query_vector, dtype=np.float32)), results)
+        vector = self._unit(np.asarray(query_vector, dtype=np.float32))
+        seen: set[int] = set()
+        entry_size = _deep_size(vector, seen) + _deep_size(results, seen)
+        previous = bucket.pop(vk, None)
+        if previous is not None:
+            self._size_bytes -= previous[2]
+            self._lru.pop((sig, vk), None)
+        bucket[vk] = (vector, results, entry_size)
         bucket.move_to_end(vk)
-        while sum(len(b) for b in self._buckets.values()) > self.max_size:
-            # evict the globally oldest entry
-            for b in self._buckets.values():
-                if b:
-                    b.popitem(last=False)
-                    break
+        self._lru[(sig, vk)] = None
+        self._size_bytes += entry_size
+        while len(self._lru) > self.max_size or (
+            self.max_bytes is not None and self._size_bytes > self.max_bytes
+        ):
+            old_sig, old_vk = self._lru.popitem(last=False)[0]
+            old_bucket = self._buckets[old_sig]
+            _, _, old_size = old_bucket.pop(old_vk)
+            self._size_bytes -= old_size
+            if not old_bucket:
+                del self._buckets[old_sig]
 
 
 class DynamoDBCache(BaseCache):

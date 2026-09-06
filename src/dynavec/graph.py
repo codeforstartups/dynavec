@@ -26,7 +26,7 @@ from __future__ import annotations
 from typing import Any
 
 from .config import DynavecConfig
-from .utils import retry
+from .utils import KEY_SEPARATOR, encode_key_component, retry
 
 Props = dict[str, Any]
 
@@ -44,7 +44,10 @@ class GraphStore:
 
     @staticmethod
     def _node_pk(ns: str, entity_id: str) -> str:
-        return f"{ns}#node#{entity_id}"
+        return (
+            f"{encode_key_component(ns)}{KEY_SEPARATOR}node{KEY_SEPARATOR}"
+            f"{encode_key_component(entity_id)}"
+        )
 
     # --------------------------------------------------------------- mutations
     @retry()

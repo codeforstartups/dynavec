@@ -48,10 +48,9 @@ from .provisioning import provision_all
 from .retrieval import distance_to_score, maximal_marginal_relevance
 from .stores import DynamoDBStore, S3VectorsStore
 from .transforms import TransformContext, as_pipeline
-from .utils import chunked
+from .utils import KEY_SEPARATOR, chunked, decode_key_component, encode_key_component
 
 Metadata = dict[str, Any]
-_KEY_SEP = "#"
 _S3_PUT_CHUNK = 500
 _DDB_CHUNK = 500
 
@@ -131,11 +130,11 @@ class Dynavec:
 
     # ------------------------------------------------------------- key helpers
     def _s3_key(self, namespace: str, doc_id: str) -> str:
-        return f"{namespace}{_KEY_SEP}{doc_id}"
+        return f"{encode_key_component(namespace)}{KEY_SEPARATOR}{encode_key_component(doc_id)}"
 
     def _split_key(self, key: str) -> tuple[str, str]:
-        namespace, _, doc_id = key.partition(_KEY_SEP)
-        return namespace, doc_id
+        namespace, _, doc_id = key.partition(KEY_SEPARATOR)
+        return decode_key_component(namespace), decode_key_component(doc_id)
 
     def _run_parallel(self, tasks: list) -> None:
         """Run zero-arg callables; parallel if enabled, else sequential."""

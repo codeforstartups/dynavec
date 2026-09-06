@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Any
 
 from ..config import DynavecConfig
-from ..utils import retry
+from ..utils import KEY_SEPARATOR, encode_key_component, retry
 
 Metadata = dict[str, Any]
 
@@ -59,7 +59,7 @@ class DynamoDBStore:
 
     @staticmethod
     def _pk(namespace: str, doc_id: str) -> str:
-        return f"{namespace}#{doc_id}"
+        return f"{encode_key_component(namespace)}{KEY_SEPARATOR}{encode_key_component(doc_id)}"
 
     def put_many(
         self,

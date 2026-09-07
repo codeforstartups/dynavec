@@ -37,6 +37,7 @@ openai = ["openai>=1.40"]
 gemini = ["google-generativeai>=0.8"]
 cohere = ["cohere>=5.0"]
 voyage = ["voyageai>=0.3.2"]
+mistral = ["mistralai>=2.0"]
 sentence-transformers = ["sentence-transformers>=3.0"]
 # bedrock needs nothing beyond boto3.
 
@@ -56,6 +57,7 @@ all = [
     "google-generativeai>=0.8",
     "cohere>=5.0",
     "voyageai>=0.3.2",
+    "mistralai>=2.0",
     "sentence-transformers>=3.0",
     "redis>=5.0",
     "mcp>=1.0; python_version >= '3.10'",

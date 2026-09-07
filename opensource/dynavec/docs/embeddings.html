@@ -74,12 +74,14 @@
 <p>Choose an embedder and supply your own API key, or skip the embedder entirely and pass pre-computed vectors.
 Embedder backends are imported lazily, so the base install stays light.</p>
 <pre class="code"><code>from dynavec.embeddings import (
-    OpenAIEmbedder, GeminiEmbedder, BedrockEmbedder, SentenceTransformerEmbedder,
+    OpenAIEmbedder, GeminiEmbedder, MistralEmbedder, BedrockEmbedder,
+    SentenceTransformerEmbedder,
 )
 
 # hosted (BYO key via env var or argument)
 emb = OpenAIEmbedder(model="text-embedding-3-small")        # 1536-d
 emb = GeminiEmbedder(model="text-embedding-004")            # 768-d
+emb = MistralEmbedder(model="mistral-embed")                # 1024-d
 
 # in-account (no third party) or fully local / offline
 emb = BedrockEmbedder(model_id="amazon.titan-embed-text-v2:0", region="us-east-1")

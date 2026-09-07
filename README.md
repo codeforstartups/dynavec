@@ -15,6 +15,8 @@ uv add dynavec
 uv add "dynavec[all]"
 ```
 
+Type hints are included for type checkers such as mypy and pyright.
+
 ---
 
 ## Why dynavec

@@ -84,6 +84,7 @@ cfg = DynavecConfig(
     region="us-east-1",
     filterable_keys=["topic"],    # metadata keys pushed to S3 Vectors for filtering
     over_fetch=4,                 # candidate multiplier when reranking
+    top_k_page_size=50,           # optional client-side stream batch size
     max_workers=8,                # thread pool for parallel I/O
     auto_provision=True,
 )</code></pre>
@@ -94,6 +95,7 @@ cfg = DynavecConfig(
 <tr><td><code>distance_metric</code></td><td>The S3 Vectors index metric. Other metrics are available at rerank time — see <a href="metrics-and-rerank.html">Metrics</a>.</td></tr>
 <tr><td><code>filterable_keys</code></td><td>Small allowlist of metadata pushed to S3 Vectors. Everything else lives only in DynamoDB. Keep it small.</td></tr>
 <tr><td><code>over_fetch</code></td><td>How many extra candidates to pull before reranking/rescoring.</td></tr>
+<tr><td><code>top_k_page_size</code></td><td>Client-side stream hydration batch. <code>None</code> (default) uses native S3 Vectors pages (at most 100). Does not change the service page size.</td></tr>
 <tr><td><code>max_workers</code>, <code>parallel_writes</code></td><td>Thread-pool <a href="concurrency.html">concurrency</a> controls.</td></tr>
 </table>
 

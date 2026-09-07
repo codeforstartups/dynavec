@@ -65,11 +65,20 @@ class FakeS3(client_mod.S3VectorsStore):
         scored.sort(key=lambda x: x[1])
         return [{"key": k, "distance": d, "metadata": m} for k, d, m in scored[:top_k]]
 
-    def query_pages(self, query_vector, top_k, filter=None, return_metadata=True, return_distance=True):
+    def query_pages(
+        self,
+        query_vector,
+        top_k,
+        filter=None,
+        return_metadata=True,
+        return_distance=True,
+        page_size=None,
+    ):
         # emulate a paginator: split the result into pages of 2
         hits = self.query(query_vector, top_k, filter, return_metadata, return_distance)
-        for i in range(0, len(hits), 2):
-            yield hits[i : i + 2]
+        chunk_size = page_size or 2
+        for i in range(0, len(hits), chunk_size):
+            yield hits[i : i + chunk_size]
 
     def get_vectors(self, keys, return_metadata=False):
         return {k: {"vector": self._store[k][0], "metadata": self._store[k][1]} for k in keys if k in self._store}

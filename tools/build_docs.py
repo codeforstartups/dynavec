@@ -197,6 +197,7 @@ cfg = DynavecConfig(
     region="us-east-1",
     filterable_keys=["topic"],    # metadata keys pushed to S3 Vectors for filtering
     over_fetch=4,                 # candidate multiplier when reranking
+    top_k_page_size=50,           # optional client-side stream batch size
     max_workers=8,                # thread pool for parallel I/O
     auto_provision=True,
 )
@@ -208,6 +209,7 @@ cfg = DynavecConfig(
 <tr><td><code>distance_metric</code></td><td>The S3 Vectors index metric. Other metrics are available at rerank time — see <a href="metrics-and-rerank.html">Metrics</a>.</td></tr>
 <tr><td><code>filterable_keys</code></td><td>Small allowlist of metadata pushed to S3 Vectors. Everything else lives only in DynamoDB. Keep it small.</td></tr>
 <tr><td><code>over_fetch</code></td><td>How many extra candidates to pull before reranking/rescoring.</td></tr>
+<tr><td><code>top_k_page_size</code></td><td>Client-side stream hydration batch. <code>None</code> (default) uses native S3 Vectors pages (at most 100). Does not change the service page size.</td></tr>
 <tr><td><code>max_workers</code>, <code>parallel_writes</code></td><td>Thread-pool <a href="concurrency.html">concurrency</a> controls.</td></tr>
 </table>
 """)
@@ -387,11 +389,13 @@ data isolation, no cross-tenant leakage.</div>
 PAGES["streaming"] = ("Streaming",
     "Deliver results to agents page-by-page as they arrive.",
     """
-<p><code>search_stream()</code> is a generator: it yields hits as S3 Vectors paginates, so an agent can start
-consuming the first results before the full set returns.</p>
-""" + code("""for hit in db.search_stream("large query", top_k=100, namespace="kb"):
-    handle(hit)   # arrives page by page
+<p><code>search_stream()</code> is a generator: it yields one hit at a time as S3 Vectors paginates, so an agent can start
+consuming the first results before the full set returns. Amazon S3 Vectors returns at most 100 vectors per response page;
+dynavec follows <code>nextToken</code> up to the service limit of 10,000 results.</p>
+""" + code("""for hit in db.search_stream("large query", top_k=250, namespace="kb", page_size=50):
+    handle(hit)   # one hit at a time; page_size is the DynamoDB hydration batch
 """) + """
+<p><code>page_size</code> (or <code>DynavecConfig(top_k_page_size=50)</code>) only changes how many hits are hydrated from DynamoDB per batch. It does not change the S3 Vectors page size (fixed at 100) or time-to-first-result.</p>
 <div class="callout">Reranking and rescoring need the full candidate set, so they are not applied in
 streaming mode. Use <a href="search.html">search()</a> when you need them.</div>
 """)

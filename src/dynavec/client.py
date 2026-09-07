@@ -413,21 +413,32 @@ class Dynavec:
         top_k: int = 50,
         namespace: str = "default",
         filter: Metadata | None = None,
+        page_size: int | None = None,
     ) -> Iterator[SearchResult]:
         """Stream results to the agent page-by-page as S3 Vectors returns them.
 
         A generator: the caller (agent) can start consuming the first hits before
         the full result set is retrieved. Reranking/rescoring are not applied in
         streaming mode (they need the whole candidate set).
+
+        Parameters
+        ----------
+        page_size:
+            Optional client-side chunk size for DynamoDB hydration batches.
+            Defaults to ``DynavecConfig.top_k_page_size``. ``None`` uses native
+            Amazon S3 Vectors pages (at most 100). Yields one hit at a time
+            regardless; this does not change S3 Vectors page size.
         """
         query_vector = self._resolve_query_vector(query, vector)
         yielded = 0
+        effective_page_size = page_size if page_size is not None else self.config.top_k_page_size
         for page in self._vectors.query_pages(
             query_vector=query_vector,
             top_k=top_k,
             filter=build_s3_filter(filter, namespace),
             return_metadata=True,
             return_distance=True,
+            page_size=effective_page_size,
         ):
             page_hits = [(self._split_key(v["key"])[1], v.get("distance")) for v in page]
             hydrated = self._docs.get_many(namespace, [h[0] for h in page_hits])

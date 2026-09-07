@@ -21,6 +21,8 @@ Metadata = dict[str, Any]
 # PutVectors accepts up to 500 vectors per call.
 _PUT_LIMIT = 500
 _GET_LIMIT = 100
+# QueryVectors topK maximum (results are returned in pages of at most 100).
+_MAX_TOP_K = 10_000
 
 
 def _f32(vector: list[float]) -> list[float]:
@@ -81,12 +83,25 @@ class S3VectorsStore:
         return_metadata: bool = True,
         return_distance: bool = True,
     ) -> list[dict[str, Any]]:
-        """Run an ANN query. Returns a list of ``{key, distance?, metadata?}``."""
-        kwargs = self._query_kwargs(
-            query_vector, top_k, filter, return_metadata, return_distance
-        )
-        resp = self._client.query_vectors(**kwargs)
-        return resp.get("vectors", [])
+        """Run an ANN query. Drains paginated results up to ``top_k``."""
+        if top_k <= 0:
+            return []
+        if top_k > _MAX_TOP_K:
+            raise ValueError(
+                f"top_k ({top_k}) exceeds Amazon S3 Vectors maximum limit of {_MAX_TOP_K}."
+            )
+        results: list[dict[str, Any]] = []
+        for page in self.query_pages(
+            query_vector,
+            top_k,
+            filter=filter,
+            return_metadata=return_metadata,
+            return_distance=return_distance,
+        ):
+            results.extend(page)
+            if len(results) >= top_k:
+                break
+        return results[:top_k]
 
     def query_pages(
         self,
@@ -95,20 +110,72 @@ class S3VectorsStore:
         filter: Metadata | None = None,
         return_metadata: bool = True,
         return_distance: bool = True,
+        page_size: int | None = None,
     ) -> Iterator[list[dict[str, Any]]]:
         """Yield result **pages** as the S3 Vectors paginator returns them.
 
         This is what powers streaming search: an agent can begin consuming the
         first page while later pages are still in flight.
+
+        Parameters
+        ----------
+        page_size:
+            Optional client-side chunk size for yielded pages. When None (default),
+            yields the raw pages returned by Amazon S3 Vectors (up to 100 per page).
+            This does not change the service page size.
         """
+        if top_k <= 0:
+            return
+        if top_k > _MAX_TOP_K:
+            raise ValueError(
+                f"top_k ({top_k}) exceeds Amazon S3 Vectors maximum limit of {_MAX_TOP_K}."
+            )
+
+        effective_page_size = (
+            page_size if page_size is not None else self._config.top_k_page_size
+        )
+        if effective_page_size is not None and effective_page_size <= 0:
+            raise ValueError("page_size must be a positive integer.")
+
         kwargs = self._query_kwargs(
             query_vector, top_k, filter, return_metadata, return_distance
         )
         paginator = self._client.get_paginator("query_vectors")
-        for page in paginator.paginate(**kwargs):
+        yielded = 0
+        buffer: list[dict[str, Any]] = []
+
+        for page in paginator.paginate(
+            PaginationConfig={"MaxItems": top_k},
+            **kwargs,
+        ):
             vectors = page.get("vectors", [])
-            if vectors:
+            if not vectors:
+                continue
+
+            if effective_page_size is None:
+                remaining = top_k - yielded
+                if len(vectors) > remaining:
+                    vectors = vectors[:remaining]
                 yield vectors
+                yielded += len(vectors)
+                if yielded >= top_k:
+                    return
+            else:
+                buffer.extend(vectors)
+                while len(buffer) >= effective_page_size and yielded < top_k:
+                    chunk = buffer[:effective_page_size]
+                    buffer = buffer[effective_page_size:]
+                    remaining = top_k - yielded
+                    if len(chunk) > remaining:
+                        chunk = chunk[:remaining]
+                    yield chunk
+                    yielded += len(chunk)
+                    if yielded >= top_k:
+                        return
+
+        if effective_page_size is not None and buffer and yielded < top_k:
+            remaining = top_k - yielded
+            yield buffer[:remaining]
 
     @retry()
     def get_vectors(

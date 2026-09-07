@@ -79,9 +79,9 @@ benchmark = [
 
 
 [project.urls]
-Homepage = "https://github.com/your-org/dynavec"
-Documentation = "https://github.com/your-org/dynavec#readme"
-Issues = "https://github.com/your-org/dynavec/issues"
+Homepage = "https://github.com/codeforstartups/dynavec"
+Documentation = "https://github.com/codeforstartups/dynavec#readme"
+Issues = "https://github.com/codeforstartups/dynavec/issues"
 
 [project.scripts]
 dynavec = "dynavec.cli:main"

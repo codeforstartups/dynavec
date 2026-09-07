@@ -9,7 +9,9 @@
 # boto3 reads AWS_ENDPOINT_URL natively, so dynavec needs no endpoint config.
 services:
   floci:
-    image: floci/floci:latest
+    # pinned: `latest` moves (nightlies ship most days) and would make CI
+    # non-reproducible. Bump deliberately.
+    image: floci/floci:2.0.1
     container_name: dynavec-floci
     ports:
       - "4566:4566"
@@ -18,7 +20,7 @@ services:
       # in-memory: every `down` gives you a clean account back.
       FLOCI_STORAGE_MODE: memory
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_floci/health"]
       interval: 2s
       timeout: 3s
       retries: 30

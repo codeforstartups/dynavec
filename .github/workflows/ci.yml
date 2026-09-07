@@ -28,8 +28,14 @@ jobs:
   # Runs the real end-to-end path (provisioning -> upsert -> query -> hydrate)
   # against a local AWS emulator. floci is used because it is currently the only
   # emulator implementing s3vectors; LocalStack has it in backlog only.
+  #
+  # Non-blocking on purpose: this depends on a third-party image and a Docker
+  # daemon, so an upstream hiccup must never red-X an unrelated PR. It still runs
+  # on every PR, which is how it earns a track record -- drop continue-on-error
+  # once it has one.
   integration-local:
     runs-on: ubuntu-latest
+    continue-on-error: true
     env:
       AWS_ENDPOINT_URL: http://localhost:4566
     steps:

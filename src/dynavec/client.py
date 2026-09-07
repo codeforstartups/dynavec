@@ -156,8 +156,11 @@ class Dynavec:
             for d in docs:
                 ctx = pipeline(
                     TransformContext(
-                        id=d.id, text=d.text, vector=d.vector,
-                        metadata=dict(d.metadata), namespace=namespace,
+                        id=d.id,
+                        text=d.text,
+                        vector=d.vector,
+                        metadata=dict(d.metadata),
+                        namespace=namespace,
                     )
                 )
                 d.text, d.vector, d.metadata = ctx.text, ctx.vector, ctx.metadata
@@ -341,12 +344,17 @@ class Dynavec:
         results: list[SearchResult] = []
         for doc_id, distance in hits:
             doc = hydrated.get(doc_id, {})
-            vec = vec_by_key.get(self._s3_key(namespace, doc_id), {}).get("vector") if vec_by_key else None
+            vec = (
+                vec_by_key.get(self._s3_key(namespace, doc_id), {}).get("vector")
+                if vec_by_key
+                else None
+            )
             results.append(
                 SearchResult(
                     id=doc_id,
                     score=distance_to_score(distance, self.config.distance_metric)
-                    if distance is not None else 0.0,
+                    if distance is not None
+                    else 0.0,
                     distance=distance,
                     text=doc.get("text"),
                     metadata=doc.get("metadata", {}),
@@ -392,21 +400,30 @@ class Dynavec:
         top_k: int = 50,
         namespace: str = "default",
         filter: Metadata | None = None,
+        page_size: int | None = None,
     ) -> Iterator[SearchResult]:
         """Stream results to the agent page-by-page as S3 Vectors returns them.
 
         A generator: the caller (agent) can start consuming the first hits before
         the full result set is retrieved. Reranking/rescoring are not applied in
         streaming mode (they need the whole candidate set).
+
+        Parameters
+        ----------
+        page_size:
+            Optional chunk size for yielded pages. Defaults to
+            ``DynavecConfig.top_k_page_size`` or service page size.
         """
         query_vector = self._resolve_query_vector(query, vector)
         yielded = 0
+        effective_page_size = page_size if page_size is not None else self.config.top_k_page_size
         for page in self._vectors.query_pages(
             query_vector=query_vector,
             top_k=top_k,
             filter=build_s3_filter(filter, namespace),
             return_metadata=True,
             return_distance=True,
+            page_size=effective_page_size,
         ):
             page_hits = [(self._split_key(v["key"])[1], v.get("distance")) for v in page]
             hydrated = self._docs.get_many(namespace, [h[0] for h in page_hits])
@@ -417,7 +434,8 @@ class Dynavec:
                 yield SearchResult(
                     id=doc_id,
                     score=distance_to_score(distance, self.config.distance_metric)
-                    if distance is not None else 0.0,
+                    if distance is not None
+                    else 0.0,
                     distance=distance,
                     text=doc.get("text"),
                     metadata=doc.get("metadata", {}),
@@ -434,9 +452,7 @@ class Dynavec:
         ]
         return [f.result() for f in futures]
 
-    def _resolve_query_vector(
-        self, query: str | None, vector: list[float] | None
-    ) -> list[float]:
+    def _resolve_query_vector(self, query: str | None, vector: list[float] | None) -> list[float]:
         if vector is not None:
             if len(vector) != self.config.dimension:
                 raise DimensionMismatchError(
@@ -530,12 +546,12 @@ class Dynavec:
         if not doc_ids:
             return []
 
-        vec_by_key = self._vectors.get_vectors(
-            [self._s3_key(namespace, d) for d in doc_ids]
-        )
+        vec_by_key = self._vectors.get_vectors([self._s3_key(namespace, d) for d in doc_ids])
         hydrated = self._docs.get_many(namespace, doc_ids)
 
-        scored = [d for d in doc_ids if vec_by_key.get(self._s3_key(namespace, d), {}).get("vector")]
+        scored = [
+            d for d in doc_ids if vec_by_key.get(self._s3_key(namespace, d), {}).get("vector")
+        ]
         if not scored:
             return []
         mat = np.asarray(
@@ -551,8 +567,10 @@ class Dynavec:
             doc = hydrated.get(d, {})
             out.append(
                 SearchResult(
-                    id=d, score=float(scores[int(i)]),
-                    text=doc.get("text"), metadata=doc.get("metadata", {}),
+                    id=d,
+                    score=float(scores[int(i)]),
+                    text=doc.get("text"),
+                    metadata=doc.get("metadata", {}),
                 )
             )
         return out
@@ -560,7 +578,9 @@ class Dynavec:
     def delete(self, ids: list[str], namespace: str = "default") -> None:
         """Delete documents from both stores."""
         keys = [self._s3_key(namespace, doc_id) for doc_id in ids]
-        self._run_parallel([
-            lambda: self._vectors.delete_vectors(keys),
-            lambda: self._docs.delete_many(namespace, ids),
-        ])
+        self._run_parallel(
+            [
+                lambda: self._vectors.delete_vectors(keys),
+                lambda: self._docs.delete_many(namespace, ids),
+            ]
+        )

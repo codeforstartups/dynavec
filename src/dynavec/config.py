@@ -65,6 +65,7 @@ class DynavecConfig:
 
     # retrieval tuning
     over_fetch: int = 4
+    top_k_page_size: int | None = None
 
     # concurrency (I/O-bound: threads give real parallelism as boto3 releases
     # the GIL during network calls). See client._executor.
@@ -82,3 +83,5 @@ class DynavecConfig:
             raise ValueError("distance_metric must be 'cosine' or 'euclidean'")
         if self.over_fetch < 1:
             raise ValueError("over_fetch must be >= 1")
+        if self.top_k_page_size is not None and self.top_k_page_size <= 0:
+            raise ValueError("top_k_page_size must be a positive integer")

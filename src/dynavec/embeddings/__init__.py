@@ -16,6 +16,7 @@ if TYPE_CHECKING:  # for type checkers / IDEs only
     from .gemini import GeminiEmbedder
     from .openai import OpenAIEmbedder
     from .sentence_transformers import SentenceTransformerEmbedder
+    from .voyage import VoyageEmbedder
 
 __all__ = [
     "Embedder",
@@ -24,6 +25,7 @@ __all__ = [
     "GeminiEmbedder",
     "BedrockEmbedder",
     "SentenceTransformerEmbedder",
+    "VoyageEmbedder",
 ]
 
 _LAZY = {
@@ -34,6 +36,7 @@ _LAZY = {
         "dynavec.embeddings.sentence_transformers",
         "SentenceTransformerEmbedder",
     ),
+    "VoyageEmbedder": ("dynavec.embeddings.voyage", "VoyageEmbedder"),
 }
 
 

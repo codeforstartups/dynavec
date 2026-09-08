@@ -93,12 +93,13 @@ class PDFSource:
             if not text or not text.strip():
                 continue
 
+            path_str = self._path.as_posix()
             yield Record(
-                id=f"{self._path}#page{page_number}",
+                id=f"{path_str}#page{page_number}",
                 text=text,
                 metadata={
                     "source": "pdf",
-                    "path": str(self._path),
+                    "path": path_str,
                     "page": page_number,
                 },
             )

@@ -23,6 +23,9 @@ _PUT_LIMIT = 500
 _GET_LIMIT = 100
 # QueryVectors topK maximum (results are returned in pages of at most 100).
 _MAX_TOP_K = 10_000
+# ListVectors maxResults range.
+_LIST_PAGE_MIN = 1
+_LIST_PAGE_MAX = 1000
 
 
 def _f32(vector: list[float]) -> list[float]:
@@ -176,6 +179,47 @@ class S3VectorsStore:
         if effective_page_size is not None and buffer and yielded < top_k:
             remaining = top_k - yielded
             yield buffer[:remaining]
+
+    def list_pages(
+        self,
+        return_data: bool = False,
+        return_metadata: bool = False,
+        page_size: int | None = None,
+    ) -> Iterator[list[dict[str, Any]]]:
+        """Yield ``ListVectors`` **pages** as the boto3 paginator returns them.
+
+        A full scan of the index, not a query: there is no query vector and no
+        server-side filter (Amazon S3 Vectors ``ListVectors`` accepts no
+        ``filter`` parameter), so callers scope the results themselves. The
+        paginator drives the ``nextToken`` continuation and stops when the
+        service stops returning one.
+
+        Parameters
+        ----------
+        page_size:
+            Service-side page size (``maxResults``, 1-1000). None (default)
+            leaves the page size to Amazon S3 Vectors.
+        """
+        if page_size is not None and not _LIST_PAGE_MIN <= page_size <= _LIST_PAGE_MAX:
+            raise ValueError(
+                f"page_size must be between {_LIST_PAGE_MIN} and {_LIST_PAGE_MAX}."
+            )
+
+        kwargs: dict[str, Any] = {
+            "vectorBucketName": self._config.vector_bucket,
+            "indexName": self._config.index,
+            "returnData": return_data,
+            "returnMetadata": return_metadata,
+        }
+        pagination_config: dict[str, Any] = {}
+        if page_size is not None:
+            pagination_config["PageSize"] = page_size
+
+        paginator = self._client.get_paginator("list_vectors")
+        for page in paginator.paginate(PaginationConfig=pagination_config, **kwargs):
+            vectors = page.get("vectors", [])
+            if vectors:
+                yield vectors
 
     @retry()
     def get_vectors(

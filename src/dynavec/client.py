@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 import numpy as np
 
-from .config import DynavecConfig
+from .config import NS_METADATA_KEY, TEXT_METADATA_KEY, DynavecConfig
 from .credentials import AWSCredentials, resolve_session
 from .embeddings.base import Embedder
 from .exceptions import ConfigurationError, DimensionMismatchError, NotFoundError
@@ -498,6 +498,79 @@ class Dynavec:
             for doc_id in ids
             if doc_id in hydrated
         ]
+
+    def list_vectors(
+        self,
+        namespace: str | None = None,
+        *,
+        include_vectors: bool = False,
+        hydrate: bool = True,
+        page_size: int | None = None,
+    ) -> Iterator[SearchResult]:
+        """Stream every stored vector, one at a time, for maintenance jobs.
+
+        A generator over the whole index — bulk delete, re-embedding, auditing.
+        Only a single page is ever held in memory, so this is safe over indexes
+        holding millions of vectors. Do not build a list from it unless you
+        already know the index is small.
+
+        Parameters
+        ----------
+        namespace:
+            Restrict the walk to one namespace. ``None`` (the default) walks
+            every namespace in the index. Amazon S3 Vectors ``ListVectors``
+            takes no server-side ``filter``, so unlike :meth:`search` the scope
+            is applied client-side on the vector key, which carries the same
+            namespace that :func:`build_s3_filter` matches via the
+            ``_dv_ns`` metadata tag.
+        include_vectors:
+            Carry the raw embedding on each result (extra bandwidth).
+        hydrate:
+            Fetch text and full metadata from DynamoDB, one BatchGetItem per
+            page. Set False for jobs that only need ids: results then carry the
+            smaller *filterable* metadata subset mirrored into S3 Vectors, and
+            text only where ``store_text_in_s3vectors`` mirrored it.
+        page_size:
+            Service-side page size (``maxResults``, 1-1000).
+        """
+        for page in self._vectors.list_pages(
+            return_data=include_vectors,
+            return_metadata=not hydrate,
+            page_size=page_size,
+        ):
+            scoped = []
+            for v in page:
+                key_ns, doc_id = self._split_key(v["key"])
+                if namespace is not None and key_ns != namespace:
+                    continue
+                scoped.append((key_ns, doc_id, v))
+            if not scoped:
+                continue
+
+            hydrated: dict[str, dict[str, dict[str, Any]]] = {}
+            if hydrate:
+                by_ns: dict[str, list[str]] = {}
+                for key_ns, doc_id, _ in scoped:
+                    by_ns.setdefault(key_ns, []).append(doc_id)
+                for ns, ids in by_ns.items():
+                    hydrated[ns] = self._docs.get_many(ns, ids)
+
+            for key_ns, doc_id, v in scoped:
+                if hydrate:
+                    doc = hydrated.get(key_ns, {}).get(doc_id, {})
+                    text = doc.get("text")
+                    metadata = doc.get("metadata", {})
+                else:
+                    metadata = dict(v.get("metadata") or {})
+                    metadata.pop(NS_METADATA_KEY, None)
+                    text = metadata.pop(TEXT_METADATA_KEY, None)
+                yield SearchResult(
+                    id=doc_id,
+                    score=1.0,
+                    text=text,
+                    metadata=metadata,
+                    vector=(v.get("data") or {}).get("float32") if include_vectors else None,
+                )
 
     # -------------------------------------------------------------- graph / ER
     def graph_add_node(self, entity_id, *, namespace="default", ntype=None, props=None):

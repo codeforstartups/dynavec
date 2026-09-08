@@ -15,6 +15,10 @@ def _parser() -> argparse.ArgumentParser:
 	doctor.add_argument("--table", help="DynamoDB table name")
 	doctor.add_argument("--region", help="AWS region")
 	doctor.add_argument("--profile", help="AWS profile name")
+	
+	dashboard = subparsers.add_parser("dashboard", help="launch the real-time telemetry dashboard")
+	dashboard.add_argument("--port", type=int, default=8778, help="Port to run the dashboard on (default: 8778)")
+	
 	return parser
 
 
@@ -97,6 +101,10 @@ def main(argv: list[str] | None = None) -> int:
 	args = _parser().parse_args(argv)
 	if args.command == "doctor":
 		return _doctor(args)
+	elif args.command == "dashboard":
+		from .telemetry import start_server
+		start_server(port=args.port)
+		return 0
 	_parser().print_help()
 	return 0
 

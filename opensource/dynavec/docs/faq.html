@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Frequently Asked Questions · dynavec docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="../index.html">
+        <svg class="brand__mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+          <rect x="1" y="1" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="1" y1="11" x2="21" y2="11" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="11" y1="1" x2="11" y2="21" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="6" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/>
+        </svg>
+        <span class="brand__name">dynavec</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="../index.html#why">Why</a>
+        <a href="../index.html#benchmarks">Benchmarks</a>
+        <a href="index.html">Docs</a>
+      </nav>
+      <a class="btn btn--ghost star" href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">
+        <span aria-hidden="true">&#9733;</span> Star <span class="star__count" data-stars>&mdash;</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docshell">
+    <button class="side__toggle">☰ Menu</button>
+<nav class="side" aria-label="Docs">
+<div class="side__group"><p class="side__title">Getting started</p><ul class="side__list">
+<li><a href="index.html">Overview</a></li>
+<li><a href="installation.html">Installation</a></li>
+<li><a href="quickstart.html">Quickstart</a></li>
+<li><a href="configuration.html">Configuration</a></li>
+<li><a href="faq.html" class="is-current">FAQ</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Writing data</p><ul class="side__list">
+<li><a href="embeddings.html">Embeddings</a></li>
+<li><a href="upsert.html">Upsert</a></li>
+<li><a href="update-and-lambda.html">Update & Lambda</a></li>
+<li><a href="ingestion.html">Ingestion & MCP</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Searching</p><ul class="side__list">
+<li><a href="search.html">Search</a></li>
+<li><a href="metrics-and-rerank.html">Metrics & rerank</a></li>
+<li><a href="namespaces.html">Namespaces</a></li>
+<li><a href="streaming.html">Streaming</a></li>
+<li><a href="caching.html">Caching</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Advanced</p><ul class="side__list">
+<li><a href="knowledge-graph.html">Knowledge graph</a></li>
+<li><a href="quantization.html">Product quantization</a></li>
+<li><a href="concurrency.html">Concurrency</a></li>
+<li><a href="credentials.html">Credentials & IAM</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Ecosystem</p><ul class="side__list">
+<li><a href="integrations.html">Framework integrations</a></li>
+<li><a href="benchmarking.html">Benchmarking</a></li>
+</ul></div>
+</nav>
+    <main class="doc">
+      <div class="doc__crumbs"><a href="../index.html">dynavec</a> / <a href="index.html">Docs</a> / Frequently Asked Questions</div>
+      <h1>Frequently Asked Questions</h1>
+      <p class="doc__sub">Common questions about regions, limits, consistency, costs, and architecture.</p>
+      
+<h2>Regions &amp; Availability</h2>
+
+<h3>Which AWS regions are supported?</h3>
+<p><code>dynavec</code> runs in any AWS region where both <strong>Amazon S3 Vectors</strong> and <strong>Amazon DynamoDB</strong> are supported (for example, <code>us-east-1</code>, <code>us-west-2</code>, <code>ap-south-1</code>, <code>eu-west-1</code>, and others). Specify your target region in <code>DynavecConfig(region="...")</code>.</p>
+
+<h3>Can I query across multiple AWS regions?</h3>
+<p>Each <code>DynavecConfig</code> connects to a single AWS region. Keeping your S3 vector bucket and DynamoDB table in the same region as your application workloads (e.g. Lambda, ECS, EC2) ensures single-digit millisecond latency and eliminates cross-region data transfer fees. If you need multi-region deployments, create independent <code>Dynavec</code> client instances per region.</p>
+
+<h3>Can I use Amazon Bedrock or third-party embedders in different regions?</h3>
+<p>Yes. <code>BedrockEmbedder</code> accepts an explicit <code>region</code> parameter (e.g. <code>BedrockEmbedder(model_id="amazon.titan-embed-text-v2:0", region="us-east-1")</code>) even if your vector database resources reside in a different region. Third-party embedders (OpenAI, Gemini, Cohere, Voyage) operate over public HTTPS APIs regardless of your AWS region.</p>
+
+<h2>Limits &amp; Constraints</h2>
+
+<h3>What is the maximum supported embedding dimension?</h3>
+<p>Amazon S3 Vectors supports vectors up to <strong>4,096 dimensions</strong>. All popular embedding models fall well within this ceiling, including 384-d (MiniLM), 768-d (BGE-base, Gemini), 1024-d (Voyage, BGE-large), 1536-d (OpenAI small / ada-002), and 3072-d (OpenAI large). See <a href="https://github.com/codeforstartups/dynavec/blob/development/docs/EMBEDDING_DIMENSIONS.md">Embedding Dimensions Guide</a> for trade-offs.</p>
+
+<h3>What are the limits on metadata filtering?</h3>
+<p>dynavec uses a two-store hybrid model for metadata:</p>
+<ul>
+  <li><strong>Filterable metadata:</strong> Indexed directly in S3 Vectors for fast pre-filtering. Pass only the keys you need to filter on via <code>DynavecConfig(filterable_keys=[...])</code> (e.g. <code>["topic", "tenant_id", "year"]</code>).</li>
+  <li><strong>Document metadata &amp; text:</strong> The complete payload is stored in DynamoDB, subject to DynamoDB's standard <strong>400 KB per item</strong> limit.</li>
+</ul>
+
+<h3>What is the maximum <code>top_k</code> query limit?</h3>
+<p>Amazon S3 Vectors returns up to 100 vectors per page and supports querying up to the service ceiling of <strong>10,000 vectors</strong> per query via pagination. dynavec automatically handles <code>nextToken</code> pagination behind the scenes, and provides <a href="streaming.html"><code>search_stream()</code></a> to stream hydrated results progressively as each page arrives.</p>
+
+<h3>What are the batch limits for ingestion and reads?</h3>
+<p>DynamoDB processes up to 25 items per <code>BatchWriteItem</code> and 100 items per <code>BatchGetItem</code>. dynavec manages batch chunking, throttling retries, and parallel dispatch over a thread pool automatically — you can pass arbitrarily large lists of documents to <code>db.upsert()</code> or <code>ingest()</code>.</p>
+
+<h2>Consistency &amp; Latency</h2>
+
+<h3>Why do newly upserted vectors not show up immediately in search results?</h3>
+<p>Amazon S3 Vectors is <strong>eventually consistent</strong> after ingestion. It typically takes a few seconds for new or modified vectors to be indexed and searchable via ANN vector queries. In contrast, document text and metadata written to DynamoDB are immediately accessible via key lookups.</p>
+<div class="callout">When writing automated integration tests, insert a brief sleep (e.g. 3–5 seconds) after upsert before executing query assertions.</div>
+
+<h3>What query latency should I expect?</h3>
+<p>For end-to-end semantic searches (S3 Vectors ANN lookup + DynamoDB <code>BatchGetItem</code> document hydration):</p>
+<ul>
+  <li><strong>p50 latency:</strong> ~45 ms for warm queries.</li>
+  <li><strong>p95 latency:</strong> ~120 ms.</li>
+  <li><strong>Repeated queries:</strong> Sub-millisecond to low single-digit ms when using <a href="caching.html"><code>SemanticCache</code></a> or <a href="caching.html"><code>RedisCache</code></a>.</li>
+</ul>
+
+<h2>Costs &amp; Billing</h2>
+
+<h3>How much does dynavec cost to run?</h3>
+<p>dynavec has <strong>no baseline idle cost</strong> and no fixed monthly cluster fees. You only pay standard AWS pay-as-you-go rates:</p>
+<table class="doc__params">
+<tr><th>Component</th><th>Pricing Model</th></tr>
+<tr><td><strong>S3 Vectors</strong></td><td>Vector storage (GB/month) + vector query and ingest PUT requests</td></tr>
+<tr><td><strong>DynamoDB</strong></td><td>On-Demand Read/Write Request Units (RRUs/WRUs) + document storage</td></tr>
+</table>
+<p>For a typical workload with 1M vectors (768-d) and 1M queries/month, total AWS infrastructure cost is approximately <strong>$3–$4/month</strong> — up to 50–200× cheaper than running dedicated clusters (e.g. OpenSearch, Qdrant, Milvus).</p>
+
+<h3>Are there data transfer fees between DynamoDB and S3 Vectors?</h3>
+<p>No. When your application and dynavec resources are in the same AWS region, all data transfer between S3 Vectors, DynamoDB, and your compute environment (Lambda, ECS, EC2) is free.</p>
+
+<h2>Security, Privacy &amp; Architecture</h2>
+
+<h3>Does my data ever leave my AWS account?</h3>
+<p>No. All documents, metadata, and vectors are stored inside your own AWS account's DynamoDB tables and S3 vector buckets. If you use <code>BedrockEmbedder</code> or <code>SentenceTransformerEmbedder</code>, embeddings are generated entirely within your AWS boundary or locally offline.</p>
+
+<h3>How does multi-tenancy work?</h3>
+<p>dynavec provides native <a href="namespaces.html">Namespaces</a>. A single S3 vector bucket and DynamoDB table can host many independent tenants. DynamoDB partition keys are cleanly isolated via escaped <code>"{namespace}#{id}"</code> prefixes, and vector queries are automatically scoped so data never leaks across namespaces.</p>
+
+      <div class="doc__next"><a href="configuration.html"><span>Previous</span>Configuration</a><a href="embeddings.html" style="text-align:right"><span>Next</span>Embeddings</a></div>
+    </main>
+  </div>
+
+  <script src="docs.js"></script>
+</body>
+</html>

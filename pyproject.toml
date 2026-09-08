@@ -37,6 +37,7 @@ openai = ["openai>=1.40"]
 gemini = ["google-generativeai>=0.8"]
 cohere = ["cohere>=5.0"]
 voyage = ["voyageai>=0.3.2"]
+mistral = ["mistralai>=2.0; python_version >= '3.10'"]
 sentence-transformers = ["sentence-transformers>=3.0"]
 # bedrock needs nothing beyond boto3.
 
@@ -50,18 +51,19 @@ ingest = ["pypdf>=4.0", "python-docx>=1.1", "python-pptx>=0.6", "openpyxl>=3.1"]
 # --- Agent framework integrations ---
 langchain = ["langchain-core>=0.3"]
 llamaindex = ["llama-index-core>=0.11"]
-crewai = ["crewai>=0.70; python_version >= '3.10'"]
+crewai = ["crewai>=0.70,!=1.14.0; python_version >= '3.10'"]
 all = [
     "openai>=1.40",
     "google-generativeai>=0.8",
     "cohere>=5.0",
     "voyageai>=0.3.2",
+    "mistralai>=2.0; python_version >= '3.10'",
     "sentence-transformers>=3.0",
     "redis>=5.0",
     "mcp>=1.0; python_version >= '3.10'",
     "langchain-core>=0.3",
     "llama-index-core>=0.11",
-    "crewai>=0.70; python_version >= '3.10'",
+    "crewai>=0.70,!=1.14.0; python_version >= '3.10'",
 ]
 
 # --- Dev / test / benchmark ---
@@ -70,6 +72,7 @@ dev = [
     "pytest-cov>=5.0",
     "moto[dynamodb]>=5.0",
     "ruff>=0.6",
+    "pre-commit>=3.5",
 ]
 benchmark = [
     "pandas>=2.0",
@@ -79,15 +82,16 @@ benchmark = [
 
 
 [project.urls]
-Homepage = "https://github.com/your-org/dynavec"
-Documentation = "https://github.com/your-org/dynavec#readme"
-Issues = "https://github.com/your-org/dynavec/issues"
+Homepage = "https://github.com/codeforstartups/dynavec"
+Documentation = "https://github.com/codeforstartups/dynavec#readme"
+Issues = "https://github.com/codeforstartups/dynavec/issues"
 
 [project.scripts]
 dynavec = "dynavec.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dynavec"]
+include = ["src/dynavec/py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

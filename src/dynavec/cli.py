@@ -15,10 +15,22 @@ def _parser() -> argparse.ArgumentParser:
 	doctor.add_argument("--table", help="DynamoDB table name")
 	doctor.add_argument("--region", help="AWS region")
 	doctor.add_argument("--profile", help="AWS profile name")
-	
 	dashboard = subparsers.add_parser("dashboard", help="launch the real-time telemetry dashboard")
 	dashboard.add_argument("--port", type=int, default=8778, help="Port to run the dashboard on (default: 8778)")
-	
+
+	mcp = subparsers.add_parser("mcp", help="run the FastMCP server for AI clients")
+	mcp.add_argument(
+		"--transport",
+		choices=["stdio", "sse"],
+		default="stdio",
+		help="Transport mode (default: stdio)",
+	)
+	mcp.add_argument(
+		"--port",
+		type=int,
+		default=8000,
+		help="Port for SSE transport (default: 8000)",
+	)
 	return parser
 
 
@@ -104,6 +116,15 @@ def main(argv: list[str] | None = None) -> int:
 	elif args.command == "dashboard":
 		from .telemetry import start_server
 		start_server(port=args.port)
+	elif args.command == "mcp":
+		from .mcp.server import create_mcp_server
+
+		server = create_mcp_server()
+		if args.transport == "sse":
+			server.settings.port = args.port
+			server.run(transport="sse")
+		else:
+			server.run(transport="stdio")
 		return 0
 	_parser().print_help()
 	return 0

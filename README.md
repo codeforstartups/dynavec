@@ -15,6 +15,8 @@ uv add dynavec
 uv add "dynavec[all]"
 ```
 
+Type hints are included for type checkers such as mypy and pyright.
+
 ---
 
 ## Why dynavec
@@ -122,6 +124,35 @@ store = DynavecVectorStore(db, namespace="kb")
 retriever = store.as_retriever(search_kwargs={"k": 4})
 ```
 
+### FastMCP Server (Claude Desktop, Cursor, AI agents)
+
+Expose `dynavec_search` and `dynavec_graph_search` tools to any MCP client over stdio:
+
+```bash
+# Launch MCP server from environment variables
+dynavec mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "dynavec": {
+      "command": "uvx",
+      "args": ["--with", "dynavec[all]", "dynavec", "mcp"],
+      "env": {
+        "AWS_ACCESS_KEY_ID": "AKIA...",
+        "AWS_SECRET_ACCESS_KEY": "...",
+        "AWS_REGION": "us-east-1",
+        "OPENAI_API_KEY": "sk-...",
+        "DYNAVEC_VECTOR_BUCKET": "my-vectors",
+        "DYNAVEC_INDEX": "docs",
+        "DYNAVEC_TABLE": "dynavec_docs"
+      }
+    }
+  }
+}
+```
+
 LlamaIndex, CrewAI, and Strands adapters are on the roadmap; the core client works in any of them today.
 
 ---
@@ -140,7 +171,7 @@ Every write/read takes a `namespace`. dynavec tags each vector with its namespac
 
 ## Provisioning & IAM
 
-`auto_provision=True` (or `db.provision()`) creates the S3 vector bucket, the vector index, and the DynamoDB table idempotently. The caller needs `s3vectors:*` on the bucket/index and `dynamodb:*` on the table (scope these down in production — see [ARCHITECTURE.md](ARCHITECTURE.md)).
+`auto_provision=True` (or `db.provision()`) creates the S3 vector bucket, the vector index, and the DynamoDB table idempotently. The caller needs `s3vectors:*` on the bucket/index and `dynamodb:*` on the table (scope these down in production — see [ARCHITECTURE.md](ARCHITECTURE.md)). For supported AWS regions and regional configuration, see [REGIONS.md](docs/REGIONS.md).
 
 ---
 

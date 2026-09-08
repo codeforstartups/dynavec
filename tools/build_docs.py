@@ -18,6 +18,7 @@ NAV = [
         ("installation", "Installation"),
         ("quickstart", "Quickstart"),
         ("configuration", "Configuration"),
+        ("faq", "FAQ"),
     ]),
     ("Writing data", [
         ("embeddings", "Embeddings"),
@@ -119,6 +120,8 @@ Weaviate, and OpenSearch that bills only when you use it.</p>
   <a href="ingestion.html"><h3>Ingestion &amp; MCP</h3><p>Pull, chunk, embed from any source — including any MCP server.</p></a>
   <a href="credentials.html"><h3>Credentials &amp; IAM</h3><p>Access keys, profiles, cross-account assume-role, least-privilege policy.</p></a>
   <a href="integrations.html"><h3>Integrations</h3><p>LangChain, LlamaIndex, and a tool for LangGraph / CrewAI / Strands.</p></a>
+  <a href="faq.html"><h3>FAQ</h3><p>Common questions about regions, limits, consistency, and costs.</p></a>
+  <a href="benchmarking.html"><h3>Benchmarking</h3><p>Recall, latency, and cost modeled across dimensions and scale.</p></a>
 </div>
 """)
 
@@ -214,18 +217,89 @@ cfg = DynavecConfig(
 </table>
 """)
 
+PAGES["faq"] = ("Frequently Asked Questions",
+    "Common questions about regions, limits, consistency, costs, and architecture.",
+    """
+<h2>Regions &amp; Availability</h2>
+
+<h3>Which AWS regions are supported?</h3>
+<p><code>dynavec</code> runs in any AWS region where both <strong>Amazon S3 Vectors</strong> and <strong>Amazon DynamoDB</strong> are supported (for example, <code>us-east-1</code>, <code>us-west-2</code>, <code>ap-south-1</code>, <code>eu-west-1</code>, and others). Specify your target region in <code>DynavecConfig(region="...")</code>.</p>
+
+<h3>Can I query across multiple AWS regions?</h3>
+<p>Each <code>DynavecConfig</code> connects to a single AWS region. Keeping your S3 vector bucket and DynamoDB table in the same region as your application workloads (e.g. Lambda, ECS, EC2) ensures single-digit millisecond latency and eliminates cross-region data transfer fees. If you need multi-region deployments, create independent <code>Dynavec</code> client instances per region.</p>
+
+<h3>Can I use Amazon Bedrock or third-party embedders in different regions?</h3>
+<p>Yes. <code>BedrockEmbedder</code> accepts an explicit <code>region</code> parameter (e.g. <code>BedrockEmbedder(model_id="amazon.titan-embed-text-v2:0", region="us-east-1")</code>) even if your vector database resources reside in a different region. Third-party embedders (OpenAI, Gemini, Cohere, Voyage) operate over public HTTPS APIs regardless of your AWS region.</p>
+
+<h2>Limits &amp; Constraints</h2>
+
+<h3>What is the maximum supported embedding dimension?</h3>
+<p>Amazon S3 Vectors supports vectors up to <strong>4,096 dimensions</strong>. All popular embedding models fall well within this ceiling, including 384-d (MiniLM), 768-d (BGE-base, Gemini), 1024-d (Voyage, BGE-large), 1536-d (OpenAI small / ada-002), and 3072-d (OpenAI large). See <a href="https://github.com/codeforstartups/dynavec/blob/development/docs/EMBEDDING_DIMENSIONS.md">Embedding Dimensions Guide</a> for trade-offs.</p>
+
+<h3>What are the limits on metadata filtering?</h3>
+<p>dynavec uses a two-store hybrid model for metadata:</p>
+<ul>
+  <li><strong>Filterable metadata:</strong> Indexed directly in S3 Vectors for fast pre-filtering. Pass only the keys you need to filter on via <code>DynavecConfig(filterable_keys=[...])</code> (e.g. <code>["topic", "tenant_id", "year"]</code>).</li>
+  <li><strong>Document metadata &amp; text:</strong> The complete payload is stored in DynamoDB, subject to DynamoDB's standard <strong>400 KB per item</strong> limit.</li>
+</ul>
+
+<h3>What is the maximum <code>top_k</code> query limit?</h3>
+<p>Amazon S3 Vectors returns up to 100 vectors per page and supports querying up to the service ceiling of <strong>10,000 vectors</strong> per query via pagination. dynavec automatically handles <code>nextToken</code> pagination behind the scenes, and provides <a href="streaming.html"><code>search_stream()</code></a> to stream hydrated results progressively as each page arrives.</p>
+
+<h3>What are the batch limits for ingestion and reads?</h3>
+<p>DynamoDB processes up to 25 items per <code>BatchWriteItem</code> and 100 items per <code>BatchGetItem</code>. dynavec manages batch chunking, throttling retries, and parallel dispatch over a thread pool automatically — you can pass arbitrarily large lists of documents to <code>db.upsert()</code> or <code>ingest()</code>.</p>
+
+<h2>Consistency &amp; Latency</h2>
+
+<h3>Why do newly upserted vectors not show up immediately in search results?</h3>
+<p>Amazon S3 Vectors is <strong>eventually consistent</strong> after ingestion. It typically takes a few seconds for new or modified vectors to be indexed and searchable via ANN vector queries. In contrast, document text and metadata written to DynamoDB are immediately accessible via key lookups.</p>
+<div class="callout">When writing automated integration tests, insert a brief sleep (e.g. 3–5 seconds) after upsert before executing query assertions.</div>
+
+<h3>What query latency should I expect?</h3>
+<p>For end-to-end semantic searches (S3 Vectors ANN lookup + DynamoDB <code>BatchGetItem</code> document hydration):</p>
+<ul>
+  <li><strong>p50 latency:</strong> ~45 ms for warm queries.</li>
+  <li><strong>p95 latency:</strong> ~120 ms.</li>
+  <li><strong>Repeated queries:</strong> Sub-millisecond to low single-digit ms when using <a href="caching.html"><code>SemanticCache</code></a> or <a href="caching.html"><code>RedisCache</code></a>.</li>
+</ul>
+
+<h2>Costs &amp; Billing</h2>
+
+<h3>How much does dynavec cost to run?</h3>
+<p>dynavec has <strong>no baseline idle cost</strong> and no fixed monthly cluster fees. You only pay standard AWS pay-as-you-go rates:</p>
+<table class="doc__params">
+<tr><th>Component</th><th>Pricing Model</th></tr>
+<tr><td><strong>S3 Vectors</strong></td><td>Vector storage (GB/month) + vector query and ingest PUT requests</td></tr>
+<tr><td><strong>DynamoDB</strong></td><td>On-Demand Read/Write Request Units (RRUs/WRUs) + document storage</td></tr>
+</table>
+<p>For a typical workload with 1M vectors (768-d) and 1M queries/month, total AWS infrastructure cost is approximately <strong>$3–$4/month</strong> — up to 50–200× cheaper than running dedicated clusters (e.g. OpenSearch, Qdrant, Milvus).</p>
+
+<h3>Are there data transfer fees between DynamoDB and S3 Vectors?</h3>
+<p>No. When your application and dynavec resources are in the same AWS region, all data transfer between S3 Vectors, DynamoDB, and your compute environment (Lambda, ECS, EC2) is free.</p>
+
+<h2>Security, Privacy &amp; Architecture</h2>
+
+<h3>Does my data ever leave my AWS account?</h3>
+<p>No. All documents, metadata, and vectors are stored inside your own AWS account's DynamoDB tables and S3 vector buckets. If you use <code>BedrockEmbedder</code> or <code>SentenceTransformerEmbedder</code>, embeddings are generated entirely within your AWS boundary or locally offline.</p>
+
+<h3>How does multi-tenancy work?</h3>
+<p>dynavec provides native <a href="namespaces.html">Namespaces</a>. A single S3 vector bucket and DynamoDB table can host many independent tenants. DynamoDB partition keys are cleanly isolated via escaped <code>"{namespace}#{id}"</code> prefixes, and vector queries are automatically scoped so data never leaks across namespaces.</p>
+""")
+
 PAGES["embeddings"] = ("Embeddings",
     "Pluggable, bring-your-own-key — or bring your own vectors.",
     """
 <p>Choose an embedder and supply your own API key, or skip the embedder entirely and pass pre-computed vectors.
 Embedder backends are imported lazily, so the base install stays light.</p>
 """ + code("""from dynavec.embeddings import (
-    OpenAIEmbedder, GeminiEmbedder, BedrockEmbedder, SentenceTransformerEmbedder,
+    OpenAIEmbedder, GeminiEmbedder, MistralEmbedder, BedrockEmbedder,
+    SentenceTransformerEmbedder,
 )
 
 # hosted (BYO key via env var or argument)
 emb = OpenAIEmbedder(model="text-embedding-3-small")        # 1536-d
 emb = GeminiEmbedder(model="text-embedding-004")            # 768-d
+emb = MistralEmbedder(model="mistral-embed")                # 1024-d
 
 # in-account (no third party) or fully local / offline
 emb = BedrockEmbedder(model_id="amazon.titan-embed-text-v2:0", region="us-east-1")
@@ -558,6 +632,39 @@ index = VectorStoreIndex.from_documents(docs, storage_context=ctx)
 """ + code("""from dynavec.integrations.tools import make_retriever_fn
 retrieve = make_retriever_fn(db, top_k=4)   # fn(query: str) -> str
 # also: as_langchain_tool(db), as_crewai_tool(db)
+""") + """
+<h2>FastMCP server (Claude Desktop, Cursor, AI agents)</h2>
+<p>Expose dynavec as an MCP server with <code>dynavec_search</code> and <code>dynavec_graph_search</code> tools. Configure via environment variables and launch over stdio:</p>
+""" + code("""# Install with MCP extra
+pip install "dynavec[mcp]"
+
+# Launch the FastMCP server via CLI
+dynavec mcp
+""") + """
+<p>Add to your Claude Desktop / Cursor configuration (<code>claude_desktop_config.json</code>):</p>
+""" + code("""{
+  "mcpServers": {
+    "dynavec": {
+      "command": "uvx",
+      "args": ["--with", "dynavec[all]", "dynavec", "mcp"],
+      "env": {
+        "AWS_ACCESS_KEY_ID": "AKIA...",
+        "AWS_SECRET_ACCESS_KEY": "...",
+        "AWS_REGION": "us-east-1",
+        "OPENAI_API_KEY": "sk-...",
+        "DYNAVEC_VECTOR_BUCKET": "my-vectors",
+        "DYNAVEC_INDEX": "docs",
+        "DYNAVEC_TABLE": "dynavec_docs"
+      }
+    }
+  }
+}
+""") + """
+<p>Programmatic initialization is also supported:</p>
+""" + code("""from dynavec.mcp import create_mcp_server
+
+mcp = create_mcp_server(db)
+mcp.run(transport="stdio")
 """))
 
 PAGES["benchmarking"] = ("Benchmarking",
@@ -673,7 +780,7 @@ TEMPLATE = """<!doctype html>
 def main() -> None:
     os.makedirs(OUT, exist_ok=True)
     for slug in PAGES:
-        with open(os.path.join(OUT, slug + ".html"), "w") as f:
+        with open(os.path.join(OUT, slug + ".html"), "w", encoding="utf-8") as f:
             f.write(render(slug))
     print(f"Wrote {len(PAGES)} docs pages to {os.path.normpath(OUT)}")
 

@@ -234,7 +234,7 @@ def test_ns_tag_present_in_s3(db):
     db.upsert([Document(id="1", text="hello")], namespace="ns9")
     # reach into the fake to confirm the namespace tag was written
     store = db._vectors._store
-    (_, meta), = [v for k, v in store.items()]
+    (_, meta), = (v for k, v in store.items())
     assert meta[NS_METADATA_KEY] == "ns9"
 
 
@@ -363,6 +363,14 @@ def test_graph_traversal_hops(db):
     assert db.graph_neighbors("a", hops=1) == ["b"]
     hits = db.graph_search("x", seed_entities=["a"], hops=1, top_k=5)
     assert {h.id for h in hits} == {"d1"}
+
+
+def test_graph_traversal_handles_cycles(db):
+    db.graph_add_edge("a", "related_to", "b")
+    db.graph_add_edge("b", "related_to", "c")
+    db.graph_add_edge("c", "related_to", "a")
+
+    assert set(db.graph_neighbors("a", hops=10)) == {"b", "c"}
 
 
 def test_semantic_cache_hits_on_repeat(db):

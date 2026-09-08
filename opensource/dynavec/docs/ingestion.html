@@ -79,6 +79,32 @@ src = IterableSource([
     {"id": "doc1", "text": long_text, "metadata": {"src": "wiki"}},
 ])
 ingest(db, src, namespace="kb", chunk_size=1000, overlap=150)</code></pre>
+<h2>From a Markdown or text directory</h2>
+<p><code>MarkdownSource</code> reads UTF-8 <code>.md</code> and <code>.txt</code> files recursively.
+Install <code>dynavec[ingest]</code> for YAML front matter support.</p>
+<pre class="code"><code>from dynavec.ingest import MarkdownSource, ingest
+
+source = MarkdownSource("./notes")
+# Or select files with a root-relative glob:
+source = MarkdownSource("./notes", glob="guides/**/*.md")
+ingest(db, source, namespace="notes")</code></pre>
+<p>A Markdown file may begin with a YAML mapping between two <code>---</code> lines:</p>
+<pre class="code"><code>---
+title: Deployment guide
+topic: aws
+tags: [deployment, rag]
+---
+# Deploying the service
+The document body starts here.</code></pre>
+<p>Front matter becomes metadata and is removed from the text before chunking. Use storage-compatible
+values (strings, numbers, booleans, lists, and mappings); quote dates to keep them as strings.
+Malformed or unclosed front matter raises an error naming the file. Text files are read verbatim.</p>
+<p>IDs are root-relative paths such as <code>guides/deploy.md</code>; generated chunks retain this
+path in <code>source_id</code>. Metadata includes <code>source="file"</code> and <code>path</code>,
+which take precedence over front matter. Use separate namespaces for unrelated directory roots
+to avoid ID collisions. Discovery order is sorted, and files are read one at a time.</p>
+<p>Try <code>python examples/ingest_markdown.py ./notes --preview</code> to inspect records without
+AWS calls. The example also supports ingestion into an existing index using an OpenAI embedder.</p>
 <h2>From any MCP server</h2>
 <p><code>MCPResourceSource</code> turns an MCP server's <em>resources</em> (Notion, Confluence, Drive, your
 own) into an embeddable corpus — no per-source code.</p>

@@ -104,6 +104,65 @@ class PDFSource:
             )
 
 
+class MarkdownSource:
+    """Read UTF-8 Markdown and text files from a directory.
+
+    ``glob`` is relative to ``root`` and defaults to recursive discovery.
+    Records use root-relative POSIX paths as IDs. Markdown YAML front matter
+    becomes metadata and is excluded from the text. The ``source`` and ``path``
+    metadata fields are reserved for file provenance. Install ``dynavec[ingest]``
+    to read front matter; files without it need no optional dependencies.
+    """
+
+    def __init__(self, root: str | Path, *, glob: str = "**/*") -> None:
+        self.root = Path(root)
+        if not self.root.exists():
+            raise FileNotFoundError(self.root)
+        if not self.root.is_dir():
+            raise NotADirectoryError(self.root)
+        self.glob = glob
+
+    @staticmethod
+    def _front_matter(text: str, path: Path) -> tuple[str, Metadata]:
+        lines = text.splitlines(keepends=True)
+        if not lines or lines[0].strip() != "---":
+            return text, {}
+        end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+        if end is None:
+            raise ValueError(f"Unclosed YAML front matter in {path}")
+        try:
+            import yaml
+        except ImportError as exc:
+            raise MissingDependencyError(
+                "Markdown front matter", "PyYAML", "ingest"
+            ) from exc
+
+        try:
+            metadata = yaml.safe_load("".join(lines[1:end]))
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Invalid YAML front matter in {path}: {exc}") from exc
+        if metadata is None:
+            metadata = {}
+        if not isinstance(metadata, dict) or any(not isinstance(k, str) for k in metadata):
+            raise ValueError(f"Front matter in {path} must be a mapping with string keys")
+        return "".join(lines[end + 1 :]), metadata
+
+    def __iter__(self) -> Iterator[Record]:
+        for path in sorted(self.root.glob(self.glob)):
+            if not path.is_file() or path.suffix.lower() not in (".md", ".txt"):
+                continue
+            text = path.read_text(encoding="utf-8-sig")
+            metadata: Metadata = {}
+            if path.suffix.lower() == ".md":
+                text, metadata = self._front_matter(text, path)
+            relative_path = path.relative_to(self.root).as_posix()
+            yield Record(
+                id=relative_path,
+                text=text,
+                metadata={**metadata, "source": "file", "path": relative_path},
+            )
+
+
 class MCPResourceSource:
     """Adapt an MCP server's *resources* into dynavec records.
 

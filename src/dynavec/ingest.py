@@ -19,9 +19,11 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from .client import Dynavec
+from .exceptions import MissingDependencyError
 from .models import Document
 from .utils import chunked
 
@@ -64,6 +66,42 @@ class IterableSource:
     def __iter__(self) -> Iterator[Record]:
         for r in self._records:
             yield r if isinstance(r, Record) else Record(**r)
+
+
+class PDFSource:
+    """Yield one Record per text-bearing page in a PDF."""
+
+    def __init__(self, path: str | Path) -> None:
+        try:
+            from pypdf import PdfReader
+        except ImportError as exc:
+            raise MissingDependencyError(
+                "PDFSource",
+                "pypdf",
+                "ingest",
+            ) from exc
+
+        self._path = Path(path)
+        self._reader_cls = PdfReader
+
+    def __iter__(self) -> Iterator[Record]:
+        reader = self._reader_cls(self._path)
+
+        for page_number, page in enumerate(reader.pages, start=1):
+            text = page.extract_text()
+
+            if not text or not text.strip():
+                continue
+
+            yield Record(
+                id=f"{self._path}#page{page_number}",
+                text=text,
+                metadata={
+                    "source": "pdf",
+                    "path": str(self._path),
+                    "page": page_number,
+                },
+            )
 
 
 class MCPResourceSource:

@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "dynavec": {
+      "command": "uvx",
+      "args": [
+        "--with",
+        "dynavec[all]",
+        "dynavec",
+        "mcp"
+      ],
+      "env": {
+        "AWS_ACCESS_KEY_ID": "AKIA...YOUR_AWS_KEY...",
+        "AWS_SECRET_ACCESS_KEY": "...YOUR_AWS_SECRET...",
+        "AWS_REGION": "us-east-1",
+        "OPENAI_API_KEY": "sk-...YOUR_OPENAI_KEY...",
+        "DYNAVEC_VECTOR_BUCKET": "my-vectors",
+        "DYNAVEC_INDEX": "docs",
+        "DYNAVEC_TABLE": "dynavec_docs",
+        "DYNAVEC_DIMENSION": "1536",
+        "DYNAVEC_EMBEDDER": "openai"
+      }
+    }
+  }
+}
+

@@ -122,6 +122,35 @@ store = DynavecVectorStore(db, namespace="kb")
 retriever = store.as_retriever(search_kwargs={"k": 4})
 ```
 
+### FastMCP Server (Claude Desktop, Cursor, AI agents)
+
+Expose `dynavec_search` and `dynavec_graph_search` tools to any MCP client over stdio:
+
+```bash
+# Launch MCP server from environment variables
+dynavec mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "dynavec": {
+      "command": "uvx",
+      "args": ["--with", "dynavec[all]", "dynavec", "mcp"],
+      "env": {
+        "AWS_ACCESS_KEY_ID": "AKIA...",
+        "AWS_SECRET_ACCESS_KEY": "...",
+        "AWS_REGION": "us-east-1",
+        "OPENAI_API_KEY": "sk-...",
+        "DYNAVEC_VECTOR_BUCKET": "my-vectors",
+        "DYNAVEC_INDEX": "docs",
+        "DYNAVEC_TABLE": "dynavec_docs"
+      }
+    }
+  }
+}
+```
+
 LlamaIndex, CrewAI, and Strands adapters are on the roadmap; the core client works in any of them today.
 
 ---

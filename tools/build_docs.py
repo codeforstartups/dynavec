@@ -558,6 +558,39 @@ index = VectorStoreIndex.from_documents(docs, storage_context=ctx)
 """ + code("""from dynavec.integrations.tools import make_retriever_fn
 retrieve = make_retriever_fn(db, top_k=4)   # fn(query: str) -> str
 # also: as_langchain_tool(db), as_crewai_tool(db)
+""") + """
+<h2>FastMCP server (Claude Desktop, Cursor, AI agents)</h2>
+<p>Expose dynavec as an MCP server with <code>dynavec_search</code> and <code>dynavec_graph_search</code> tools. Configure via environment variables and launch over stdio:</p>
+""" + code("""# Install with MCP extra
+pip install "dynavec[mcp]"
+
+# Launch the FastMCP server via CLI
+dynavec mcp
+""") + """
+<p>Add to your Claude Desktop / Cursor configuration (<code>claude_desktop_config.json</code>):</p>
+""" + code("""{
+  "mcpServers": {
+    "dynavec": {
+      "command": "uvx",
+      "args": ["--with", "dynavec[all]", "dynavec", "mcp"],
+      "env": {
+        "AWS_ACCESS_KEY_ID": "AKIA...",
+        "AWS_SECRET_ACCESS_KEY": "...",
+        "AWS_REGION": "us-east-1",
+        "OPENAI_API_KEY": "sk-...",
+        "DYNAVEC_VECTOR_BUCKET": "my-vectors",
+        "DYNAVEC_INDEX": "docs",
+        "DYNAVEC_TABLE": "dynavec_docs"
+      }
+    }
+  }
+}
+""") + """
+<p>Programmatic initialization is also supported:</p>
+""" + code("""from dynavec.mcp import create_mcp_server
+
+mcp = create_mcp_server(db)
+mcp.run(transport="stdio")
 """))
 
 PAGES["benchmarking"] = ("Benchmarking",
@@ -673,7 +706,7 @@ TEMPLATE = """<!doctype html>
 def main() -> None:
     os.makedirs(OUT, exist_ok=True)
     for slug in PAGES:
-        with open(os.path.join(OUT, slug + ".html"), "w") as f:
+        with open(os.path.join(OUT, slug + ".html"), "w", encoding="utf-8") as f:
             f.write(render(slug))
     print(f"Wrote {len(PAGES)} docs pages to {os.path.normpath(OUT)}")
 

@@ -288,7 +288,7 @@ hit-rate, and a filterable **traces** table with per-trace drill-down.
 | Area | What you get | API |
 |------|--------------|-----|
 | **Distance metrics** | Index on cosine/euclidean (S3 Vectors native); client-side rescore in cosine / dot / euclidean / manhattan or a **weighted combination**, with optional result-set normalization | `search(..., rescore="dot", normalize_scores=True)` |
-| **Concurrency** | GIL-aware thread pool — real parallelism for I/O-bound AWS calls; parallel batched writes + `search_many` | `DynavecConfig(max_workers=8)`, `db.search_many([...])` |
+| **Concurrency** | GIL-aware thread pool — real parallelism for I/O-bound AWS calls; parallel batched writes + `search_many`; tunable botocore connection pool | `DynavecConfig(max_workers=8, max_pool_connections=50)`, `db.search_many([...])` |
 | **Streaming** | Results yielded page-by-page as S3 Vectors paginates, so agents start consuming early | `for hit in db.search_stream(q): ...` |
 | **Namespace RAG** | Per-tenant/collection handles; isolation + even partitioning | `kb = db.namespace("kb"); kb.search(...)` |
 | **Product quantization** | Compress cached/hot-tier vectors up to 32× (ADC distance) | `ProductQuantizer(m=96).fit(X)` |

@@ -39,7 +39,11 @@ class S3VectorsStore:
 
         session = boto_session or boto3.Session()
         self._config = config
-        self._client = session.client("s3vectors", region_name=config.region)
+        client_kwargs: dict[str, object] = {"region_name": config.region}
+        botocore_config = config.botocore_config()
+        if botocore_config is not None:
+            client_kwargs["config"] = botocore_config
+        self._client = session.client("s3vectors", **client_kwargs)  # type: ignore[arg-type]
 
     @retry()
     def _put_batch(self, payload: list[dict]) -> None:

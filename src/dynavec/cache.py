@@ -200,7 +200,11 @@ class DynamoDBCache(BaseCache):
         import boto3
 
         session = boto_session or boto3.Session()
-        self._table = session.resource("dynamodb", region_name=config.region).Table(config.table)
+        resource_kwargs: dict[str, object] = {"region_name": config.region}
+        botocore_config = config.botocore_config()
+        if botocore_config is not None:
+            resource_kwargs["config"] = botocore_config
+        self._table = session.resource("dynamodb", **resource_kwargs).Table(config.table)  # type: ignore[arg-type]
         self.ttl_seconds = ttl_seconds
 
     @staticmethod

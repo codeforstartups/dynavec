@@ -52,6 +52,9 @@ class DynavecConfig:
         Optional client-side chunk size for streamed query pages. ``None``
         (default) yields native Amazon S3 Vectors pages (at most 100 vectors).
         Does not change the service page size.
+    max_pool_connections:
+        Optional botocore ``max_pool_connections`` tuning for DynamoDB and
+        S3 Vectors clients. ``None`` (default) keeps boto3/botocore defaults.
     """
 
     vector_bucket: str
@@ -75,10 +78,23 @@ class DynavecConfig:
     # the GIL during network calls). See client._executor.
     max_workers: int = 8
     parallel_writes: bool = True
+    max_pool_connections: int | None = None
 
     # provisioning
     auto_provision: bool = False
     dynamodb_billing_mode: Literal["PAY_PER_REQUEST", "PROVISIONED"] = "PAY_PER_REQUEST"
+
+    def botocore_config(self):  # type: ignore[no-untyped-def]
+        """Return a botocore Config with pool tuning, or None for defaults.
+
+        Local import keeps the base package cheap (boto3/botocore stay
+        optional until a store actually builds a client).
+        """
+        if self.max_pool_connections is None:
+            return None
+        from botocore.config import Config
+
+        return Config(max_pool_connections=self.max_pool_connections)
 
     def __post_init__(self) -> None:
         if self.dimension <= 0:
@@ -89,3 +105,5 @@ class DynavecConfig:
             raise ValueError("over_fetch must be >= 1")
         if self.top_k_page_size is not None and self.top_k_page_size <= 0:
             raise ValueError("top_k_page_size must be a positive integer")
+        if self.max_pool_connections is not None and self.max_pool_connections <= 0:
+            raise ValueError("max_pool_connections must be a positive integer")

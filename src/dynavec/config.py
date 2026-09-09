@@ -54,7 +54,8 @@ class DynavecConfig:
         Does not change the service page size.
     max_pool_connections:
         Optional botocore ``max_pool_connections`` tuning for DynamoDB and
-        S3 Vectors clients. ``None`` (default) keeps boto3/botocore defaults.
+        S3 Vectors clients. ``None`` (default) keeps boto3/botocore defaults
+        (currently 10 connections per client).
     """
 
     vector_bucket: str

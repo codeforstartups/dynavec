@@ -15,6 +15,7 @@ if TYPE_CHECKING:  # for type checkers / IDEs only
     from .bedrock import BedrockEmbedder, BedrockTitanMultimodalEmbedder
     from .gemini import GeminiEmbedder
     from .mistral import MistralEmbedder
+    from .ollama import OllamaEmbedder
     from .openai import OpenAIEmbedder
     from .sentence_transformers import SentenceTransformerEmbedder
     from .voyage import VoyageEmbedder
@@ -29,6 +30,7 @@ __all__ = [
     "SentenceTransformerEmbedder",
     "VoyageEmbedder",
     "MistralEmbedder",
+    "OllamaEmbedder",
 ]
 
 _LAZY = {
@@ -45,6 +47,7 @@ _LAZY = {
     ),
     "VoyageEmbedder": ("dynavec.embeddings.voyage", "VoyageEmbedder"),
     "MistralEmbedder": ("dynavec.embeddings.mistral", "MistralEmbedder"),
+    "OllamaEmbedder": ("dynavec.embeddings.ollama", "OllamaEmbedder"),
 }
 
 

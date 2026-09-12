@@ -1,4 +1,5 @@
 "use client";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const RANGES = [
   { label: "30m", w: 1800 },
@@ -53,11 +54,12 @@ export default function TopBar({
         onClick={onAuto}
         className={
           "font-mono text-[12px] border-[1.5px] border-ink rounded-lg px-3 py-1.5 " +
-          (auto ? "bg-ink text-white" : "bg-surface text-ink")
+          (auto ? "bg-ink text-bg" : "bg-surface text-ink")
         }
       >
         Auto-refresh
       </button>
+      <ThemeToggle />
     </header>
   );
 }

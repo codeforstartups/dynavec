@@ -3,14 +3,77 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; }
+/* --- Light: the landing-site palette (styles.css) --- */
+:root {
+  color-scheme: light;
+
+  --bg: #fbfaf8;          /* warm paper */
+  --surface: #ffffff;
+  --ink: #14110f;         /* warm near-black */
+  --muted: #6f6862;
+  --faint: #a99f97;
+  --line: #ece6df;
+  --accent: #e8623b;      /* coral */
+  --accent-ink: #b8472a;  /* darker coral for text/hover on light */
+  --accent-soft: #fdeee8; /* light coral wash */
+  --ok: #2f7d5b;
+  --err: #b8472a;
+
+  --track: #f0ece6;       /* meter/track fill */
+  --thead: #faf6f1;       /* table header wash */
+  --shadow: rgba(20, 17, 15, .07);
+  --scroll-thumb: #e0d9d1;
+  --tip-bg: #ffffff;      /* recharts tooltip */
+  --tip-line: #ece6df;
+
+  /* op badges */
+  --op-search-bg: #eef3ff; --op-search-fg: #3b5bdb; --op-search-line: #dbe3ff;
+  --op-graph-bg: #f3eeff;  --op-graph-fg: #7048e8;  --op-graph-line: #e5dbff;
+  --op-upsert-bg: #eafaf1; --op-upsert-fg: #2f7d5b; --op-upsert-line: #d3f0e0;
+}
+
+/* --- Dark: the site's warm inverted tones (--inv-bg #14110f / --inv-fg #fbfaf8) --- */
+.dark {
+  color-scheme: dark;
+
+  --bg: #14110f;          /* warm near-black paper */
+  --surface: #1d1916;     /* lifted warm panel */
+  --ink: #f4efe8;         /* warm off-white */
+  --muted: #a79d94;
+  --faint: #766c64;
+  --line: #2d2723;
+  --accent: #f0714a;      /* brighter coral for dark backgrounds */
+  --accent-ink: #f59a7c;  /* lighter coral for text/hover on dark */
+  --accent-soft: #2a1712; /* dark coral wash */
+  --ok: #57b98d;
+  --err: #ef8a63;
+
+  --track: #2d2723;
+  --thead: #1a1613;
+  --shadow: rgba(0, 0, 0, .4);
+  --scroll-thumb: #3a332e;
+  --tip-bg: #1d1916;
+  --tip-line: #2d2723;
+
+  --op-search-bg: #1a2233; --op-search-fg: #9db6ff; --op-search-line: #2b3a5c;
+  --op-graph-bg: #221a33;  --op-graph-fg: #b9a4f5;  --op-graph-line: #3a2e5c;
+  --op-upsert-bg: #142720; --op-upsert-fg: #57b98d; --op-upsert-line: #24463a;
+}
+
 html, body { padding: 0; margin: 0; }
 body {
-  background: theme('colors.bg');
-  color: theme('colors.ink');
+  background: var(--bg);
+  color: var(--ink);
   font-family: theme('fontFamily.sans');
-  border-top: 3px solid theme('colors.accent');
+  border-top: 3px solid var(--accent);
   -webkit-font-smoothing: antialiased;
+  transition: background-color .18s ease, color .18s ease;
 }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #e0d9d1; border-radius: 6px; }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 6px; }
+
+/* Trace op badges — themed via CSS variables so they flip with .dark */
+.op-badge { background: var(--op-search-bg); color: var(--op-search-fg); border-color: var(--op-search-line); }
+.op-search { background: var(--op-search-bg); color: var(--op-search-fg); border-color: var(--op-search-line); }
+.op-graph_search { background: var(--op-graph-bg); color: var(--op-graph-fg); border-color: var(--op-graph-line); }
+.op-upsert { background: var(--op-upsert-bg); color: var(--op-upsert-fg); border-color: var(--op-upsert-line); }

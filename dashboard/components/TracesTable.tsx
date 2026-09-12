@@ -1,10 +1,11 @@
 "use client";
 import type { TraceEvent, TraceFilters } from "@/lib/types";
 
+// Themed via CSS-variable classes in globals.css so badges flip with `.dark`.
 const OP_CLASS: Record<string, string> = {
-  search: "bg-[#eef3ff] text-[#3b5bdb] border-[#dbe3ff]",
-  graph_search: "bg-[#f3eeff] text-[#7048e8] border-[#e5dbff]",
-  upsert: "bg-[#eafaf1] text-ok border-[#d3f0e0]",
+  search: "op-search",
+  graph_search: "op-graph_search",
+  upsert: "op-upsert",
 };
 
 export default function TracesTable({
@@ -54,7 +55,7 @@ export default function TracesTable({
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[13px]">
             <thead>
-              <tr className="text-left font-mono text-[11px] uppercase tracking-wide text-muted bg-[#faf6f1]">
+              <tr className="text-left font-mono text-[11px] uppercase tracking-wide text-muted bg-thead">
                 {["Start", "Op", "Namespace", "Latency", "Results", "Cache", "Rank", "Status"].map((h) => (
                   <th key={h} className="px-[18px] py-2.5 border-b border-line font-normal">{h}</th>
                 ))}

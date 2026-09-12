@@ -40,6 +40,7 @@ from .credentials import AWSCredentials, resolve_session
 from .embeddings.base import Embedder
 from .exceptions import ConfigurationError, DimensionMismatchError, NotFoundError
 from .graph import GraphStore
+from .hot import HotTier
 from .metadata import build_s3_filter, generate_auto_metadata, split_metadata
 from .metrics import normalize_scores as normalize_metric_scores
 from .metrics import rescore as metric_rescore
@@ -83,6 +84,7 @@ class Dynavec:
         self._telemetry = telemetry
         self._graph_store: GraphStore | None = None
         self._pool: ThreadPoolExecutor | None = None
+        self._hot: HotTier | None = HotTier(config) if config.hot_tier else None
 
         if embedder is not None and embedder.dimension != config.dimension:
             raise ConfigurationError(
@@ -159,7 +161,7 @@ class Dynavec:
         namespace: str,
         auto_metadata: bool,
         transform,
-    ) -> tuple[list[tuple], list[tuple], list[str]]:
+    ) -> tuple[list[tuple], list[tuple], list[str], list[tuple]]:
         pipeline = as_pipeline(transform) or self._default_transform
 
         # 1) transforms may set/rewrite text, vector, metadata
@@ -189,7 +191,7 @@ class Dynavec:
                 docs[idx].vector = vec
 
         # 3) validate + build payloads
-        s3_payload, ddb_payload, ids = [], [], []
+        s3_payload, ddb_payload, ids, hot_payload = [], [], [], []
         for d in docs:
             if len(d.vector) != self.config.dimension:
                 raise DimensionMismatchError(
@@ -205,7 +207,10 @@ class Dynavec:
             s3_payload.append((self._s3_key(namespace, d.id), d.vector, s3_meta))
             ddb_payload.append((d.id, d.text, ddb_meta))
             ids.append(d.id)
-        return s3_payload, ddb_payload, ids
+            # Hot tier keeps the full (merged) metadata + text so warmed
+            # namespaces need neither an S3 query nor a DynamoDB read.
+            hot_payload.append((d.id, d.vector, d.text, meta))
+        return s3_payload, ddb_payload, ids, hot_payload
 
     def _write(self, namespace: str, s3_payload: list, ddb_payload: list) -> None:
         tasks = []
@@ -227,8 +232,12 @@ class Dynavec:
         if not documents:
             return UpsertResult(count=0, ids=[])
         docs = [d if isinstance(d, Document) else Document(**d) for d in documents]
-        s3_payload, ddb_payload, ids = self._prepare(docs, namespace, auto_metadata, transform)
+        s3_payload, ddb_payload, ids, hot_payload = self._prepare(
+            docs, namespace, auto_metadata, transform
+        )
         self._write(namespace, s3_payload, ddb_payload)
+        if self._hot is not None:
+            self._hot.insert_many(namespace, hot_payload)
         return UpsertResult(count=len(ids), ids=ids)
 
     def update(
@@ -282,10 +291,12 @@ class Dynavec:
 
         doc = Document(id=id, text=new_text, vector=new_vector, metadata=new_meta)
         # mark op=update for any transform that cares
-        s3_payload, ddb_payload, ids = self._prepare(
+        s3_payload, ddb_payload, ids, hot_payload = self._prepare(
             [doc], namespace, auto_metadata=False, transform=transform
         )
         self._write(namespace, s3_payload, ddb_payload)
+        if self._hot is not None:
+            self._hot.insert_many(namespace, hot_payload)
         return UpsertResult(count=1, ids=ids)
 
     # ---------------------------------------------------------------- read path
@@ -367,41 +378,53 @@ class Dynavec:
         needs_vectors = rerank == "mmr" or rescore is not None or include_vectors
         fetch_k = top_k * self.config.over_fetch if (rerank or rescore) else top_k
 
-        raw = self._vectors.query(
-            query_vector=query_vector,
-            top_k=fetch_k,
-            filter=build_s3_filter(filter, namespace),
-            return_metadata=True,
-            return_distance=True,
-        )
-        if not raw:
-            return []
+        # Fast path: a warmed (authoritative) namespace is served entirely from
+        # RAM — no S3 Vectors query and no DynamoDB hydration. Returns None when
+        # the namespace isn't authoritative or the filter is unsupported, so we
+        # transparently fall back to S3 (hot tier can only speed up, never break).
+        results: list[SearchResult] | None = None
+        if self._hot is not None:
+            results = self._hot.search(namespace, query_vector, fetch_k, filter)
 
-        hits = [(self._split_key(v["key"])[1], v.get("distance")) for v in raw]
-        ids = [h[0] for h in hits]
-        hydrated = self._docs.get_many(namespace, ids)
-
-        vec_by_key = {}
-        if needs_vectors:
-            vec_by_key = self._vectors.get_vectors(
-                [self._s3_key(namespace, doc_id) for doc_id in ids]
+        if results is None:
+            raw = self._vectors.query(
+                query_vector=query_vector,
+                top_k=fetch_k,
+                filter=build_s3_filter(filter, namespace),
+                return_metadata=True,
+                return_distance=True,
             )
+            if not raw:
+                return []
 
-        results: list[SearchResult] = []
-        for doc_id, distance in hits:
-            doc = hydrated.get(doc_id, {})
-            vec = vec_by_key.get(self._s3_key(namespace, doc_id), {}).get("vector") if vec_by_key else None
-            results.append(
-                SearchResult(
-                    id=doc_id,
-                    score=distance_to_score(distance, self.config.distance_metric)
-                    if distance is not None else 0.0,
-                    distance=distance,
-                    text=doc.get("text"),
-                    metadata=doc.get("metadata", {}),
-                    vector=vec,
+            hits = [(self._split_key(v["key"])[1], v.get("distance")) for v in raw]
+            ids = [h[0] for h in hits]
+            hydrated = self._docs.get_many(namespace, ids)
+
+            vec_by_key = {}
+            if needs_vectors:
+                vec_by_key = self._vectors.get_vectors(
+                    [self._s3_key(namespace, doc_id) for doc_id in ids]
                 )
-            )
+
+            results = []
+            for doc_id, distance in hits:
+                doc = hydrated.get(doc_id, {})
+                vec = (
+                    vec_by_key.get(self._s3_key(namespace, doc_id), {}).get("vector")
+                    if vec_by_key else None
+                )
+                results.append(
+                    SearchResult(
+                        id=doc_id,
+                        score=distance_to_score(distance, self.config.distance_metric)
+                        if distance is not None else 0.0,
+                        distance=distance,
+                        text=doc.get("text"),
+                        metadata=doc.get("metadata", {}),
+                        vector=vec,
+                    )
+                )
 
         if rescore is not None:
             results = self._apply_rescore(query_vector, results, rescore)
@@ -720,9 +743,57 @@ class Dynavec:
         return out
 
     def delete(self, ids: list[str], namespace: str = "default") -> None:
-        """Delete documents from both stores."""
+        """Delete documents from both stores (and the hot tier, if enabled)."""
         keys = [self._s3_key(namespace, doc_id) for doc_id in ids]
         self._run_parallel([
             lambda: self._vectors.delete_vectors(keys),
             lambda: self._docs.delete_many(namespace, ids),
         ])
+        if self._hot is not None:
+            self._hot.delete(namespace, ids)
+
+    # ------------------------------------------------------------- hot tier
+    def warm(self, namespace: str = "default") -> int:
+        """Load a namespace into the in-memory hot tier and make it authoritative.
+
+        Scans the namespace's vectors from S3 Vectors, hydrates their text from
+        DynamoDB, and holds them in RAM so subsequent searches skip both stores.
+        Requires ``DynavecConfig.hot_tier=True``. Returns the number of vectors
+        loaded, or ``0`` if the namespace exceeds ``hot_tier_max_vectors`` (in
+        which case it stays on the S3 path). Call again to reconcile after
+        out-of-band writes.
+        """
+        if self._hot is None:
+            raise ConfigurationError(
+                "Hot tier is disabled. Set DynavecConfig(hot_tier=True) to use warm()."
+            )
+        items: list[tuple[str, list[float], str | None, dict[str, Any]]] = []
+        ids: list[str] = []
+        raw: list[tuple[str, list[float], dict[str, Any]]] = []
+        for page in self._vectors.list_pages(return_data=True, return_metadata=True):
+            for v in page:
+                ns, doc_id = self._split_key(v["key"])
+                if ns != namespace:
+                    continue
+                vector = v.get("data", {}).get("float32")
+                if vector is None:
+                    continue
+                raw.append((doc_id, vector, v.get("metadata", {}) or {}))
+                ids.append(doc_id)
+
+        # Hydrate canonical text + full metadata from DynamoDB in one batch.
+        hydrated = self._docs.get_many(namespace, ids) if ids else {}
+        for doc_id, vector, s3_meta in raw:
+            doc = hydrated.get(doc_id, {})
+            meta = doc.get("metadata") or {k: val for k, val in s3_meta.items()
+                                            if k not in (NS_METADATA_KEY, TEXT_METADATA_KEY)}
+            text = doc.get("text")
+            if text is None:
+                text = s3_meta.get(TEXT_METADATA_KEY)
+            items.append((doc_id, vector, text, meta))
+
+        return len(items) if self._hot.load(namespace, items) else 0
+
+    def hot_stats(self) -> dict[str, Any] | None:
+        """Residency stats for the hot tier, or ``None`` if it's disabled."""
+        return self._hot.stats() if self._hot is not None else None

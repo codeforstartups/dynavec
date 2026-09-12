@@ -35,6 +35,7 @@ NAV = [
     ]),
     ("Advanced", [
         ("knowledge-graph", "Knowledge graph"),
+        ("hot-tier", "In-memory hot tier"),
         ("quantization", "Product quantization"),
         ("concurrency", "Concurrency"),
         ("credentials", "Credentials & IAM"),
@@ -556,6 +557,52 @@ hits = db.graph_search(
 <code>graph_neighbors</code>.</p>
 <div class="callout">The graph uses embedded adjacency lists (one item per node). Very high fan-out entities
 want a sort-key adjacency design — on the roadmap.</div>
+""")
+
+PAGES["hot-tier"] = ("In-memory hot tier",
+    "Pinecone-class latency for the hot working set — without a paid cluster.",
+    """
+<p>Amazon S3 Vectors is cheap and serverless, but it is an object-backed ANN: its per-query
+server time is hundreds of milliseconds. For the <em>hot</em> working set, dynavec can keep vectors
+in RAM (via the built-in <code>SPFreshHotIndex</code>) so a warmed namespace is served
+<strong>entirely from memory</strong> — no S3 Vectors query and no DynamoDB hydration, since the hot
+index already holds text and metadata. That collapses p50 from hundreds of ms to sub-millisecond,
+and it costs nothing extra: the index lives in the compute you already run.</p>
+
+<div class="callout"><strong>Correctness first.</strong> A namespace is served from RAM only when it
+is <em>authoritative</em> — every one of its vectors is resident. Any namespace that was never warmed,
+or has grown past the RAM cap, transparently falls back to the S3 Vectors path. The hot tier can only
+ever make queries faster, never wrong.</div>
+
+<h2>Enable it</h2>
+""" + code("""from dynavec import Dynavec, DynavecConfig
+
+cfg = DynavecConfig(
+    vector_bucket="my-vectors", index="docs", table="dynavec_docs",
+    dimension=1536, region="us-east-1", auto_provision=True,
+    hot_tier=True,                 # keep a hot working set in RAM
+    hot_tier_max_vectors=200_000,  # global RAM safety cap across namespaces
+)
+db = Dynavec(cfg, embedder=my_embedder)
+
+db.warm(namespace="default")       # load from S3 Vectors -> RAM (authoritative)
+hits = db.search("query", top_k=5) # served from memory: no S3, no DynamoDB
+print(db.hot_stats())              # {'authoritative_namespaces': ['default'], ...}""") + """
+<h2>How it works</h2>
+<ul>
+  <li><strong>warm(namespace)</strong> scans the namespace from S3 Vectors, hydrates text from
+      DynamoDB, and holds it in RAM. If it fits under <code>hot_tier_max_vectors</code> the namespace
+      becomes authoritative; otherwise it stays on the S3 path.</li>
+  <li><strong>Write-through:</strong> <code>upsert</code>, <code>update</code>, and <code>delete</code>
+      keep warmed namespaces current, so you rarely need to re-warm.</li>
+  <li><strong>Full query semantics on the hot path:</strong> metadata filters (the same MongoDB-style
+      dialect), rescoring, and MMR reranking all run in-process. A filter the in-memory matcher can't
+      express falls back to S3 rather than returning a wrong result.</li>
+  <li><strong>Reconcile</strong> after out-of-band writes by calling <code>warm()</code> again.</li>
+</ul>
+
+<div class="callout">This is how dynavec approaches Pinecone's latency without an always-on RAM cluster:
+keep only the <em>hot</em> set in memory, and let cold/bulk data stay on cheap S3 Vectors.</div>
 """)
 
 PAGES["quantization"] = ("Product quantization",

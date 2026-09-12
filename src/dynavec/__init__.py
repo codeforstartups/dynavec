@@ -34,6 +34,7 @@ from .exceptions import (
     ProvisioningError,
 )
 from .graph import GraphStore
+from .hot import HotTier
 from .models import Document, SearchResult, UpsertResult
 from .namespace import NamespaceView
 from .quantization import ProductQuantizer
@@ -67,6 +68,7 @@ __all__ = [
     "RedisCache",
     "reciprocal_rank_fusion",
     "maximal_marginal_relevance",
+    "HotTier",
     "Partition",
     "SPFreshConfig",
     "SPFreshHotIndex",

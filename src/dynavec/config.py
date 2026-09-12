@@ -81,6 +81,13 @@ class DynavecConfig:
     parallel_writes: bool = True
     max_pool_connections: int | None = None
 
+    # in-memory hot tier (optional): keep a hot working set in RAM so warmed
+    # namespaces are served entirely from memory — no S3 Vectors query and no
+    # DynamoDB hydration — for Pinecone-class latency without a paid cluster.
+    hot_tier: bool = False
+    hot_tier_max_vectors: int = 200_000  # global RAM safety cap across namespaces
+    hot_tier_n_probe: int = 8            # partitions probed per query (recall vs latency)
+
     # provisioning
     auto_provision: bool = False
     dynamodb_billing_mode: Literal["PAY_PER_REQUEST", "PROVISIONED"] = "PAY_PER_REQUEST"
@@ -108,3 +115,7 @@ class DynavecConfig:
             raise ValueError("top_k_page_size must be a positive integer")
         if self.max_pool_connections is not None and self.max_pool_connections <= 0:
             raise ValueError("max_pool_connections must be a positive integer")
+        if self.hot_tier_max_vectors <= 0:
+            raise ValueError("hot_tier_max_vectors must be a positive integer")
+        if self.hot_tier_n_probe < 1:
+            raise ValueError("hot_tier_n_probe must be >= 1")

@@ -30,6 +30,7 @@
         <a href="#why">Why</a>
         <a href="#architecture">Architecture</a>
         <a href="#benchmarks">Benchmarks</a>
+        <a href="#quickstart">Quick start</a>
         <a href="explainer.html">Watch</a>
         <a href="docs/index.html">Docs</a>
         <a href="#contribute">Contribute</a>
@@ -301,6 +302,45 @@
     </section>
 
     <!-- ============ DOCS / QUICKSTART ============ -->
+    <!-- ============ QUICK START ============ -->
+    <section class="section" id="quickstart">
+      <div class="wrap">
+        <h2 class="section__title">Quick start</h2>
+        <p class="section__lede">Three steps to your first semantic search — everything runs inside your own AWS account.</p>
+
+        <div class="grid grid--3">
+          <div class="card">
+            <span class="card__no">01</span>
+            <h3>Install</h3>
+            <p>Python 3.9+. Base install is just <code>boto3</code> + <code>numpy</code>; add an embedder extra when you want dynavec to embed for you.</p>
+            <pre class="code code--sm"><code>pip install dynavec
+# or: uv add dynavec
+pip install "dynavec[openai]"</code></pre>
+          </div>
+
+          <div class="card">
+            <span class="card__no">02</span>
+            <h3>Grant AWS access</h3>
+            <p>Create an IAM user with permission for <strong>S3 Vectors</strong> + <strong>DynamoDB</strong>, then export its keys. Full least-privilege policy in the <a href="docs/credentials.html">Credentials &amp; IAM</a> guide.</p>
+            <pre class="code code--sm"><code>export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_DEFAULT_REGION=us-east-1</code></pre>
+          </div>
+
+          <div class="card">
+            <span class="card__no">03</span>
+            <h3>Run your first query</h3>
+            <p>Point dynavec at a bucket, index, and table. With <code>auto_provision=True</code> it creates them for you on first use.</p>
+            <pre class="code code--sm"><code>db.upsert([Document(id="a",
+    text="Mitochondria power the cell.")])
+db.search("how do cells make energy?")</code></pre>
+          </div>
+        </div>
+
+        <p class="section__lede" style="margin-top:32px;">Full runnable snippet ↓ or read the <a href="docs/quickstart.html">Quickstart guide</a>.</p>
+      </div>
+    </section>
+
     <section class="section section--alt" id="docs">
       <div class="wrap">
         <h2 class="section__title">Pythonic by design</h2>

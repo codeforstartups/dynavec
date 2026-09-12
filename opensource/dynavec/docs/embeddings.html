@@ -41,6 +41,7 @@
 <li><a href="installation.html">Installation</a></li>
 <li><a href="quickstart.html">Quickstart</a></li>
 <li><a href="configuration.html">Configuration</a></li>
+<li><a href="faq.html">FAQ</a></li>
 </ul></div>
 <div class="side__group"><p class="side__title">Writing data</p><ul class="side__list">
 <li><a href="embeddings.html" class="is-current">Embeddings</a></li>
@@ -65,6 +66,9 @@
 <li><a href="integrations.html">Framework integrations</a></li>
 <li><a href="benchmarking.html">Benchmarking</a></li>
 </ul></div>
+<div class="side__group"><p class="side__title">About</p><ul class="side__list">
+<li><a href="release-notes.html">Release notes</a></li>
+</ul></div>
 </nav>
     <main class="doc">
       <div class="doc__crumbs"><a href="../index.html">dynavec</a> / <a href="index.html">Docs</a> / Embeddings</div>
@@ -74,12 +78,14 @@
 <p>Choose an embedder and supply your own API key, or skip the embedder entirely and pass pre-computed vectors.
 Embedder backends are imported lazily, so the base install stays light.</p>
 <pre class="code"><code>from dynavec.embeddings import (
-    OpenAIEmbedder, GeminiEmbedder, BedrockEmbedder, SentenceTransformerEmbedder,
+    OpenAIEmbedder, GeminiEmbedder, MistralEmbedder, BedrockEmbedder,
+    SentenceTransformerEmbedder,
 )
 
 # hosted (BYO key via env var or argument)
 emb = OpenAIEmbedder(model="text-embedding-3-small")        # 1536-d
 emb = GeminiEmbedder(model="text-embedding-004")            # 768-d
+emb = MistralEmbedder(model="mistral-embed")                # 1024-d
 
 # in-account (no third party) or fully local / offline
 emb = BedrockEmbedder(model_id="amazon.titan-embed-text-v2:0", region="us-east-1")
@@ -95,7 +101,7 @@ db.search(vector=my_query_vector, top_k=5)</code></pre>
 <code>SentenceTransformerEmbedder</code> to keep embedding in-account or offline — no data leaves your
 environment.</div>
 
-      <div class="doc__next"><a href="configuration.html"><span>Previous</span>Configuration</a><a href="upsert.html" style="text-align:right"><span>Next</span>Upsert</a></div>
+      <div class="doc__next"><a href="faq.html"><span>Previous</span>FAQ</a><a href="upsert.html" style="text-align:right"><span>Next</span>Upsert</a></div>
     </main>
   </div>
 

@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dynavec · Observability</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fbfaf8;--surface:#fff;--fg:#14110f;--muted:#6f6862;--faint:#a99f97;--line:#ece6df;
+--accent:#e8623b;--accent-ink:#b8472a;--accent-soft:#fdeee8;--ok:#2f7d5b;--err:#b8472a;
+--sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+--mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;--shadow:0 6px 30px rgba(20,17,15,.07)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;border-top:3px solid var(--accent);-webkit-font-smoothing:antialiased}
+a{color:inherit}
+.top{display:flex;align-items:center;gap:16px;padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-weight:700;font-size:16px}
+.brand svg{color:var(--accent)}
+.top .sub{color:var(--muted);font-size:13px;margin-right:auto}
+.rangebtns{display:flex;border:1.5px solid var(--line-strong,#14110f);border-radius:8px;overflow:hidden}
+.rangebtns button{font-family:var(--mono);font-size:12px;border:0;background:var(--surface);padding:7px 12px;cursor:pointer;color:var(--muted);border-right:1px solid var(--line)}
+.rangebtns button:last-child{border-right:0}
+.rangebtns button.on{background:var(--accent);color:#fff}
+.toggle{font-family:var(--mono);font-size:12px;border:1.5px solid #14110f;border-radius:8px;background:var(--surface);padding:7px 12px;cursor:pointer}
+.toggle.on{background:#14110f;color:#fff}
+.layout{display:grid;grid-template-columns:210px 1fr;min-height:calc(100vh - 52px)}
+.side{border-right:1px solid var(--line);padding:18px 12px;background:var(--surface)}
+.side h4{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin:16px 8px 8px}
+.side a{display:block;padding:7px 10px;border-radius:7px;text-decoration:none;color:var(--muted);font-size:13.5px;border-left:2px solid transparent}
+.side a.on{background:var(--accent-soft);color:var(--accent-ink);border-left-color:var(--accent);font-weight:600}
+.side a.soon{opacity:.55;cursor:default}
+.side .tag{font-size:10px;font-family:var(--mono);color:var(--faint);float:right}
+.main{padding:22px 24px;min-width:0}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.kpi .l{font-size:12px;color:var(--muted);margin-bottom:8px}
+.kpi .v{font-family:var(--mono);font-size:26px;font-weight:700;letter-spacing:-.02em}
+.kpi .v small{font-size:13px;color:var(--muted);font-weight:400}
+.kpi .v.win{color:var(--accent-ink)}
+.panels{display:grid;grid-template-columns:1.5fr 1fr;gap:16px;margin-bottom:20px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.card h3{margin:0 0 14px;font-size:14px}
+.card h3 .hint{font-family:var(--mono);font-size:11px;color:var(--faint);font-weight:400}
+.tablecard{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.tablehead{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.tablehead h3{margin:0;font-size:14px}
+.tablehead .filters{margin-left:auto;display:flex;gap:8px}
+.tablehead select,.tablehead input{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:7px;padding:6px 9px;background:var(--bg)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:10px 18px;background:#faf6f1;border-bottom:1px solid var(--line)}
+td{padding:10px 18px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+tr.row{cursor:pointer}
+tr.row:hover{background:var(--accent-soft)}
+.pill{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid var(--line)}
+.pill.search{background:#eef3ff;color:#3b5bdb;border-color:#dbe3ff}
+.pill.graph_search{background:#f3eeff;color:#7048e8;border-color:#e5dbff}
+.pill.upsert{background:#eafaf1;color:#2f7d5b;border-color:#d3f0e0}
+.st-ok{color:var(--ok)}
+.st-error{color:var(--err);font-weight:600}
+.hit{color:var(--ok)}.miss{color:var(--muted)}.na{color:var(--faint)}
+.mono{font-family:var(--mono)}
+.drawer{position:fixed;top:0;right:0;height:100vh;width:min(460px,92vw);background:var(--surface);border-left:1px solid var(--line);box-shadow:var(--shadow);transform:translateX(100%);transition:transform .2s ease;z-index:20;overflow-y:auto;padding:22px}
+.drawer.open{transform:none}
+.drawer h3{margin:0 0 4px;font-size:16px}
+.drawer .close{position:absolute;top:16px;right:18px;border:0;background:none;font-size:20px;cursor:pointer;color:var(--muted)}
+.kv{display:grid;grid-template-columns:130px 1fr;gap:8px 14px;margin-top:16px;font-size:13px}
+.kv .k{color:var(--muted);font-family:var(--mono);font-size:12px}
+.kv .val{font-variant-numeric:tabular-nums;word-break:break-word}
+.wf{margin-top:18px}
+.wf .bar{height:10px;border-radius:5px;background:var(--accent);margin:4px 0}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+.note{color:var(--faint);font-size:11.5px;font-family:var(--mono);margin-top:8px}
+@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.panels{grid-template-columns:1fr}.layout{grid-template-columns:1fr}.side{display:none}}
+</style></head>
+<body>
+<script>
+const __S={"metrics": {"total": 2376, "qpm": 39.6, "p50": 0.33, "p95": 1.21, "p99": 2.17, "cache_hit_rate": 84.0, "cache_hits": 1996, "cache_total": 2376, "error_rate": 0.0, "avg_results": 10.1, "op_mix": {"search": 2376}, "namespaces": {"tenant-b": 778, "tenant-a": 826, "kb": 772}, "histogram": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 818, 786, 772], "bucket_width_s": 120.0, "window_start": 1788845275.9076538, "window_seconds": 3600}, "traces": [{"id": "eac3624ceda9", "ts": 1788848875.894633, "op": "search", "namespace": "tenant-a", "latency_ms": 0.065, "n_results": 3, "top_k": 5, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9638, "score_mean": 0.9454, "status": "ok", "error": null, "query_preview": "rocket to mars"}, {"id": "887b90819999", "ts": 1788848875.834399, "op": "search", "namespace": "tenant-a", "latency_ms": 0.111, "n_results": 20, "top_k": 20, "cache_hit": true, "filtered": false, "rescore": null, "rerank": null, "score_top": 0.9135, "score_mean": 0.8958, "status": "ok", "error": null, "query_preview": "serverless vectors on aws"}, {"id": "8233f504cd4d", "ts": 1788848875.585891, "op": "search", "namespace": "kb", "latency_ms": 0.464, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.9565, "score_mean": 0.9465, "status": "ok", "error": null, "query_preview": "transformer attention"}, {"id": "b2cf11c4cd76", "ts": 1788848875.353208, "op": "search", "namespace": "tenant-a", "latency_ms": 0.24, "n_results": 5, "top_k": 5, "cache_hit": true, "filtered": false, "rescore": null, "rerank": null, "score_top": 0.977, "score_mean": 0.9716, "status": "ok", "error": null, "query_preview": "serverless vectors on aws"}, {"id": "8bf05caad8ef", "ts": 1788848875.239331, "op": "search", "namespace": "kb", "latency_ms": 0.243, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.9108, "score_mean": 0.8972, "status": "ok", "error": null, "query_preview": "rocket to mars"}, {"id": "1039fca8a4dc", "ts": 1788848875.072277, "op": "search", "namespace": "tenant-a", "latency_ms": 0.911, "n_results": 12, "top_k": 20, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9251, "score_mean": 0.8922, "status": "ok", "error": null, "query_preview": "apple pie recipe"}, {"id": "5699832dd282", "ts": 1788848874.8483012, "op": "search", "namespace": "kb", "latency_ms": 0.505, "n_results": 20, "top_k": 20, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.8888, "score_mean": 0.8702, "status": "ok", "error": null, "query_preview": "how do cells work"}, {"id": "aaa3ee8d79cf", "ts": 1788848874.617846, "op": "search", "namespace": "kb", "latency_ms": 0.248, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9235, "score_mean": 0.9103, "status": "ok", "error": null, "query_preview": "embedding models"}, {"id": "3a1f3bb6db39", "ts": 1788848874.4582982, "op": "search", "namespace": "kb", "latency_ms": 1.911, "n_results": 5, "top_k": 5, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9748, "score_mean": 0.9552, "status": "ok", "error": null, "query_preview": "serverless vectors on aws"}, {"id": "c86b6de459a9", "ts": 1788848874.262634, "op": "search", "namespace": "tenant-a", "latency_ms": 0.428, "n_results": 5, "top_k": 5, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.924, "score_mean": 0.9203, "status": "ok", "error": null, "query_preview": "dynamodb latency"}, {"id": "c18a94847a9c", "ts": 1788848874.093153, "op": "search", "namespace": "kb", "latency_ms": 0.392, "n_results": 9, "top_k": 10, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9263, "score_mean": 0.901, "status": "ok", "error": null, "query_preview": "apple pie recipe"}, {"id": "42258e6275cd", "ts": 1788848873.906146, "op": "search", "namespace": "tenant-b", "latency_ms": 0.416, "n_results": 20, "top_k": 20, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.8827, "score_mean": 0.8655, "status": "ok", "error": null, "query_preview": "how do cells work"}, {"id": "4e445864848c", "ts": 1788848873.6969972, "op": "search", "namespace": "tenant-a", "latency_ms": 0.346, "n_results": 20, "top_k": 20, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.9396, "score_mean": 0.9228, "status": "ok", "error": null, "query_preview": "embedding models"}, {"id": "5ea983eea9bd", "ts": 1788848873.630646, "op": "search", "namespace": "kb", "latency_ms": 0.485, "n_results": 5, "top_k": 5, "cache_hit": true, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.8888, "score_mean": 0.8856, "status": "ok", "error": null, "query_preview": "how do cells work"}, {"id": "77a171ecee90", "ts": 1788848873.4145641, "op": "search", "namespace": "tenant-b", "latency_ms": 0.323, "n_results": 7, "top_k": 10, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9275, "score_mean": 0.891, "status": "ok", "error": null, "query_preview": "apple pie recipe"}, {"id": "77682e0d957c", "ts": 1788848873.250344, "op": "search", "namespace": "kb", "latency_ms": 0.321, "n_results": 5, "top_k": 5, "cache_hit": true, "filtered": false, "rescore": null, "rerank": null, "score_top": 0.9263, "score_mean": 0.9218, "status": "ok", "error": null, "query_preview": "apple pie recipe"}, {"id": "d3b106cc6bf7", "ts": 1788848873.127645, "op": "search", "namespace": "tenant-a", "latency_ms": 0.78, "n_results": 7, "top_k": 10, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9246, "score_mean": 0.8896, "status": "ok", "error": null, "query_preview": "dynamodb latency"}, {"id": "0527e79b3584", "ts": 1788848872.8961668, "op": "search", "namespace": "kb", "latency_ms": 0.105, "n_results": 9, "top_k": 10, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9263, "score_mean": 0.901, "status": "ok", "error": null, "query_preview": "apple pie recipe"}, {"id": "4151387e1c98", "ts": 1788848872.7897038, "op": "search", "namespace": "kb", "latency_ms": 0.117, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.9398, "score_mean": 0.9246, "status": "ok", "error": null, "query_preview": "embedding models"}, {"id": "4f4c27bbc9dc", "ts": 1788848872.6892512, "op": "search", "namespace": "kb", "latency_ms": 0.107, "n_results": 5, "top_k": 5, "cache_hit": true, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.9748, "score_mean": 0.9723, "status": "ok", "error": null, "query_preview": "cheap vector database"}, {"id": "4985132ed142", "ts": 1788848872.507136, "op": "search", "namespace": "tenant-a", "latency_ms": 0.408, "n_results": 5, "top_k": 5, "cache_hit": true, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.9362, "score_mean": 0.9308, "status": "ok", "error": null, "query_preview": "apple pie recipe"}, {"id": "4d74c8bf1ef3", "ts": 1788848872.419889, "op": "search", "namespace": "kb", "latency_ms": 0.433, "n_results": 20, "top_k": 20, "cache_hit": true, "filtered": false, "rescore": null, "rerank": null, "score_top": 0.8888, "score_mean": 0.8703, "status": "ok", "error": null, "query_preview": "how do cells work"}, {"id": "36704415fbd7", "ts": 1788848872.272269, "op": "search", "namespace": "tenant-b", "latency_ms": 0.245, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.8827, "score_mean": 0.87, "status": "ok", "error": null, "query_preview": "how do cells work"}, {"id": "fa8564dae7e4", "ts": 1788848872.081341, "op": "search", "namespace": "tenant-b", "latency_ms": 0.39, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.9803, "score_mean": 0.977, "status": "ok", "error": null, "query_preview": "rocket to mars"}, {"id": "54fb004ae4e3", "ts": 1788848871.963893, "op": "search", "namespace": "kb", "latency_ms": 0.335, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.8888, "score_mean": 0.8769, "status": "ok", "error": null, "query_preview": "how do cells work"}, {"id": "309c132437c8", "ts": 1788848871.79494, "op": "search", "namespace": "kb", "latency_ms": 0.258, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.9565, "score_mean": 0.9465, "status": "ok", "error": null, "query_preview": "transformer attention"}, {"id": "0fa3ef0528a0", "ts": 1788848871.6122072, "op": "search", "namespace": "tenant-a", "latency_ms": 0.359, "n_results": 7, "top_k": 10, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9256, "score_mean": 0.914, "status": "ok", "error": null, "query_preview": "embedding models"}, {"id": "c1e24d258095", "ts": 1788848871.361631, "op": "search", "namespace": "tenant-b", "latency_ms": 0.25, "n_results": 5, "top_k": 5, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9201, "score_mean": 0.9133, "status": "ok", "error": null, "query_preview": "apple pie recipe"}, {"id": "0dd1980da932", "ts": 1788848871.247406, "op": "search", "namespace": "tenant-b", "latency_ms": 0.203, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9379, "score_mean": 0.9101, "status": "ok", "error": null, "query_preview": "embedding models"}, {"id": "9bbf447e086c", "ts": 1788848871.17219, "op": "search", "namespace": "kb", "latency_ms": 0.145, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.8888, "score_mean": 0.8769, "status": "ok", "error": null, "query_preview": "how do cells work"}, {"id": "c7ac11c95f72", "ts": 1788848871.088914, "op": "search", "namespace": "kb", "latency_ms": 0.199, "n_results": 20, "top_k": 20, "cache_hit": true, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.9276, "score_mean": 0.9138, "status": "ok", "error": null, "query_preview": "dynamodb latency"}, {"id": "81f94562ba5b", "ts": 1788848870.98091, "op": "search", "namespace": "kb", "latency_ms": 0.343, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.9748, "score_mean": 0.9609, "status": "ok", "error": null, "query_preview": "rocket to mars"}, {"id": "992d3f73e45f", "ts": 1788848870.776588, "op": "search", "namespace": "tenant-b", "latency_ms": 0.114, "n_results": 20, "top_k": 20, "cache_hit": true, "filtered": false, "rescore": null, "rerank": null, "score_top": 0.9397, "score_mean": 0.9278, "status": "ok", "error": null, "query_preview": "embedding models"}, {"id": "bfa1ebb45d64", "ts": 1788848870.706569, "op": "search", "namespace": "tenant-a", "latency_ms": 0.275, "n_results": 20, "top_k": 20, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.9135, "score_mean": 0.8956, "status": "ok", "error": null, "query_preview": "rocket to mars"}, {"id": "408463ac9d89", "ts": 1788848870.497356, "op": "search", "namespace": "kb", "latency_ms": 0.316, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.9276, "score_mean": 0.9219, "status": "ok", "error": null, "query_preview": "dynamodb latency"}, {"id": "5bf37e862e4e", "ts": 1788848870.359595, "op": "search", "namespace": "tenant-b", "latency_ms": 0.115, "n_results": 7, "top_k": 10, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9661, "score_mean": 0.9502, "status": "ok", "error": null, "query_preview": "serverless vectors on aws"}, {"id": "acc406000c84", "ts": 1788848870.267997, "op": "search", "namespace": "tenant-a", "latency_ms": 0.246, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.977, "score_mean": 0.9582, "status": "ok", "error": null, "query_preview": "serverless vectors on aws"}, {"id": "84ea4ac6dcd1", "ts": 1788848870.200885, "op": "search", "namespace": "tenant-b", "latency_ms": 0.422, "n_results": 6, "top_k": 20, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9495, "score_mean": 0.9154, "status": "ok", "error": null, "query_preview": "transformer attention"}, {"id": "d416a74da7aa", "ts": 1788848870.0127249, "op": "search", "namespace": "tenant-a", "latency_ms": 0.304, "n_results": 20, "top_k": 20, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.9396, "score_mean": 0.9228, "status": "ok", "error": null, "query_preview": "embedding models"}, {"id": "0c8657a93fe1", "ts": 1788848869.949572, "op": "search", "namespace": "tenant-a", "latency_ms": 0.254, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.9135, "score_mean": 0.9041, "status": "ok", "error": null, "query_preview": "rocket to mars"}, {"id": "668b8d0d853c", "ts": 1788848869.837773, "op": "search", "namespace": "kb", "latency_ms": 0.536, "n_results": 9, "top_k": 10, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9732, "score_mean": 0.9563, "status": "ok", "error": null, "query_preview": "serverless vectors on aws"}, {"id": "6ae80744114a", "ts": 1788848869.6640031, "op": "search", "namespace": "tenant-b", "latency_ms": 0.517, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": null, "score_top": 0.9565, "score_mean": 0.9489, "status": "ok", "error": null, "query_preview": "transformer attention"}, {"id": "054d8a3e7eda", "ts": 1788848869.5176919, "op": "search", "namespace": "tenant-a", "latency_ms": 0.337, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.979, "score_mean": 0.9625, "status": "ok", "error": null, "query_preview": "transformer attention"}, {"id": "1d01f2b857ca", "ts": 1788848869.386605, "op": "search", "namespace": "kb", "latency_ms": 0.527, "n_results": 5, "top_k": 5, "cache_hit": true, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.9276, "score_mean": 0.9246, "status": "ok", "error": null, "query_preview": "dynamodb latency"}, {"id": "e81439329065", "ts": 1788848869.1544268, "op": "search", "namespace": "kb", "latency_ms": 0.478, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": null, "score_top": 0.9398, "score_mean": 0.9288, "status": "ok", "error": null, "query_preview": "embedding models"}, {"id": "97607c0212b8", "ts": 1788848868.987776, "op": "search", "namespace": "tenant-b", "latency_ms": 0.439, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.9145, "score_mean": 0.903, "status": "ok", "error": null, "query_preview": "rocket to mars"}, {"id": "fd65d33eb728", "ts": 1788848868.792984, "op": "search", "namespace": "tenant-b", "latency_ms": 0.25, "n_results": 5, "top_k": 5, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.9362, "score_mean": 0.9145, "status": "ok", "error": null, "query_preview": "apple pie recipe"}, {"id": "22b287bdb00f", "ts": 1788848868.594931, "op": "search", "namespace": "kb", "latency_ms": 1.966, "n_results": 20, "top_k": 20, "cache_hit": false, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.9263, "score_mean": 0.9094, "status": "ok", "error": null, "query_preview": "apple pie recipe"}, {"id": "b6ed3fde309f", "ts": 1788848868.493392, "op": "search", "namespace": "kb", "latency_ms": 0.347, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.974, "score_mean": 0.9545, "status": "ok", "error": null, "query_preview": "cheap vector database"}, {"id": "b01270696ede", "ts": 1788848868.432537, "op": "search", "namespace": "kb", "latency_ms": 0.51, "n_results": 20, "top_k": 20, "cache_hit": true, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.9398, "score_mean": 0.9243, "status": "ok", "error": null, "query_preview": "embedding models"}, {"id": "0628ab817278", "ts": 1788848868.2737541, "op": "search", "namespace": "kb", "latency_ms": 0.359, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.8888, "score_mean": 0.8769, "status": "ok", "error": null, "query_preview": "how do cells work"}, {"id": "7e1611707a50", "ts": 1788848868.208842, "op": "search", "namespace": "tenant-b", "latency_ms": 0.391, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": null, "score_top": 0.9565, "score_mean": 0.9489, "status": "ok", "error": null, "query_preview": "transformer attention"}, {"id": "d21f748d54ef", "ts": 1788848868.144334, "op": "search", "namespace": "kb", "latency_ms": 0.513, "n_results": 5, "top_k": 5, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.8888, "score_mean": 0.8808, "status": "ok", "error": null, "query_preview": "how do cells work"}, {"id": "9ed331fd24ee", "ts": 1788848868.002722, "op": "search", "namespace": "kb", "latency_ms": 0.638, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.8888, "score_mean": 0.8789, "status": "ok", "error": null, "query_preview": "how do cells work"}, {"id": "5a36b1d474f0", "ts": 1788848867.8017411, "op": "search", "namespace": "tenant-a", "latency_ms": 0.191, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": true, "rescore": null, "rerank": null, "score_top": 0.979, "score_mean": 0.9625, "status": "ok", "error": null, "query_preview": "cheap vector database"}, {"id": "40eab0eeaef4", "ts": 1788848867.66331, "op": "search", "namespace": "kb", "latency_ms": 0.312, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.9748, "score_mean": 0.9609, "status": "ok", "error": null, "query_preview": "cheap vector database"}, {"id": "0ee19a9e49b6", "ts": 1788848867.4878561, "op": "search", "namespace": "tenant-a", "latency_ms": 0.328, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.8878, "score_mean": 0.8717, "status": "ok", "error": null, "query_preview": "how do cells work"}, {"id": "e349ee98647e", "ts": 1788848867.39692, "op": "search", "namespace": "tenant-a", "latency_ms": 0.43, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": "cosine", "rerank": null, "score_top": 0.9396, "score_mean": 0.9294, "status": "ok", "error": null, "query_preview": "cheap vector database"}, {"id": "d6409d5f8eb5", "ts": 1788848867.3088892, "op": "search", "namespace": "tenant-a", "latency_ms": 0.433, "n_results": 20, "top_k": 20, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.9565, "score_mean": 0.9413, "status": "ok", "error": null, "query_preview": "transformer attention"}, {"id": "78d3b6d9d9a1", "ts": 1788848867.148906, "op": "search", "namespace": "kb", "latency_ms": 0.448, "n_results": 10, "top_k": 10, "cache_hit": true, "filtered": false, "rescore": null, "rerank": "mmr", "score_top": 0.9276, "score_mean": 0.9219, "status": "ok", "error": null, "query_preview": "dynamodb latency"}]};
+const __B={};__S.traces.forEach(t=>__B[t.id]=t);
+window.fetch=(u)=>{u=String(u);let b={};if(u.includes('/api/metrics'))b=__S.metrics;else if(u.includes('/api/trace/')){const id=u.split('/api/trace/')[1].split('?')[0];b=__B[id]||{error:'nf'};}else if(u.includes('/api/traces'))b=__S.traces;return Promise.resolve({json:()=>Promise.resolve(b)});};
+</script>
+
+<div class="top">
+  <span class="brand"><svg width="18" height="18" viewBox="0 0 22 22"><rect x="1" y="1" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="1" y1="11" x2="21" y2="11" stroke="currentColor" stroke-width="1.5"/><line x1="11" y1="1" x2="11" y2="21" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/></svg>dynavec</span>
+  <span class="sub">Observability <b style="color:var(--accent-ink)">· static preview (sample data)</b></span>
+  <div class="rangebtns" id="ranges">
+    <button data-w="1800">30m</button><button data-w="3600" class="on">1h</button>
+    <button data-w="21600">6h</button><button data-w="86400">24h</button>
+  </div>
+  <button class="toggle on" id="auto">Auto-refresh</button>
+</div>
+<div class="layout">
+  <nav class="side">
+    <h4>Observability</h4>
+    <a class="on" href="#">Tracing</a>
+    <a href="#" onclick="return false">Latency</a>
+    <a href="#" onclick="return false">Cost</a>
+    <h4>Evaluation</h4>
+    <a class="soon">Scores <span class="tag">soon</span></a>
+    <a class="soon">Faithfulness <span class="tag">soon</span></a>
+    <h4>Resources</h4>
+    <a class="soon">Buckets &amp; Indexes <span class="tag">soon</span></a>
+    <a class="soon">Namespaces <span class="tag">soon</span></a>
+  </nav>
+  <main class="main">
+    <div class="kpis" id="kpis"></div>
+    <div class="panels">
+      <div class="card"><h3>Query volume <span class="hint" id="histhint"></span></h3><div id="hist"></div></div>
+      <div class="card"><h3>Latency percentiles <span class="hint">ms</span></h3><div id="lat"></div></div>
+    </div>
+    <div class="tablecard">
+      <div class="tablehead">
+        <h3>Traces</h3>
+        <div class="filters">
+          <select id="fop"><option value="">all ops</option><option>search</option><option>graph_search</option><option>upsert</option></select>
+          <select id="fstatus"><option value="">any status</option><option>ok</option><option>error</option></select>
+          <input id="fns" placeholder="namespace…" size="12">
+        </div>
+      </div>
+      <div id="table"></div>
+    </div>
+    <p class="note" id="note"></p>
+  </main>
+</div>
+<div class="drawer" id="drawer"><button class="close" onclick="closeDrawer()">&times;</button><div id="drawerbody"></div></div>
+<script>
+let W=3600, AUTO=true, TIMER=null;
+const $=s=>document.querySelector(s);
+function fmt(n,d=0){return n==null?'—':Number(n).toLocaleString(undefined,{maximumFractionDigits:d})}
+function bars(vals,color){const n=vals.length,max=Math.max(1,...vals),w=100/n;
+  let r=`<svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%;height:120px">`;
+  vals.forEach((v,i)=>{const h=v/max*38;r+=`<rect x="${i*w+w*0.12}" y="${40-h}" width="${w*0.76}" height="${h||0.4}" fill="${color}" rx="0.6"/>`});
+  return r+`</svg>`}
+function latChart(m){const items=[['p50',m.p50,'#2f7d5b'],['p95',m.p95,'#e8623b'],['p99',m.p99,'#b8472a']];
+  const max=Math.max(1,m.p99,m.p95,m.p50);let r='<div style="display:flex;flex-direction:column;gap:14px;padding:6px 0 2px">';
+  for(const[l,v,c]of items){const pct=v/max*100;
+    r+=`<div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span class="mono" style="color:${c}">${l}</span><span class="mono">${fmt(v,1)} ms</span></div>
+    <div style="height:10px;background:#f0ece6;border-radius:5px"><div style="height:100%;width:${pct}%;background:${c};border-radius:5px"></div></div></div>`}
+  return r+'</div>'}
+function kpi(l,v,win){return `<div class="kpi"><div class="l">${l}</div><div class="v ${win?'win':''}">${v}</div></div>`}
+async function load(){
+  const m=await (await fetch('/api/metrics?window='+W)).json();
+  $('#kpis').innerHTML=[
+    kpi('Queries / min',fmt(m.qpm,1),true),
+    kpi('p95 latency',fmt(m.p95,0)+'<small> ms</small>'),
+    kpi('Cache hit rate',m.cache_hit_rate==null?'—':fmt(m.cache_hit_rate,1)+'<small>%</small>',true),
+    kpi('Avg results',fmt(m.avg_results,1)),
+    kpi('Error rate',fmt(m.error_rate,1)+'<small>%</small>')
+  ].join('');
+  $('#hist').innerHTML=bars(m.histogram,'#e8623b');
+  $('#histhint').textContent=(m.total||0)+' traces · '+Math.round(m.bucket_width_s)+'s buckets';
+  $('#lat').innerHTML=latChart(m);
+  await loadTable();
+}
+async function loadTable(){
+  const q=new URLSearchParams({limit:100});
+  if($('#fop').value)q.set('op',$('#fop').value);
+  if($('#fstatus').value)q.set('status',$('#fstatus').value);
+  if($('#fns').value)q.set('namespace',$('#fns').value);
+  const rows=await (await fetch('/api/traces?'+q)).json();
+  if(!rows.length){$('#table').innerHTML='<div class="empty">No traces yet. Run some searches with <span class="mono">Dynavec(..., telemetry=recorder)</span>.</div>';return}
+  let h='<table><thead><tr><th>Start</th><th>Op</th><th>Namespace</th><th>Latency</th><th>Results</th><th>Cache</th><th>Rank</th><th>Status</th></tr></thead><tbody>';
+  for(const e of rows){const t=new Date(e.ts*1000).toLocaleTimeString();
+    const cache=e.cache_hit==null?'<span class="na">—</span>':(e.cache_hit?'<span class="hit">hit</span>':'<span class="miss">miss</span>');
+    const rank=[e.rescore,e.rerank].filter(Boolean).join('+')||'<span class="na">—</span>';
+    h+=`<tr class="row" onclick="openTrace('${e.id}')"><td class="mono">${t}</td><td><span class="pill ${e.op}">${e.op}</span></td><td>${e.namespace}</td><td class="mono">${fmt(e.latency_ms,1)} ms</td><td class="mono">${e.n_results}</td><td>${cache}</td><td class="mono">${rank}</td><td class="st-${e.status}">${e.status}</td></tr>`}
+  $('#table').innerHTML=h+'</tbody></table>';
+}
+async function openTrace(id){const e=await (await fetch('/api/trace/'+id)).json();
+  const row=(k,v)=>`<div class="k">${k}</div><div class="val">${v==null?'—':v}</div>`;
+  $('#drawerbody').innerHTML=`<h3><span class="pill ${e.op}">${e.op}</span> trace</h3>
+  <div class="mono" style="color:var(--muted);font-size:12px">${e.id} · ${new Date(e.ts*1000).toLocaleString()}</div>
+  <div class="kv">${row('Namespace',e.namespace)}${row('Latency',fmt(e.latency_ms,2)+' ms')}${row('Results',e.n_results)}${row('top_k',e.top_k)}
+  ${row('Cache',e.cache_hit==null?'no cache':(e.cache_hit?'hit':'miss'))}${row('Filtered',e.filtered)}${row('Rescore',e.rescore)}${row('Rerank',e.rerank)}
+  ${row('Top score',e.score_top)}${row('Mean score',e.score_mean)}${row('Status',e.status)}${e.error?row('Error',e.error):''}${e.query_preview?row('Query',e.query_preview):''}</div>
+  <div class="wf"><div class="k mono" style="color:var(--muted);font-size:12px;margin-bottom:6px">End-to-end latency</div><div class="bar" style="width:100%"></div></div>`;
+  $('#drawer').classList.add('open');
+}
+function closeDrawer(){$('#drawer').classList.remove('open')}
+$('#ranges').addEventListener('click',e=>{if(e.target.dataset.w){W=+e.target.dataset.w;[...$('#ranges').children].forEach(b=>b.classList.toggle('on',b===e.target));load()}});
+$('#auto').addEventListener('click',()=>{AUTO=!AUTO;$('#auto').classList.toggle('on',AUTO);schedule()});
+['#fop','#fstatus','#fns'].forEach(s=>$(s).addEventListener('input',loadTable));
+function schedule(){if(TIMER)clearInterval(TIMER);if(AUTO)TIMER=setInterval(load,4000)}
+load();schedule();
+</script>
+</body></html>

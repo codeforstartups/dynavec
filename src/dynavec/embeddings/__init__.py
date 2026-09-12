@@ -12,10 +12,13 @@ from typing import TYPE_CHECKING
 from .base import Embedder, Vector
 
 if TYPE_CHECKING:  # for type checkers / IDEs only
-    from .bedrock import BedrockEmbedder
+    from .bedrock import BedrockEmbedder, BedrockTitanMultimodalEmbedder
     from .gemini import GeminiEmbedder
+    from .mistral import MistralEmbedder
+    from .ollama import OllamaEmbedder
     from .openai import OpenAIEmbedder
     from .sentence_transformers import SentenceTransformerEmbedder
+    from .voyage import VoyageEmbedder
 
 __all__ = [
     "Embedder",
@@ -23,17 +26,28 @@ __all__ = [
     "OpenAIEmbedder",
     "GeminiEmbedder",
     "BedrockEmbedder",
+    "BedrockTitanMultimodalEmbedder",
     "SentenceTransformerEmbedder",
+    "VoyageEmbedder",
+    "MistralEmbedder",
+    "OllamaEmbedder",
 ]
 
 _LAZY = {
     "OpenAIEmbedder": ("dynavec.embeddings.openai", "OpenAIEmbedder"),
     "GeminiEmbedder": ("dynavec.embeddings.gemini", "GeminiEmbedder"),
     "BedrockEmbedder": ("dynavec.embeddings.bedrock", "BedrockEmbedder"),
+    "BedrockTitanMultimodalEmbedder": (
+        "dynavec.embeddings.bedrock",
+        "BedrockTitanMultimodalEmbedder",
+    ),
     "SentenceTransformerEmbedder": (
         "dynavec.embeddings.sentence_transformers",
         "SentenceTransformerEmbedder",
     ),
+    "VoyageEmbedder": ("dynavec.embeddings.voyage", "VoyageEmbedder"),
+    "MistralEmbedder": ("dynavec.embeddings.mistral", "MistralEmbedder"),
+    "OllamaEmbedder": ("dynavec.embeddings.ollama", "OllamaEmbedder"),
 }
 
 

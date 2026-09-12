@@ -25,6 +25,7 @@ rewrite. (A native asyncio client is on the roadmap.)
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, Union
@@ -34,12 +35,13 @@ if TYPE_CHECKING:
 
 import numpy as np
 
-from .config import DynavecConfig
+from .config import NS_METADATA_KEY, TEXT_METADATA_KEY, DynavecConfig
 from .credentials import AWSCredentials, resolve_session
 from .embeddings.base import Embedder
 from .exceptions import ConfigurationError, DimensionMismatchError, NotFoundError
 from .graph import GraphStore
 from .metadata import build_s3_filter, generate_auto_metadata, split_metadata
+from .metrics import normalize_scores as normalize_metric_scores
 from .metrics import rescore as metric_rescore
 from .metrics import score as metric_score
 from .models import Document, SearchResult, UpsertResult
@@ -48,10 +50,9 @@ from .provisioning import provision_all
 from .retrieval import distance_to_score, maximal_marginal_relevance
 from .stores import DynamoDBStore, S3VectorsStore
 from .transforms import TransformContext, as_pipeline
-from .utils import chunked
+from .utils import KEY_SEPARATOR, chunked, decode_key_component, encode_key_component
 
 Metadata = dict[str, Any]
-_KEY_SEP = "#"
 _S3_PUT_CHUNK = 500
 _DDB_CHUNK = 500
 
@@ -70,6 +71,7 @@ class Dynavec:
         boto_session=None,
         transform=None,
         cache=None,
+        telemetry=None,
     ) -> None:
         self.config = config
         self.embedder = embedder
@@ -78,6 +80,7 @@ class Dynavec:
         self._docs = DynamoDBStore(config, boto_session=self._session)
         self._default_transform = as_pipeline(transform)
         self._cache = cache
+        self._telemetry = telemetry
         self._graph_store: GraphStore | None = None
         self._pool: ThreadPoolExecutor | None = None
 
@@ -131,11 +134,11 @@ class Dynavec:
 
     # ------------------------------------------------------------- key helpers
     def _s3_key(self, namespace: str, doc_id: str) -> str:
-        return f"{namespace}{_KEY_SEP}{doc_id}"
+        return f"{encode_key_component(namespace)}{KEY_SEPARATOR}{encode_key_component(doc_id)}"
 
     def _split_key(self, key: str) -> tuple[str, str]:
-        namespace, _, doc_id = key.partition(_KEY_SEP)
-        return namespace, doc_id
+        namespace, _, doc_id = key.partition(KEY_SEPARATOR)
+        return decode_key_component(namespace), decode_key_component(doc_id)
 
     def _run_parallel(self, tasks: list) -> None:
         """Run zero-arg callables; parallel if enabled, else sequential."""
@@ -299,30 +302,68 @@ class Dynavec:
         mmr_lambda: float = 0.5,
         include_vectors: bool = False,
         use_cache: bool | None = None,
+        normalize_scores: bool = False,
     ) -> list[SearchResult]:
         """Semantic search. Provide ``query`` (embedded) or a raw ``vector``.
 
         ``rescore`` re-orders the ANN candidates with a client-side metric
         (``"cosine"``, ``"dot"``, ``"euclidean"``, ``"manhattan"``) or a weighted
         combination like ``{"cosine": 0.7, "manhattan": 0.3}``.
+        Set ``normalize_scores=True`` to min-max normalize the final result set
+        to ``[0, 1]`` without changing its order.
 
         If a cache is configured, repeated/similar queries are served from it
         (set ``use_cache=False`` to force a fresh search).
         """
-        query_vector = self._resolve_query_vector(query, vector)
+        t0 = time.perf_counter()
+        tel = self._telemetry
+        try:
+            query_vector = self._resolve_query_vector(query, vector)
 
-        # cache key includes ranking options so different ranking != same entry
-        cache_on = self._cache is not None if use_cache is None else use_cache
-        cache_filter = None
-        if cache_on and self._cache is not None:
-            cache_filter = {
-                **(filter or {}),
-                "__rank": {"rescore": rescore, "rerank": rerank, "mmr": mmr_lambda},
-            }
-            cached = self._cache.get(namespace, query_vector, top_k, cache_filter)
-            if cached is not None:
-                return cached
+            # cache key includes ranking options so different ranking != same entry
+            cache_on = self._cache is not None if use_cache is None else use_cache
+            cache_filter = None
+            if cache_on and self._cache is not None:
+                cache_filter = {
+                    **(filter or {}),
+                    "__rank": {
+                        "rescore": rescore,
+                        "rerank": rerank,
+                        "mmr": mmr_lambda,
+                        "normalize_scores": normalize_scores,
+                    },
+                }
+                cached = self._cache.get(namespace, query_vector, top_k, cache_filter)
+                if cached is not None:
+                    self._record_search(tel, t0, namespace, top_k, cached, True,
+                                        filter, rescore, rerank, query)
+                    return cached
 
+            results = self._search_core(
+                query_vector, top_k, namespace, filter, rescore, rerank,
+                mmr_lambda, include_vectors, normalize_scores,
+            )
+
+            if cache_on and self._cache is not None and results:
+                self._cache.put(namespace, query_vector, top_k, cache_filter, results)
+            self._record_search(tel, t0, namespace, top_k, results,
+                                (False if cache_on else None),
+                                filter, rescore, rerank, query)
+            return results
+        except Exception as exc:  # noqa: BLE001 - record then re-raise
+            if tel is not None:
+                tel.record(tel.new_event(
+                    "search", namespace=namespace, top_k=top_k,
+                    latency_ms=round((time.perf_counter() - t0) * 1000, 3),
+                    status="error", error=str(exc)[:200], filtered=bool(filter),
+                    rescore=self._rescore_label(rescore), rerank=rerank,
+                ))
+            raise
+
+    def _search_core(
+        self, query_vector, top_k, namespace, filter, rescore, rerank,
+        mmr_lambda, include_vectors, normalize_scores,
+    ) -> list[SearchResult]:
         needs_vectors = rerank == "mmr" or rescore is not None or include_vectors
         fetch_k = top_k * self.config.over_fetch if (rerank or rescore) else top_k
 
@@ -369,13 +410,42 @@ class Dynavec:
         else:
             results = results[:top_k]
 
+        if normalize_scores and results:
+            normalized = normalize_metric_scores(np.asarray([r.score for r in results]))
+            for result, normalized_score in zip(results, normalized):
+                result.score = float(normalized_score)
+
         if not include_vectors:
             for r in results:
                 r.vector = None
 
-        if cache_on and self._cache is not None and results:
-            self._cache.put(namespace, query_vector, top_k, cache_filter, results)
         return results
+
+    @staticmethod
+    def _rescore_label(rescore: RescoreSpec | None) -> str | None:
+        if rescore is None:
+            return None
+        return rescore if isinstance(rescore, str) else "composite"
+
+    def _record_search(self, tel, t0, namespace, top_k, results, cache_hit,
+                       filter, rescore, rerank, query) -> None:
+        if tel is None:
+            return
+        scores = [r.score for r in results] if results else []
+        tel.record(tel.new_event(
+            "search",
+            namespace=namespace,
+            top_k=top_k,
+            latency_ms=round((time.perf_counter() - t0) * 1000, 3),
+            n_results=len(results),
+            cache_hit=cache_hit,
+            filtered=bool(filter),
+            rescore=self._rescore_label(rescore),
+            rerank=rerank,
+            score_top=round(max(scores), 4) if scores else None,
+            score_mean=round(sum(scores) / len(scores), 4) if scores else None,
+            query_preview=(query[:80] if (query and tel.capture_text) else None),
+        ))
 
     def _apply_rescore(
         self, query_vector: list[float], results: list[SearchResult], spec: RescoreSpec
@@ -400,21 +470,32 @@ class Dynavec:
         top_k: int = 50,
         namespace: str = "default",
         filter: Metadata | None = None,
+        page_size: int | None = None,
     ) -> Iterator[SearchResult]:
         """Stream results to the agent page-by-page as S3 Vectors returns them.
 
         A generator: the caller (agent) can start consuming the first hits before
         the full result set is retrieved. Reranking/rescoring are not applied in
         streaming mode (they need the whole candidate set).
+
+        Parameters
+        ----------
+        page_size:
+            Optional client-side chunk size for DynamoDB hydration batches.
+            Defaults to ``DynavecConfig.top_k_page_size``. ``None`` uses native
+            Amazon S3 Vectors pages (at most 100). Yields one hit at a time
+            regardless; this does not change S3 Vectors page size.
         """
         query_vector = self._resolve_query_vector(query, vector)
         yielded = 0
+        effective_page_size = page_size if page_size is not None else self.config.top_k_page_size
         for page in self._vectors.query_pages(
             query_vector=query_vector,
             top_k=top_k,
             filter=build_s3_filter(filter, namespace),
             return_metadata=True,
             return_distance=True,
+            page_size=effective_page_size,
         ):
             page_hits = [(self._split_key(v["key"])[1], v.get("distance")) for v in page]
             hydrated = self._docs.get_many(namespace, [h[0] for h in page_hits])
@@ -474,6 +555,79 @@ class Dynavec:
             for doc_id in ids
             if doc_id in hydrated
         ]
+
+    def list_vectors(
+        self,
+        namespace: str | None = None,
+        *,
+        include_vectors: bool = False,
+        hydrate: bool = True,
+        page_size: int | None = None,
+    ) -> Iterator[SearchResult]:
+        """Stream every stored vector, one at a time, for maintenance jobs.
+
+        A generator over the whole index — bulk delete, re-embedding, auditing.
+        Only a single page is ever held in memory, so this is safe over indexes
+        holding millions of vectors. Do not build a list from it unless you
+        already know the index is small.
+
+        Parameters
+        ----------
+        namespace:
+            Restrict the walk to one namespace. ``None`` (the default) walks
+            every namespace in the index. Amazon S3 Vectors ``ListVectors``
+            takes no server-side ``filter``, so unlike :meth:`search` the scope
+            is applied client-side on the vector key, which carries the same
+            namespace that :func:`build_s3_filter` matches via the
+            ``_dv_ns`` metadata tag.
+        include_vectors:
+            Carry the raw embedding on each result (extra bandwidth).
+        hydrate:
+            Fetch text and full metadata from DynamoDB, one BatchGetItem per
+            page. Set False for jobs that only need ids: results then carry the
+            smaller *filterable* metadata subset mirrored into S3 Vectors, and
+            text only where ``store_text_in_s3vectors`` mirrored it.
+        page_size:
+            Service-side page size (``maxResults``, 1-1000).
+        """
+        for page in self._vectors.list_pages(
+            return_data=include_vectors,
+            return_metadata=not hydrate,
+            page_size=page_size,
+        ):
+            scoped = []
+            for v in page:
+                key_ns, doc_id = self._split_key(v["key"])
+                if namespace is not None and key_ns != namespace:
+                    continue
+                scoped.append((key_ns, doc_id, v))
+            if not scoped:
+                continue
+
+            hydrated: dict[str, dict[str, dict[str, Any]]] = {}
+            if hydrate:
+                by_ns: dict[str, list[str]] = {}
+                for key_ns, doc_id, _ in scoped:
+                    by_ns.setdefault(key_ns, []).append(doc_id)
+                for ns, ids in by_ns.items():
+                    hydrated[ns] = self._docs.get_many(ns, ids)
+
+            for key_ns, doc_id, v in scoped:
+                if hydrate:
+                    doc = hydrated.get(key_ns, {}).get(doc_id, {})
+                    text = doc.get("text")
+                    metadata = doc.get("metadata", {})
+                else:
+                    metadata = dict(v.get("metadata") or {})
+                    metadata.pop(NS_METADATA_KEY, None)
+                    text = metadata.pop(TEXT_METADATA_KEY, None)
+                yield SearchResult(
+                    id=doc_id,
+                    score=1.0,
+                    text=text,
+                    metadata=metadata,
+                    vector=(v.get("data") or {}).get("float32") if include_vectors else None,
+                )
 
     # -------------------------------------------------------------- graph / ER
     def graph_add_node(self, entity_id, *, namespace="default", ntype=None, props=None):

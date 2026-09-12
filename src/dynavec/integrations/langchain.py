@@ -12,6 +12,7 @@ is wrapped to satisfy dynavec's :class:`~dynavec.embeddings.base.Embedder`).
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import Iterable
 from typing import Any
@@ -87,6 +88,28 @@ class DynavecVectorStore(VectorStore):
             for r in results
         ]
 
+    async def asimilarity_search(
+        self,
+        query: str,
+        k: int = 4,
+        filter: dict | None = None,
+        **kwargs: Any,
+    ) -> list[LCDocument]:
+        results = await asyncio.to_thread(
+            self._client.search,
+            query,
+            top_k=k,
+            namespace=self._namespace,
+            filter=filter,
+        )
+        return [
+            LCDocument(
+                page_content=r.text or "",
+                metadata={**r.metadata, "id": r.id, "score": r.score},
+            )
+            for r in results
+        ]
+
     def similarity_search_with_score(
         self, query: str, k: int = 4, filter: dict | None = None, **kwargs: Any
     ) -> list[tuple[LCDocument, float]]:
@@ -96,6 +119,31 @@ class DynavecVectorStore(VectorStore):
         return [
             (
                 LCDocument(page_content=r.text or "", metadata={**r.metadata, "id": r.id}),
+                r.score,
+            )
+            for r in results
+        ]
+
+    async def asimilarity_search_with_score(
+        self,
+        query: str,
+        k: int = 4,
+        filter: dict | None = None,
+        **kwargs: Any,
+    ) -> list[tuple[LCDocument, float]]:
+        results = await asyncio.to_thread(
+            self._client.search,
+            query,
+            top_k=k,
+            namespace=self._namespace,
+            filter=filter,
+        )
+        return [
+            (
+                LCDocument(
+                    page_content=r.text or "",
+                    metadata={**r.metadata, "id": r.id},
+                ),
                 r.score,
             )
             for r in results
@@ -120,6 +168,32 @@ class DynavecVectorStore(VectorStore):
         )
         return [
             LCDocument(page_content=r.text or "", metadata={**r.metadata, "id": r.id, "score": r.score})
+            for r in results
+        ]
+
+    async def amax_marginal_relevance_search(
+        self,
+        query: str,
+        k: int = 4,
+        fetch_k: int = 20,
+        lambda_mult: float = 0.5,
+        filter: dict | None = None,
+        **kwargs: Any,
+    ) -> list[LCDocument]:
+        results = await asyncio.to_thread(
+            self._client.search,
+            query,
+            top_k=k,
+            namespace=self._namespace,
+            filter=filter,
+            rerank="mmr",
+            mmr_lambda=lambda_mult,
+        )
+        return [
+            LCDocument(
+                page_content=r.text or "",
+                metadata={**r.metadata, "id": r.id, "score": r.score},
+            )
             for r in results
         ]
 

@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Any
 
 from ..config import DynavecConfig
-from ..utils import retry
+from ..utils import KEY_SEPARATOR, encode_key_component, retry
 
 Metadata = dict[str, Any]
 
@@ -54,12 +54,16 @@ class DynamoDBStore:
 
         session = boto_session or boto3.Session()
         self._config = config
-        self._ddb = session.resource("dynamodb", region_name=config.region)
+        resource_kwargs: dict[str, object] = {"region_name": config.region}
+        botocore_config = config.botocore_config()
+        if botocore_config is not None:
+            resource_kwargs["config"] = botocore_config
+        self._ddb = session.resource("dynamodb", **resource_kwargs)  # type: ignore[arg-type]
         self._table = self._ddb.Table(config.table)
 
     @staticmethod
     def _pk(namespace: str, doc_id: str) -> str:
-        return f"{namespace}#{doc_id}"
+        return f"{encode_key_component(namespace)}{KEY_SEPARATOR}{encode_key_component(doc_id)}"
 
     def put_many(
         self,

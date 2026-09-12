@@ -1,5 +1,10 @@
 # dynavec
 
+[![PyPI version](https://img.shields.io/pypi/v/dynavec?style=flat-square&color=e8623b&label=release)](https://pypi.org/project/dynavec/)
+[![Python versions](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-3776ab?style=flat-square&logo=python&logoColor=white)](https://pypi.org/project/dynavec/)
+[![CI](https://img.shields.io/github/actions/workflow/status/codeforstartups/dynavec/ci.yml?branch=development&style=flat-square&label=CI)](https://github.com/codeforstartups/dynavec/actions/workflows/ci.yml)
+[![License](https://img.shields.io/pypi/l/dynavec?style=flat-square&color=green)](https://github.com/codeforstartups/dynavec/blob/development/LICENSE)
+
 **Serverless, in-your-own-account hybrid vector database on AWS.**
 `dynavec` fuses **Amazon DynamoDB** (single-digit-millisecond metadata + document store) with **Amazon S3 Vectors** (billion-scale, AWS-managed approximate-nearest-neighbor search) into one Python client — a drop-in alternative to Pinecone, Qdrant, Milvus, Weaviate, and OpenSearch that **runs entirely inside your AWS account** and **bills only when you use it**.
 
@@ -14,6 +19,8 @@ pip install "dynavec[all]"                     # every embedder + framework adap
 uv add dynavec
 uv add "dynavec[all]"
 ```
+
+Type hints are included for type checkers such as mypy and pyright.
 
 ---
 
@@ -57,6 +64,69 @@ S3 Vectors **is** the ANN engine — AWS manages the index internally, so you do
 ---
 
 ## Quick start
+
+Three steps to your first semantic search — everything runs inside **your own AWS account**.
+
+### 1. Install
+
+```bash
+pip install dynavec            # or: uv add dynavec
+pip install "dynavec[openai]"  # add an embedder extra so dynavec can embed for you
+```
+
+### 2. Grant AWS access
+
+dynavec needs an IAM identity with permission for **Amazon S3 Vectors** + **Amazon DynamoDB**. Create an IAM user, attach the policy below, and export its keys (or use an IAM role / profile — see [Provisioning & IAM](#provisioning--iam)).
+
+```bash
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_DEFAULT_REGION=us-east-1
+```
+
+<details>
+<summary><strong>Minimum IAM policy</strong> (click to expand)</summary>
+
+Replace `REGION` and `ACCOUNT_ID`. `dynamodb:Scan` is only needed for the GraphRAG feature; the `Create*`/`Delete*` actions are only needed for `auto_provision=True`.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DynavecS3Vectors",
+      "Effect": "Allow",
+      "Action": [
+        "s3vectors:CreateVectorBucket", "s3vectors:GetVectorBucket",
+        "s3vectors:ListVectorBuckets", "s3vectors:DeleteVectorBucket",
+        "s3vectors:CreateIndex", "s3vectors:GetIndex",
+        "s3vectors:ListIndexes", "s3vectors:DeleteIndex",
+        "s3vectors:PutVectors", "s3vectors:GetVectors",
+        "s3vectors:ListVectors", "s3vectors:QueryVectors", "s3vectors:DeleteVectors"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DynavecDynamoDB",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:CreateTable", "dynamodb:DescribeTable", "dynamodb:DeleteTable",
+        "dynamodb:BatchWriteItem", "dynamodb:BatchGetItem",
+        "dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/dynavec_*",
+        "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/dynavec_*/index/*"
+      ]
+    }
+  ]
+}
+```
+
+</details>
+
+### 3. Run your first query
 
 ```python
 from dynavec import Dynavec, DynavecConfig, Document
@@ -122,19 +192,54 @@ store = DynavecVectorStore(db, namespace="kb")
 retriever = store.as_retriever(search_kwargs={"k": 4})
 ```
 
+### FastMCP Server (Claude Desktop, Cursor, AI agents)
+
+Expose `dynavec_search` and `dynavec_graph_search` tools to any MCP client over stdio:
+
+```bash
+# Launch MCP server from environment variables
+dynavec mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "dynavec": {
+      "command": "uvx",
+      "args": ["--with", "dynavec[all]", "dynavec", "mcp"],
+      "env": {
+        "AWS_ACCESS_KEY_ID": "AKIA...",
+        "AWS_SECRET_ACCESS_KEY": "...",
+        "AWS_REGION": "us-east-1",
+        "OPENAI_API_KEY": "sk-...",
+        "DYNAVEC_VECTOR_BUCKET": "my-vectors",
+        "DYNAVEC_INDEX": "docs",
+        "DYNAVEC_TABLE": "dynavec_docs"
+      }
+    }
+  }
+}
+```
+
 LlamaIndex, CrewAI, and Strands adapters are on the roadmap; the core client works in any of them today.
+
+---
+
+## Choosing an embedding dimension
+
+Embedding dimension trades off recall against storage cost and latency. A larger dimension usually gives higher recall, but the right choice is the **smallest dimension that meets your recall target** — not the largest. See [EMBEDDING_DIMENSIONS.md](docs/EMBEDDING_DIMENSIONS.md) for a comparison table, the S3 Vectors 4096-dim ceiling, and a step-by-step picking guide.
 
 ---
 
 ## Namespaces & multi-tenancy
 
-Every write/read takes a `namespace`. dynavec tags each vector with its namespace and scopes queries to it automatically, so a single index can host many tenants (or many embedding "collections") with clean isolation. DynamoDB keys are `"{namespace}#{id}"` for even partition distribution.
+Every write/read takes a `namespace`. dynavec tags each vector with its namespace and scopes queries to it automatically, so a single index can host many tenants (or many embedding "collections") with clean isolation. DynamoDB keys use escaped `"{namespace}#{id}"` components for even partition distribution, so `#` in namespaces, document IDs, and graph entity IDs remains unambiguous.
 
 ---
 
 ## Provisioning & IAM
 
-`auto_provision=True` (or `db.provision()`) creates the S3 vector bucket, the vector index, and the DynamoDB table idempotently. The caller needs `s3vectors:*` on the bucket/index and `dynamodb:*` on the table (scope these down in production — see [ARCHITECTURE.md](ARCHITECTURE.md)).
+`auto_provision=True` (or `db.provision()`) creates the S3 vector bucket, the vector index, and the DynamoDB table idempotently. The caller needs `s3vectors:*` on the bucket/index and `dynamodb:*` on the table (scope these down in production — see [ARCHITECTURE.md](ARCHITECTURE.md)). For supported AWS regions and regional configuration, see [REGIONS.md](docs/REGIONS.md).
 
 ---
 
@@ -202,12 +307,56 @@ python -m benchmarks.run_benchmark --backend dynavec \
 
 ---
 
+## Observability dashboard
+
+A native, in-your-brand **observability dashboard** — a Langfuse-style view of
+**real** query telemetry (no simulated data). Attach a recorder and every search
+is captured with latency, cache outcome, result count, and score stats.
+
+![dynavec observability dashboard](https://raw.githubusercontent.com/codeforstartups/dynavec/development/docs/assets/dashboard.png)
+
+**▶ [Live interactive preview](https://codeforstartups.github.io/dynavec/dashboard/)** — in the landing-page theme.
+
+The dashboard is a **Next.js + TypeScript + Tailwind + Recharts** app in [`dashboard/`](dashboard); the data comes from a tiny Python telemetry API. Two steps:
+
+**1. Expose real telemetry** — attach a recorder to your client and serve the API:
+
+```python
+from dynavec import Dynavec, DynavecConfig, SemanticCache
+from dynavec.telemetry import TelemetryRecorder
+from dynavec.dashboard import serve
+
+rec = TelemetryRecorder()
+db = Dynavec(cfg, embedder=emb, cache=SemanticCache(), telemetry=rec)
+# ... your app runs searches; the recorder fills automatically ...
+serve(rec, port=8779)          # JSON API at http://127.0.0.1:8779
+```
+
+**2. Run the dashboard** (points at that API; falls back to sample data if unset):
+
+```bash
+cd dashboard
+npm install
+NEXT_PUBLIC_DYNAVEC_API=http://127.0.0.1:8779 npm run dev   # http://localhost:3000
+```
+
+No AWS? `python examples/dashboard_demo.py` runs real searches against in-memory
+stand-ins and serves the API on `:8779` for the dashboard to read.
+
+It shows a query-volume histogram, latency percentiles (p50/p95/p99), cache
+hit-rate, and a filterable **traces** table with per-trace drill-down.
+**Contributors welcome:** the Evaluation (recall@k, faithfulness), Resource
+(buckets/indexes/namespaces), and Cost panels are open under the
+[dashboard epic (#122)](https://github.com/codeforstartups/dynavec/issues/122).
+
+---
+
 ## Capabilities
 
 | Area | What you get | API |
 |------|--------------|-----|
-| **Distance metrics** | Index on cosine/euclidean (S3 Vectors native); client-side rescore in cosine / dot / euclidean / manhattan or a **weighted combination** | `search(..., rescore={"cosine":0.7,"manhattan":0.3})` |
-| **Concurrency** | GIL-aware thread pool — real parallelism for I/O-bound AWS calls; parallel batched writes + `search_many` | `DynavecConfig(max_workers=8)`, `db.search_many([...])` |
+| **Distance metrics** | Index on cosine/euclidean (S3 Vectors native); client-side rescore in cosine / dot / euclidean / manhattan or a **weighted combination**, with optional result-set normalization | `search(..., rescore="dot", normalize_scores=True)` |
+| **Concurrency** | GIL-aware thread pool — real parallelism for I/O-bound AWS calls; parallel batched writes + `search_many`; tunable botocore connection pool (default 10, raise for high concurrency) | `DynavecConfig(max_workers=8, max_pool_connections=50)`, `db.search_many([...])` |
 | **Streaming** | Results yielded page-by-page as S3 Vectors paginates, so agents start consuming early | `for hit in db.search_stream(q): ...` |
 | **Namespace RAG** | Per-tenant/collection handles; isolation + even partitioning | `kb = db.namespace("kb"); kb.search(...)` |
 | **Product quantization** | Compress cached/hot-tier vectors up to 32× (ADC distance) | `ProductQuantizer(m=96).fit(X)` |
@@ -219,9 +368,21 @@ python -m benchmarks.run_benchmark --backend dynavec \
 | **Frameworks** | LangChain + LlamaIndex vector stores; a framework-agnostic tool for LangGraph/CrewAI/Strands | `dynavec.integrations.*` |
 | **Benchmark report** | Comparison table + recall/latency + cost-by-scale (log) charts | `python -m benchmarks.report` |
 
+`SemanticCache` can be bounded by both entry count and approximate in-memory
+size. Pass `max_bytes` to account for each cached float32 query vector and its
+result object graph, and inspect `size_bytes` for the current accounted size:
+
+```python
+cache = SemanticCache(max_size=2_048, max_bytes=64 * 1024 * 1024)
+```
+
 ## Status
 
-**v0.2** — everything in the table above, on top of the v0.1 hybrid core (pluggable embedders, RRF, MMR, provisioning). 61 tests. **Roadmap (v0.3):** native asyncio client (`aioboto3`), in-process `hnswlib` hot tier, sparse/BM25 hybrid computed from DynamoDB, sort-key graph adjacency for very high fan-out, and turnkey file parsers (PDF/DOCX/PPTX/XLSX) as ingestion sources.
+**v0.3.0 (current)** — adds async embeddings, three more embedders (Mistral, Voyage AI, Bedrock Titan multimodal images), the SPFresh hot tier for fresh vectors, PDF ingestion, a FastMCP search server, the observability dashboard, and `max_pool_connections` tuning — on top of the v0.2 feature set and the v0.1 hybrid core (pluggable embedders, RRF, MMR, provisioning).
+
+See the full history in **[CHANGELOG.md](CHANGELOG.md)**, the browsable **[Release notes](https://codeforstartups.github.io/dynavec/docs/release-notes.html)** page, or the **[GitHub Releases](https://github.com/codeforstartups/dynavec/releases)** tab.
+
+**Roadmap (v0.4):** in-process `hnswlib` hot tier, sparse/BM25 hybrid computed from DynamoDB, sort-key graph adjacency for very high fan-out, and more turnkey file parsers (DOCX/PPTX/XLSX) as ingestion sources.
 
 ## Local development (no AWS account)
 
@@ -260,7 +421,7 @@ as the pre-release gate.
 **Automated (recommended)** — a GitHub Release triggers [`.github/workflows/publish.yml`](.github/workflows/publish.yml), which builds and uploads via **PyPI Trusted Publishing (OIDC)** — no API token stored anywhere. One-time setup: on PyPI, add a *pending publisher* for project `dynavec`, repo `codeforstartups/dynavec`, workflow `publish.yml`, environment `pypi`. Then:
 
 ```bash
-git tag v0.2.0 && git push origin v0.2.0     # then publish a GitHub Release for the tag
+git tag v0.3.0 && git push origin v0.3.0     # then publish a GitHub Release for the tag
 ```
 
 **Manual** — if you'd rather push from your machine with a token:
@@ -272,6 +433,33 @@ uv publish                                    # uses UV_PUBLISH_TOKEN / prompts
 ```
 
 Bump the version in **both** `pyproject.toml` and `src/dynavec/__init__.py` before releasing.
+
+## 🫂 Community
+
+If you want to get more involved with dynavec, join our [WhatsApp community](https://chat.whatsapp.com/D73Mf1aDyIZHHMCgd32XHg). It's a friendly space to talk about vector search, RAG, AWS costs, production issues, and everything in between — ask questions, share what you're building, or help others out.
+
+## Contributors
+
+```
++----------------------------------------------------------------------------+
+|     +----------------------------------------------------------------+     |
+|     | Developers: Those who built with `dynavec`.                    |     |
+|     | (You have `import dynavec` somewhere in your project)          |     |
+|     |     +----------------------------------------------------+     |     |
+|     |     | Contributors: Those who make `dynavec` better.     |     |     |
+|     |     | (You make a PR to this repo)                       |     |     |
+|     |     +----------------------------------------------------+     |     |
+|     +----------------------------------------------------------------+     |
++----------------------------------------------------------------------------+
+```
+
+We welcome contributions from the community! Whether it's bug fixes, feature additions, or documentation improvements, your input is valuable. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, and browse [good first issues](https://github.com/codeforstartups/dynavec/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) to get started.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ## License
 

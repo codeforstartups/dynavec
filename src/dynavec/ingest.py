@@ -19,9 +19,13 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
+import requests
+
 from .client import Dynavec
+from .exceptions import MissingDependencyError
 from .models import Document
 from .utils import chunked
 
@@ -64,6 +68,138 @@ class IterableSource:
     def __iter__(self) -> Iterator[Record]:
         for r in self._records:
             yield r if isinstance(r, Record) else Record(**r)
+
+
+class PDFSource:
+    """Yield one Record per text-bearing page in a PDF."""
+
+    def __init__(self, path: str | Path) -> None:
+        try:
+            from pypdf import PdfReader
+        except ImportError as exc:
+            raise MissingDependencyError(
+                "PDFSource",
+                "pypdf",
+                "ingest",
+            ) from exc
+
+        self._path = Path(path)
+        self._reader_cls = PdfReader
+
+    def __iter__(self) -> Iterator[Record]:
+        reader = self._reader_cls(self._path)
+
+        for page_number, page in enumerate(reader.pages, start=1):
+            text = page.extract_text()
+
+            if not text or not text.strip():
+                continue
+
+            path_str = self._path.as_posix()
+            yield Record(
+                id=f"{path_str}#page{page_number}",
+                text=text,
+                metadata={
+                    "source": "pdf",
+                    "path": path_str,
+                    "page": page_number,
+                },
+            )
+
+class URLSource:
+    """Yield one Record containing readable text extracted from a URL."""
+    def __init__(self, url: str, timeout: float=10)->None:
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError as exc:
+            raise MissingDependencyError(
+                "URLSource",
+                "beautifulsoup4",
+                "ingest"
+            ) from exc
+        self._url= url
+        self._timeout= timeout
+        self._parser_cls= BeautifulSoup
+    
+    def __iter__(self)-> Iterator[Record]:
+        response=requests.get(
+            self._url,
+            timeout=self._timeout,
+            headers={"User-Agent": "dynavec/1.0"},
+        )
+        response.raise_for_status()
+        soup=self._parser_cls(response.text,"html.parser")  
+        for tag in soup(["script","style"]):
+            tag.decompose()
+        page_text=soup.get_text(separator=" ",strip=True)
+        if not page_text:
+            return
+        yield Record(
+            id= self._url,
+            text= page_text,
+            metadata={
+                "source": "url",
+                "url": self._url
+                },
+            )
+
+class MarkdownSource:
+    """Read UTF-8 Markdown and text files from a directory.
+
+    ``glob`` is relative to ``root`` and defaults to recursive discovery.
+    Records use root-relative POSIX paths as IDs. Markdown YAML front matter
+    becomes metadata and is excluded from the text. The ``source`` and ``path``
+    metadata fields are reserved for file provenance. Install ``dynavec[ingest]``
+    to read front matter; files without it need no optional dependencies.
+    """
+
+    def __init__(self, root: str | Path, *, glob: str = "**/*") -> None:
+        self.root = Path(root)
+        if not self.root.exists():
+            raise FileNotFoundError(self.root)
+        if not self.root.is_dir():
+            raise NotADirectoryError(self.root)
+        self.glob = glob
+
+    @staticmethod
+    def _front_matter(text: str, path: Path) -> tuple[str, Metadata]:
+        lines = text.splitlines(keepends=True)
+        if not lines or lines[0].strip() != "---":
+            return text, {}
+        end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+        if end is None:
+            raise ValueError(f"Unclosed YAML front matter in {path}")
+        try:
+            import yaml
+        except ImportError as exc:
+            raise MissingDependencyError(
+                "Markdown front matter", "PyYAML", "ingest"
+            ) from exc
+
+        try:
+            metadata = yaml.safe_load("".join(lines[1:end]))
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Invalid YAML front matter in {path}: {exc}") from exc
+        if metadata is None:
+            metadata = {}
+        if not isinstance(metadata, dict) or any(not isinstance(k, str) for k in metadata):
+            raise ValueError(f"Front matter in {path} must be a mapping with string keys")
+        return "".join(lines[end + 1 :]), metadata
+
+    def __iter__(self) -> Iterator[Record]:
+        for path in sorted(self.root.glob(self.glob)):
+            if not path.is_file() or path.suffix.lower() not in (".md", ".txt"):
+                continue
+            text = path.read_text(encoding="utf-8-sig")
+            metadata: Metadata = {}
+            if path.suffix.lower() == ".md":
+                text, metadata = self._front_matter(text, path)
+            relative_path = path.relative_to(self.root).as_posix()
+            yield Record(
+                id=relative_path,
+                text=text,
+                metadata={**metadata, "source": "file", "path": relative_path},
+            )
 
 
 class MCPResourceSource:

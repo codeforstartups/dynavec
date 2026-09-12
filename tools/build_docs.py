@@ -18,6 +18,7 @@ NAV = [
         ("installation", "Installation"),
         ("quickstart", "Quickstart"),
         ("configuration", "Configuration"),
+        ("faq", "FAQ"),
     ]),
     ("Writing data", [
         ("embeddings", "Embeddings"),
@@ -41,6 +42,9 @@ NAV = [
     ("Ecosystem", [
         ("integrations", "Framework integrations"),
         ("benchmarking", "Benchmarking"),
+    ]),
+    ("About", [
+        ("release-notes", "Release notes"),
     ]),
 ]
 
@@ -119,6 +123,8 @@ Weaviate, and OpenSearch that bills only when you use it.</p>
   <a href="ingestion.html"><h3>Ingestion &amp; MCP</h3><p>Pull, chunk, embed from any source — including any MCP server.</p></a>
   <a href="credentials.html"><h3>Credentials &amp; IAM</h3><p>Access keys, profiles, cross-account assume-role, least-privilege policy.</p></a>
   <a href="integrations.html"><h3>Integrations</h3><p>LangChain, LlamaIndex, and a tool for LangGraph / CrewAI / Strands.</p></a>
+  <a href="faq.html"><h3>FAQ</h3><p>Common questions about regions, limits, consistency, and costs.</p></a>
+  <a href="benchmarking.html"><h3>Benchmarking</h3><p>Recall, latency, and cost modeled across dimensions and scale.</p></a>
 </div>
 """)
 
@@ -197,6 +203,7 @@ cfg = DynavecConfig(
     region="us-east-1",
     filterable_keys=["topic"],    # metadata keys pushed to S3 Vectors for filtering
     over_fetch=4,                 # candidate multiplier when reranking
+    top_k_page_size=50,           # optional client-side stream batch size
     max_workers=8,                # thread pool for parallel I/O
     auto_provision=True,
 )
@@ -208,8 +215,78 @@ cfg = DynavecConfig(
 <tr><td><code>distance_metric</code></td><td>The S3 Vectors index metric. Other metrics are available at rerank time — see <a href="metrics-and-rerank.html">Metrics</a>.</td></tr>
 <tr><td><code>filterable_keys</code></td><td>Small allowlist of metadata pushed to S3 Vectors. Everything else lives only in DynamoDB. Keep it small.</td></tr>
 <tr><td><code>over_fetch</code></td><td>How many extra candidates to pull before reranking/rescoring.</td></tr>
+<tr><td><code>top_k_page_size</code></td><td>Client-side stream hydration batch. <code>None</code> (default) uses native S3 Vectors pages (at most 100). Does not change the service page size.</td></tr>
 <tr><td><code>max_workers</code>, <code>parallel_writes</code></td><td>Thread-pool <a href="concurrency.html">concurrency</a> controls.</td></tr>
 </table>
+""")
+
+PAGES["faq"] = ("Frequently Asked Questions",
+    "Common questions about regions, limits, consistency, costs, and architecture.",
+    """
+<h2>Regions &amp; Availability</h2>
+
+<h3>Which AWS regions are supported?</h3>
+<p><code>dynavec</code> runs in any AWS region where both <strong>Amazon S3 Vectors</strong> and <strong>Amazon DynamoDB</strong> are supported (for example, <code>us-east-1</code>, <code>us-west-2</code>, <code>ap-south-1</code>, <code>eu-west-1</code>, and others). Specify your target region in <code>DynavecConfig(region="...")</code>.</p>
+
+<h3>Can I query across multiple AWS regions?</h3>
+<p>Each <code>DynavecConfig</code> connects to a single AWS region. Keeping your S3 vector bucket and DynamoDB table in the same region as your application workloads (e.g. Lambda, ECS, EC2) ensures single-digit millisecond latency and eliminates cross-region data transfer fees. If you need multi-region deployments, create independent <code>Dynavec</code> client instances per region.</p>
+
+<h3>Can I use Amazon Bedrock or third-party embedders in different regions?</h3>
+<p>Yes. <code>BedrockEmbedder</code> accepts an explicit <code>region</code> parameter (e.g. <code>BedrockEmbedder(model_id="amazon.titan-embed-text-v2:0", region="us-east-1")</code>) even if your vector database resources reside in a different region. Third-party embedders (OpenAI, Gemini, Cohere, Voyage) operate over public HTTPS APIs regardless of your AWS region.</p>
+
+<h2>Limits &amp; Constraints</h2>
+
+<h3>What is the maximum supported embedding dimension?</h3>
+<p>Amazon S3 Vectors supports vectors up to <strong>4,096 dimensions</strong>. All popular embedding models fall well within this ceiling, including 384-d (MiniLM), 768-d (BGE-base, Gemini), 1024-d (Voyage, BGE-large), 1536-d (OpenAI small / ada-002), and 3072-d (OpenAI large). See <a href="https://github.com/codeforstartups/dynavec/blob/development/docs/EMBEDDING_DIMENSIONS.md">Embedding Dimensions Guide</a> for trade-offs.</p>
+
+<h3>What are the limits on metadata filtering?</h3>
+<p>dynavec uses a two-store hybrid model for metadata:</p>
+<ul>
+  <li><strong>Filterable metadata:</strong> Indexed directly in S3 Vectors for fast pre-filtering. Pass only the keys you need to filter on via <code>DynavecConfig(filterable_keys=[...])</code> (e.g. <code>["topic", "tenant_id", "year"]</code>).</li>
+  <li><strong>Document metadata &amp; text:</strong> The complete payload is stored in DynamoDB, subject to DynamoDB's standard <strong>400 KB per item</strong> limit.</li>
+</ul>
+
+<h3>What is the maximum <code>top_k</code> query limit?</h3>
+<p>Amazon S3 Vectors returns up to 100 vectors per page and supports querying up to the service ceiling of <strong>10,000 vectors</strong> per query via pagination. dynavec automatically handles <code>nextToken</code> pagination behind the scenes, and provides <a href="streaming.html"><code>search_stream()</code></a> to stream hydrated results progressively as each page arrives.</p>
+
+<h3>What are the batch limits for ingestion and reads?</h3>
+<p>DynamoDB processes up to 25 items per <code>BatchWriteItem</code> and 100 items per <code>BatchGetItem</code>. dynavec manages batch chunking, throttling retries, and parallel dispatch over a thread pool automatically — you can pass arbitrarily large lists of documents to <code>db.upsert()</code> or <code>ingest()</code>.</p>
+
+<h2>Consistency &amp; Latency</h2>
+
+<h3>Why do newly upserted vectors not show up immediately in search results?</h3>
+<p>Amazon S3 Vectors is <strong>eventually consistent</strong> after ingestion. It typically takes a few seconds for new or modified vectors to be indexed and searchable via ANN vector queries. In contrast, document text and metadata written to DynamoDB are immediately accessible via key lookups.</p>
+<div class="callout">When writing automated integration tests, insert a brief sleep (e.g. 3–5 seconds) after upsert before executing query assertions.</div>
+
+<h3>What query latency should I expect?</h3>
+<p>For end-to-end semantic searches (S3 Vectors ANN lookup + DynamoDB <code>BatchGetItem</code> document hydration):</p>
+<ul>
+  <li><strong>p50 latency:</strong> ~45 ms for warm queries.</li>
+  <li><strong>p95 latency:</strong> ~120 ms.</li>
+  <li><strong>Repeated queries:</strong> Sub-millisecond to low single-digit ms when using <a href="caching.html"><code>SemanticCache</code></a> or <a href="caching.html"><code>RedisCache</code></a>.</li>
+</ul>
+
+<h2>Costs &amp; Billing</h2>
+
+<h3>How much does dynavec cost to run?</h3>
+<p>dynavec has <strong>no baseline idle cost</strong> and no fixed monthly cluster fees. You only pay standard AWS pay-as-you-go rates:</p>
+<table class="doc__params">
+<tr><th>Component</th><th>Pricing Model</th></tr>
+<tr><td><strong>S3 Vectors</strong></td><td>Vector storage (GB/month) + vector query and ingest PUT requests</td></tr>
+<tr><td><strong>DynamoDB</strong></td><td>On-Demand Read/Write Request Units (RRUs/WRUs) + document storage</td></tr>
+</table>
+<p>For a typical workload with 1M vectors (768-d) and 1M queries/month, total AWS infrastructure cost is approximately <strong>$3–$4/month</strong> — up to 50–200× cheaper than running dedicated clusters (e.g. OpenSearch, Qdrant, Milvus).</p>
+
+<h3>Are there data transfer fees between DynamoDB and S3 Vectors?</h3>
+<p>No. When your application and dynavec resources are in the same AWS region, all data transfer between S3 Vectors, DynamoDB, and your compute environment (Lambda, ECS, EC2) is free.</p>
+
+<h2>Security, Privacy &amp; Architecture</h2>
+
+<h3>Does my data ever leave my AWS account?</h3>
+<p>No. All documents, metadata, and vectors are stored inside your own AWS account's DynamoDB tables and S3 vector buckets. If you use <code>BedrockEmbedder</code> or <code>SentenceTransformerEmbedder</code>, embeddings are generated entirely within your AWS boundary or locally offline.</p>
+
+<h3>How does multi-tenancy work?</h3>
+<p>dynavec provides native <a href="namespaces.html">Namespaces</a>. A single S3 vector bucket and DynamoDB table can host many independent tenants. DynamoDB partition keys are cleanly isolated via escaped <code>"{namespace}#{id}"</code> prefixes, and vector queries are automatically scoped so data never leaks across namespaces.</p>
 """)
 
 PAGES["embeddings"] = ("Embeddings",
@@ -218,12 +295,14 @@ PAGES["embeddings"] = ("Embeddings",
 <p>Choose an embedder and supply your own API key, or skip the embedder entirely and pass pre-computed vectors.
 Embedder backends are imported lazily, so the base install stays light.</p>
 """ + code("""from dynavec.embeddings import (
-    OpenAIEmbedder, GeminiEmbedder, BedrockEmbedder, SentenceTransformerEmbedder,
+    OpenAIEmbedder, GeminiEmbedder, MistralEmbedder, BedrockEmbedder,
+    SentenceTransformerEmbedder,
 )
 
 # hosted (BYO key via env var or argument)
 emb = OpenAIEmbedder(model="text-embedding-3-small")        # 1536-d
 emb = GeminiEmbedder(model="text-embedding-004")            # 768-d
+emb = MistralEmbedder(model="mistral-embed")                # 1024-d
 
 # in-account (no third party) or fully local / offline
 emb = BedrockEmbedder(model_id="amazon.titan-embed-text-v2:0", region="us-east-1")
@@ -311,6 +390,34 @@ src = IterableSource([
 ])
 ingest(db, src, namespace="kb", chunk_size=1000, overlap=150)
 """) + """
+<h2>From a Markdown or text directory</h2>
+<p><code>MarkdownSource</code> reads UTF-8 <code>.md</code> and <code>.txt</code> files recursively.
+Install <code>dynavec[ingest]</code> for YAML front matter support.</p>
+""" + code("""from dynavec.ingest import MarkdownSource, ingest
+
+source = MarkdownSource("./notes")
+# Or select files with a root-relative glob:
+source = MarkdownSource("./notes", glob="guides/**/*.md")
+ingest(db, source, namespace="notes")
+""") + """
+<p>A Markdown file may begin with a YAML mapping between two <code>---</code> lines:</p>
+""" + code("""---
+title: Deployment guide
+topic: aws
+tags: [deployment, rag]
+---
+# Deploying the service
+The document body starts here.
+""") + """
+<p>Front matter becomes metadata and is removed from the text before chunking. Use storage-compatible
+values (strings, numbers, booleans, lists, and mappings); quote dates to keep them as strings.
+Malformed or unclosed front matter raises an error naming the file. Text files are read verbatim.</p>
+<p>IDs are root-relative paths such as <code>guides/deploy.md</code>; generated chunks retain this
+path in <code>source_id</code>. Metadata includes <code>source="file"</code> and <code>path</code>,
+which take precedence over front matter. Use separate namespaces for unrelated directory roots
+to avoid ID collisions. Discovery order is sorted, and files are read one at a time.</p>
+<p>Try <code>python examples/ingest_markdown.py ./notes --preview</code> to inspect records without
+AWS calls. The example also supports ingestion into an existing index using an OpenAI embedder.</p>
 <h2>From any MCP server</h2>
 <p><code>MCPResourceSource</code> turns an MCP server's <em>resources</em> (Notion, Confluence, Drive, your
 own) into an embeddable corpus — no per-source code.</p>
@@ -387,11 +494,13 @@ data isolation, no cross-tenant leakage.</div>
 PAGES["streaming"] = ("Streaming",
     "Deliver results to agents page-by-page as they arrive.",
     """
-<p><code>search_stream()</code> is a generator: it yields hits as S3 Vectors paginates, so an agent can start
-consuming the first results before the full set returns.</p>
-""" + code("""for hit in db.search_stream("large query", top_k=100, namespace="kb"):
-    handle(hit)   # arrives page by page
+<p><code>search_stream()</code> is a generator: it yields one hit at a time as S3 Vectors paginates, so an agent can start
+consuming the first results before the full set returns. Amazon S3 Vectors returns at most 100 vectors per response page;
+dynavec follows <code>nextToken</code> up to the service limit of 10,000 results.</p>
+""" + code("""for hit in db.search_stream("large query", top_k=250, namespace="kb", page_size=50):
+    handle(hit)   # one hit at a time; page_size is the DynamoDB hydration batch
 """) + """
+<p><code>page_size</code> (or <code>DynavecConfig(top_k_page_size=50)</code>) only changes how many hits are hydrated from DynamoDB per batch. It does not change the S3 Vectors page size (fixed at 100) or time-to-first-result.</p>
 <div class="callout">Reranking and rescoring need the full candidate set, so they are not applied in
 streaming mode. Use <a href="search.html">search()</a> when you need them.</div>
 """)
@@ -405,8 +514,12 @@ PAGES["caching"] = ("Caching",
 # 1) in-process semantic cache — also serves near-duplicate queries
 db = Dynavec(cfg, embedder=emb, cache=SemanticCache(threshold=0.97))
 
-# 2) durable, shared cache in your own DynamoDB table (TTL expiry)
-db = Dynavec(cfg, embedder=emb, cache=DynamoDBCache(cfg, ttl_seconds=3600))
+# 2) durable, shared cache with TTL jitter to spread simultaneous expiry
+db = Dynavec(
+    cfg,
+    embedder=emb,
+    cache=DynamoDBCache(cfg, ttl_seconds=3600, ttl_jitter_seconds=300),
+)
 
 # 3) sub-millisecond shared cache on Redis / AWS ElastiCache
 db = Dynavec(cfg, embedder=emb, cache=RedisCache("redis://my-elasticache:6379/0"))
@@ -414,7 +527,7 @@ db = Dynavec(cfg, embedder=emb, cache=RedisCache("redis://my-elasticache:6379/0"
 <table class="doc__params">
 <tr><th>Backend</th><th>Best for</th></tr>
 <tr><td><code>SemanticCache</code></td><td>single process; tolerant of near-duplicate hits; zero infra</td></tr>
-<tr><td><code>DynamoDBCache</code></td><td>durable, shared, no extra service; exact-match with TTL</td></tr>
+<tr><td><code>DynamoDBCache</code></td><td>durable, shared, no extra service; exact-match with TTL and optional expiry jitter</td></tr>
 <tr><td><code>RedisCache</code></td><td>many workers/hosts; lowest latency; AWS ElastiCache</td></tr>
 </table>
 <p>Force a fresh search per call with <code>db.search(..., use_cache=False)</code>.</p>
@@ -554,6 +667,39 @@ index = VectorStoreIndex.from_documents(docs, storage_context=ctx)
 """ + code("""from dynavec.integrations.tools import make_retriever_fn
 retrieve = make_retriever_fn(db, top_k=4)   # fn(query: str) -> str
 # also: as_langchain_tool(db), as_crewai_tool(db)
+""") + """
+<h2>FastMCP server (Claude Desktop, Cursor, AI agents)</h2>
+<p>Expose dynavec as an MCP server with <code>dynavec_search</code> and <code>dynavec_graph_search</code> tools. Configure via environment variables and launch over stdio:</p>
+""" + code("""# Install with MCP extra
+pip install "dynavec[mcp]"
+
+# Launch the FastMCP server via CLI
+dynavec mcp
+""") + """
+<p>Add to your Claude Desktop / Cursor configuration (<code>claude_desktop_config.json</code>):</p>
+""" + code("""{
+  "mcpServers": {
+    "dynavec": {
+      "command": "uvx",
+      "args": ["--with", "dynavec[all]", "dynavec", "mcp"],
+      "env": {
+        "AWS_ACCESS_KEY_ID": "AKIA...",
+        "AWS_SECRET_ACCESS_KEY": "...",
+        "AWS_REGION": "us-east-1",
+        "OPENAI_API_KEY": "sk-...",
+        "DYNAVEC_VECTOR_BUCKET": "my-vectors",
+        "DYNAVEC_INDEX": "docs",
+        "DYNAVEC_TABLE": "dynavec_docs"
+      }
+    }
+  }
+}
+""") + """
+<p>Programmatic initialization is also supported:</p>
+""" + code("""from dynavec.mcp import create_mcp_server
+
+mcp = create_mcp_server(db)
+mcp.run(transport="stdio")
 """))
 
 PAGES["benchmarking"] = ("Benchmarking",
@@ -573,6 +719,56 @@ python -m benchmarks.report --qpm 1_000_000
 """) + """
 <div class="callout">Cost figures are cost-model estimates from public list prices. Competitor recall/latency
 are representative until you run the live benchmark against your own account.</div>
+""")
+
+PAGES["release-notes"] = ("Release notes",
+    "What changed in each version of dynavec, newest first.",
+    """
+<p>dynavec follows <a href="https://semver.org/">semantic versioning</a>. Upgrade with:</p>
+""" + code("""pip install --upgrade dynavec
+uv pip install --upgrade dynavec""") + """
+<p>The full machine-readable history lives in
+<a href="https://github.com/codeforstartups/dynavec/blob/development/CHANGELOG.md">CHANGELOG.md</a>,
+and every version is a
+<a href="https://github.com/codeforstartups/dynavec/releases">GitHub Release</a>.</p>
+
+<h2 id="v0-3-0">0.3.0 <span class="doc__sub" style="font-weight:400">&mdash; 2026-09-10</span></h2>
+<p>A big feature release focused on more embedders, async, freshness, ingestion, and observability.</p>
+<h3>Added</h3>
+<ul>
+  <li><strong>Async embeddings</strong> &mdash; <code>aembed_documents</code> / <code>aembed_query</code>
+      on every backend, offloading sync clients to threads via <code>asyncio.to_thread</code>.</li>
+  <li><strong>New embedding backends</strong> &mdash; Mistral, Voyage AI, and Bedrock Titan
+      <strong>multimodal image</strong> embeddings.</li>
+  <li><strong>SPFresh hot-tier</strong> &mdash; incremental hot-index rebalancing for freshly
+      upserted vectors, so new data is searchable without a full rebuild.</li>
+  <li><strong>PDF ingestion source</strong> for the document pipeline.</li>
+  <li><strong>FastMCP server</strong> exposing semantic and graph search as MCP tools.</li>
+  <li><strong>Observability</strong> &mdash; a native telemetry recorder plus a stdlib dashboard on
+      real query data, and a full Next.js + TypeScript + Tailwind + Recharts dashboard under
+      <code>dashboard/</code>.</li>
+  <li><strong><code>max_pool_connections</code></strong> config, threaded into every boto3 client
+      for high-concurrency workloads.</li>
+  <li><code>list_vectors</code> maintenance iterator, optional score normalization,
+      cache <code>hits</code>/<code>misses</code> counters + <code>stats()</code>, an AWS doctor
+      command, ingestion chunk deduplication, and a shipped <code>py.typed</code> marker.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+  <li>The semantic cache is now bounded by <strong>bytes</strong> rather than entry count.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+  <li>Escape structured-storage key components to avoid namespace/id collisions.</li>
+  <li>Drain <code>QueryVectors</code> pages fully and add a <code>page_size</code> control.</li>
+  <li>Pin <code>crewai</code> away from the yanked 1.14.0 release.</li>
+  <li>Resolve optional dependencies correctly on Python 3.9.</li>
+</ul>
+
+<h2 id="v0-2-0">0.2.0 <span class="doc__sub" style="font-weight:400">&mdash; 2026-08</span></h2>
+<p>Initial public release: the hybrid Amazon DynamoDB + Amazon S3 Vectors store, pluggable
+embedders, namespace RAG, product quantization, RRF fusion, MMR rerank, the GraphRAG layer,
+caching backends, framework adapters, and one-shot provisioning.</p>
 """)
 
 
@@ -669,7 +865,7 @@ TEMPLATE = """<!doctype html>
 def main() -> None:
     os.makedirs(OUT, exist_ok=True)
     for slug in PAGES:
-        with open(os.path.join(OUT, slug + ".html"), "w") as f:
+        with open(os.path.join(OUT, slug + ".html"), "w", encoding="utf-8") as f:
             f.write(render(slug))
     print(f"Wrote {len(PAGES)} docs pages to {os.path.normpath(OUT)}")
 

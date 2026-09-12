@@ -1,4 +1,5 @@
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -52,6 +53,44 @@ def test_lru_eviction():
     c.put("ns", [0.0, 0.0, 1.0] and [1.0, 1.0], 5, None, _res("c"))  # 3rd -> evict oldest
     total = sum(len(b) for b in c._buckets.values())
     assert total <= 2
+
+
+def test_semantic_cache_evicts_oldest_entries_to_stay_within_byte_limit():
+    probe = SemanticCache()
+    probe.put("ns", [1.0, 0.0], 5, None, _res("a"))
+    one_entry_bytes = probe.size_bytes
+
+    cache = SemanticCache(threshold=0.999, max_bytes=one_entry_bytes * 2)
+    cache.put("first", [1.0, 0.0], 5, None, _res("a"))
+    cache.put("second", [0.0, 1.0], 5, None, _res("b"))
+    cache.put("third", [1.0, 1.0], 5, None, _res("c"))
+
+    assert cache.size_bytes <= one_entry_bytes * 2
+    assert cache.get("first", [1.0, 0.0], 5, None) is None
+    assert cache.get("second", [0.0, 1.0], 5, None)
+    assert cache.get("third", [1.0, 1.0], 5, None)
+
+
+def test_semantic_cache_byte_accounting_handles_replacement_and_oversized_entries():
+    cache = SemanticCache(max_bytes=10_000)
+    cache.put("ns", [1.0, 0.0], 5, None, _res("short"))
+    original_size = cache.size_bytes
+
+    cache.put("ns", [1.0, 0.0], 5, None, _res("a much longer result identifier"))
+
+    assert cache.size_bytes > original_size
+    assert sum(len(bucket) for bucket in cache._buckets.values()) == 1
+
+    too_small = SemanticCache(max_bytes=1)
+    too_small.put("ns", [1.0, 0.0], 5, None, _res("a"))
+    assert too_small.size_bytes == 0
+    assert too_small.get("ns", [1.0, 0.0], 5, None) is None
+
+    marker = object()
+    non_serializable = [SearchResult(id="x", score=1.0, metadata={"marker": marker})]
+    cache.put("ns", [0.0, 1.0], 5, None, non_serializable)
+    hit = cache.get("ns", [0.0, 1.0], 5, None)
+    assert hit and hit[0].metadata["marker"] is marker
 
 
 def test_semantic_cache_stats():
@@ -133,6 +172,54 @@ def test_dynamodb_cache_stats():
     fake_table.items[pk]["ttl"] = int(time.time()) - 100
     assert cache.get("ns", [1.0, 0.0], 5, None) is None
     assert cache.stats() == {"hits": 1, "misses": 2, "hit_rate": pytest.approx(1 / 3)}
+
+
+def test_dynamodb_cache_ttl_jitter():
+    class FakeTable:
+        def __init__(self):
+            self.items = []
+
+        def put_item(self, Item):
+            self.items.append(Item)
+
+    class FakeSession:
+        def __init__(self, table):
+            self._table = table
+
+        def resource(self, name, region_name=None):
+            fake_table = self._table
+
+            class Resource:
+                def Table(self, table_name):
+                    return fake_table
+
+            return Resource()
+
+    cfg = DynavecConfig(vector_bucket="b", index="i", table="t", dimension=2)
+    fake_table = FakeTable()
+    session = FakeSession(fake_table)
+    cache = DynamoDBCache(
+        cfg,
+        boto_session=session,
+        ttl_seconds=60,
+        ttl_jitter_seconds=30,
+    )
+
+    with patch("dynavec.cache.time.time", return_value=1_000), patch(
+        "dynavec.cache.random.randint", side_effect=[0, 30]
+    ) as randint:
+        cache.put("ns", [1.0, 0.0], 5, None, _res("a"))
+        cache.put("ns", [0.0, 1.0], 5, None, _res("b"))
+
+    assert [item["ttl"] for item in fake_table.items] == [1_060, 1_090]
+    assert randint.call_args_list == [((0, 30),), ((0, 30),)]
+
+
+def test_dynamodb_cache_rejects_negative_ttl_jitter():
+    cfg = DynavecConfig(vector_bucket="b", index="i", table="t", dimension=2)
+
+    with pytest.raises(ValueError, match="ttl_jitter_seconds must be non-negative"):
+        DynamoDBCache(cfg, ttl_jitter_seconds=-1)
 
 
 def test_redis_cache_stats():

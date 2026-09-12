@@ -41,9 +41,15 @@ from .retrieval import (
     maximal_marginal_relevance,
     reciprocal_rank_fusion,
 )
+from .spfresh import (
+    Partition,
+    SPFreshConfig,
+    SPFreshHotIndex,
+    SPFreshRebalancer,
+)
 from .transforms import LambdaTransform, TransformContext, TransformPipeline
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "Dynavec",
@@ -61,6 +67,10 @@ __all__ = [
     "RedisCache",
     "reciprocal_rank_fusion",
     "maximal_marginal_relevance",
+    "Partition",
+    "SPFreshConfig",
+    "SPFreshHotIndex",
+    "SPFreshRebalancer",
     "TransformPipeline",
     "TransformContext",
     "LambdaTransform",

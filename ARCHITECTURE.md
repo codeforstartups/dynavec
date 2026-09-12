@@ -21,7 +21,105 @@ query text ──embed──▶ query_vectors (S3 Vectors) ──▶ [ (id, dist
                                    MMR rerank / RRF fusion ──▶ SearchResults
 ```
 
+## Sequence diagrams
+
+### Upsert
+
+`upsert()` runs a three-stage pipeline — **transform → embed → split & write** — before anything touches AWS. The two writes (S3 Vectors and DynamoDB) are independent per-chunk tasks, so they run **in parallel** when `DynavecConfig.parallel_writes` is enabled (the default).
+
+```mermaid
+sequenceDiagram
+    participant App as Caller
+    participant DV as Dynavec.upsert()
+    participant TX as Transform pipeline
+    participant EMB as Embedder
+    participant MD as split_metadata()
+    participant S3V as Amazon S3 Vectors
+    participant DDB as Amazon DynamoDB
+
+    App->>DV: upsert(documents, namespace)
+    DV->>TX: run transform(s) per document
+    TX-->>DV: text / vector / metadata (possibly rewritten)
+    opt vector still missing
+        DV->>EMB: embed_documents(texts)
+        EMB-->>DV: vectors (one batched call)
+    end
+    DV->>MD: split_metadata(meta, config, namespace, text)
+    MD-->>DV: (s3_meta, ddb_meta)
+    par parallel writes (config.parallel_writes)
+        DV->>S3V: put_vectors([(key, vector, s3_meta), ...])
+        S3V-->>DV: ack
+    and
+        DV->>DDB: put_many(namespace, [(id, text, ddb_meta), ...])
+        DDB-->>DV: ack
+    end
+    DV-->>App: UpsertResult(count, ids)
+```
+
+Key point: **S3 Vectors only ever sees the small filterable slice of metadata** (`s3_meta`); DynamoDB gets the full text and untouched metadata (`ddb_meta`). The vector itself is written once, to S3 Vectors only — DynamoDB never stores raw vectors on the normal write path.
+
+### Search
+
+`search()` is a **fan-out-then-hydrate** pattern: S3 Vectors returns nearest IDs, DynamoDB turns those IDs into full documents, and any reranking that needs raw vectors (MMR, rescore) makes one extra `get_vectors` call to S3 Vectors.
+
+```mermaid
+sequenceDiagram
+    participant App as Caller
+    participant DV as Dynavec.search()
+    participant Cache as Query cache (optional)
+    participant EMB as Embedder
+    participant S3V as Amazon S3 Vectors
+    participant DDB as Amazon DynamoDB
+    participant RR as retrieval.py (MMR / RRF / rescore)
+
+    App->>DV: search(query, top_k, filter, rerank)
+    opt query is text, not a raw vector
+        DV->>EMB: embed_query(query)
+        EMB-->>DV: query_vector
+    end
+    opt cache configured and use_cache != False
+        DV->>Cache: get(namespace, query_vector, top_k, filter)
+        Cache-->>DV: cached results or miss
+    end
+    Note over DV: on cache miss, continue below
+    DV->>S3V: query_vectors(query_vector, top_k=fetch_k, filter)
+    S3V-->>DV: [(key, distance), ...]  (over-fetched if reranking)
+    DV->>DDB: BatchGetItem / get_many(namespace, ids)
+    DDB-->>DV: full documents (text + metadata)
+    opt rerank == "mmr" or rescore set
+        DV->>S3V: get_vectors(keys)
+        S3V-->>DV: raw vectors for candidates
+        DV->>RR: mmr_rerank(...) / apply_rescore(...)
+        RR-->>DV: reordered SearchResults
+    end
+    opt cache configured
+        DV->>Cache: put(namespace, query_vector, top_k, filter, results)
+    end
+    DV-->>App: SearchResult[] (id, score, text, metadata)
+```
+
+The over-fetch (`top_k × config.over_fetch`) exists precisely because reranking needs a wider candidate pool than the final `top_k` — S3 Vectors gives you a cheap coarse ranking, then dynavec re-sorts a small candidate set with the more expensive MMR/RRF logic client-side.
+
 ## Why not put everything in one store?
+
+```mermaid
+flowchart LR
+    subgraph A["All-in S3 Vectors"]
+        direction TB
+        A1[ANN: fast ✅] --> A2[Doc storage: no per-item size cap ❌]
+        A2 --> A3[Metadata: hard filterable-size limit ❌]
+    end
+    subgraph B["All-in DynamoDB"]
+        direction TB
+        B1[Doc storage: cheap, flexible ✅] --> B2[ANN: none natively ❌]
+        B2 --> B3[Vector search: brute-force or bolt-on index ❌]
+    end
+    subgraph C["dynavec: hybrid"]
+        direction TB
+        C1[S3 Vectors → ANN only ✅] --> C2[DynamoDB → documents only ✅]
+        C2 --> C3[Shared key joins them, each store does one job ✅]
+    end
+```
 
 - **All in S3 Vectors:** metadata has a per-vector filterable-size cap and it's not built to be your document-of-record; reading large text back through the vector API is wasteful.
 - **All in DynamoDB:** DynamoDB has no native ANN; you'd brute-force or bolt on a secondary index and lose the serverless-ANN economics.

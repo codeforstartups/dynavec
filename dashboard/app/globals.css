@@ -1,0 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+html, body { padding: 0; margin: 0; }
+body {
+  background: theme('colors.bg');
+  color: theme('colors.ink');
+  font-family: theme('fontFamily.sans');
+  border-top: 3px solid theme('colors.accent');
+  -webkit-font-smoothing: antialiased;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #e0d9d1; border-radius: 6px; }

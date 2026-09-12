@@ -9,7 +9,7 @@ import math
 import pytest
 
 import dynavec.client as client_mod
-from dynavec import Document, Dynavec, DynavecConfig
+from dynavec import Document, Dynavec, DynavecConfig, SemanticCache
 from dynavec.config import NS_METADATA_KEY
 from dynavec.embeddings.base import Embedder
 
@@ -65,11 +65,20 @@ class FakeS3(client_mod.S3VectorsStore):
         scored.sort(key=lambda x: x[1])
         return [{"key": k, "distance": d, "metadata": m} for k, d, m in scored[:top_k]]
 
-    def query_pages(self, query_vector, top_k, filter=None, return_metadata=True, return_distance=True):
+    def query_pages(
+        self,
+        query_vector,
+        top_k,
+        filter=None,
+        return_metadata=True,
+        return_distance=True,
+        page_size=None,
+    ):
         # emulate a paginator: split the result into pages of 2
         hits = self.query(query_vector, top_k, filter, return_metadata, return_distance)
-        for i in range(0, len(hits), 2):
-            yield hits[i : i + 2]
+        chunk_size = page_size or 2
+        for i in range(0, len(hits), chunk_size):
+            yield hits[i : i + chunk_size]
 
     def get_vectors(self, keys, return_metadata=False):
         return {k: {"vector": self._store[k][0], "metadata": self._store[k][1]} for k in keys if k in self._store}
@@ -225,7 +234,7 @@ def test_ns_tag_present_in_s3(db):
     db.upsert([Document(id="1", text="hello")], namespace="ns9")
     # reach into the fake to confirm the namespace tag was written
     store = db._vectors._store
-    (_, meta), = [v for k, v in store.items()]
+    (_, meta), = (v for k, v in store.items())
     assert meta[NS_METADATA_KEY] == "ns9"
 
 
@@ -287,6 +296,27 @@ def test_rescore_with_metric(db):
     assert len(hits) == 2
 
 
+def test_search_can_normalize_final_scores(db):
+    db.upsert(
+        [
+            Document(id="1", text="apple pie recipe"),
+            Document(id="2", text="apple orchard tour"),
+            Document(id="3", text="rocket to mars"),
+        ]
+    )
+
+    db._cache = SemanticCache(threshold=0.999)
+    db.search("apple", top_k=3, rescore="dot")
+
+    hits = db.search("apple", top_k=3, rescore="dot", normalize_scores=True)
+
+    assert db._cache.misses == 2
+    scores = [hit.score for hit in hits]
+    assert scores == sorted(scores, reverse=True)
+    assert max(scores) == pytest.approx(1.0)
+    assert min(scores) == pytest.approx(0.0)
+
+
 def test_transform_applied_on_upsert(db):
     def tag(ctx):
         ctx.metadata["source"] = "unit-test"
@@ -335,6 +365,14 @@ def test_graph_traversal_hops(db):
     assert {h.id for h in hits} == {"d1"}
 
 
+def test_graph_traversal_handles_cycles(db):
+    db.graph_add_edge("a", "related_to", "b")
+    db.graph_add_edge("b", "related_to", "c")
+    db.graph_add_edge("c", "related_to", "a")
+
+    assert set(db.graph_neighbors("a", hops=10)) == {"b", "c"}
+
+
 def test_semantic_cache_hits_on_repeat(db):
     from dynavec.cache import SemanticCache
 
@@ -374,3 +412,45 @@ def test_ingest_chunks_and_stores(db):
     got = db.get(["doc1#chunk0"])[0]
     assert got.metadata["source_id"] == "doc1"
     assert got.metadata["src"] == "wiki"
+
+
+def test_reserved_key_separator_is_escaped_before_writes(db):
+    db.upsert(
+        [Document(id="doc#one", vector=[1.0] * 8)],
+        namespace="tenant#one",
+    )
+
+    assert list(db._vectors._store) == ["tenant%23one#doc%23one"]
+    assert db._docs._store[("tenant#one", "doc#one")]["text"] is None
+
+
+def test_search_records_telemetry(db):
+    from dynavec.telemetry import TelemetryRecorder
+
+    rec = TelemetryRecorder()
+    db._telemetry = rec
+    db.upsert([Document(id="1", text="apple pie"), Document(id="2", text="rocket")])
+    db.search("apple", top_k=2, namespace="default")
+    evs = rec.events()
+    assert len(evs) == 1
+    e = evs[0]
+    assert e.op == "search"
+    assert e.namespace == "default"
+    assert e.n_results >= 1
+    assert e.latency_ms >= 0
+    assert e.status == "ok"
+    assert e.cache_hit is None  # no cache configured
+
+
+def test_search_telemetry_marks_cache_hit(db):
+    from dynavec.cache import SemanticCache
+    from dynavec.telemetry import TelemetryRecorder
+
+    rec = TelemetryRecorder()
+    db._telemetry = rec
+    db._cache = SemanticCache(threshold=0.99)
+    db.upsert([Document(id="1", text="apple pie")])
+    db.search("apple pie", top_k=3)   # miss -> populates cache
+    db.search("apple pie", top_k=3)   # hit
+    hits = [e.cache_hit for e in rec.events()]
+    assert True in hits and False in hits

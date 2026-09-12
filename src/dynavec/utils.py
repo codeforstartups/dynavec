@@ -14,6 +14,18 @@ from typing import Any, Callable, TypeVar
 
 T = TypeVar("T")
 
+KEY_SEPARATOR = "#"
+
+
+def encode_key_component(value: str) -> str:
+    """Escape the key separator while preserving other legacy key characters."""
+    return value.replace("%", "%25").replace(KEY_SEPARATOR, "%23")
+
+
+def decode_key_component(value: str) -> str:
+    """Restore a component produced by :func:`encode_key_component`."""
+    return value.replace("%23", KEY_SEPARATOR).replace("%25", "%")
+
 # botocore error codes that are safe to retry (throttling / transient).
 _RETRYABLE_CODES = frozenset(
     {

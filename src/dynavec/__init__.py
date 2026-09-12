@@ -37,7 +37,7 @@ from .graph import GraphStore
 from .hot import HotTier
 from .models import Document, SearchResult, UpsertResult
 from .namespace import NamespaceView
-from .quantization import ProductQuantizer
+from .quantization import ProductQuantizer, ScalarQuantizer
 from .retrieval import (
     maximal_marginal_relevance,
     reciprocal_rank_fusion,
@@ -61,6 +61,7 @@ __all__ = [
     "UpsertResult",
     "NamespaceView",
     "ProductQuantizer",
+    "ScalarQuantizer",
     "GraphStore",
     "BaseCache",
     "SemanticCache",

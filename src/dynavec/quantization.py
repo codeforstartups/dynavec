@@ -138,3 +138,74 @@ class ProductQuantizer:
     def _check_fitted(self) -> None:
         if self._codebooks is None:
             raise RuntimeError("ProductQuantizer must be .fit() before use")
+
+
+
+@dataclass
+class ScalarQuantizer:
+    """Per-dimension INT8 scalar quantization."""
+
+    def __post_init__(self):
+        self._mins = None
+        self._scales = None
+
+    @property
+    def is_fitted(self):
+        return self._mins is not None
+
+    @property
+    def code_size_bytes(self):
+        if self._mins is None:
+            raise RuntimeError("ScalarQuantizer is not fitted")
+        return self._mins.shape[0]
+
+    def fit(self, vectors):
+        vectors = np.asarray(vectors, dtype=np.float32)
+
+        if vectors.ndim != 2:
+            raise ValueError("vectors must be a 2D array")
+
+        mins = vectors.min(axis=0)
+        maxs = vectors.max(axis=0)
+
+        scales = (maxs - mins) / 255.0
+        scales = np.where(scales == 0, 1.0, scales)
+
+        self._mins = mins
+        self._scales = scales
+
+        return self
+
+    def encode(self, vectors):
+        self._check_fitted()
+
+        vectors = np.asarray(vectors, dtype=np.float32)
+
+        if vectors.ndim != 2:
+            raise ValueError("vectors must be a 2D array")
+
+        codes = np.round(
+            (vectors - self._mins) / self._scales - 128
+        )
+
+        return np.clip(codes, -128, 127).astype(np.int8)
+
+    def decode(self, codes):
+        self._check_fitted()
+
+        codes = np.asarray(codes, dtype=np.int8)
+
+        return (
+            (codes.astype(np.float32) + 128) * self._scales
+            + self._mins
+        ).astype(np.float32)
+
+    def reconstruction_error(self, vectors):
+        vectors = np.asarray(vectors, dtype=np.float32)
+        reconstructed = self.decode(self.encode(vectors))
+
+        return float(np.mean((vectors - reconstructed) ** 2))
+
+    def _check_fitted(self):
+        if not self.is_fitted:
+            raise RuntimeError("ScalarQuantizer must be .fit() before use")

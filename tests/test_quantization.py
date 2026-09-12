@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from dynavec.quantization import ProductQuantizer
+from dynavec.quantization import ProductQuantizer, ScalarQuantizer
 
 
 @pytest.fixture
@@ -55,3 +55,44 @@ def test_use_before_fit_raises():
     pq = ProductQuantizer(m=4)
     with pytest.raises(RuntimeError):
         pq.encode(np.zeros((1, 16), dtype=np.float32))
+
+
+def test_scalar_fit_encode_shapes(clustered):
+    sq = ScalarQuantizer().fit(clustered)
+    codes = sq.encode(clustered)
+
+    assert codes.shape == clustered.shape
+    assert codes.dtype == np.int8
+
+
+def test_scalar_code_size_and_compression(clustered):
+    sq = ScalarQuantizer().fit(clustered)
+
+    assert sq.code_size_bytes == clustered.shape[1]
+
+    raw = clustered.shape[1] * 4
+    assert raw / sq.code_size_bytes == 4
+
+
+def test_scalar_reconstruction_error_is_reasonable(clustered):
+    sq = ScalarQuantizer().fit(clustered)
+
+    err = sq.reconstruction_error(clustered)
+
+    assert err < 0.01
+
+
+def test_scalar_decode_shape_and_dtype(clustered):
+    sq = ScalarQuantizer().fit(clustered)
+    codes = sq.encode(clustered)
+    recon = sq.decode(codes)
+
+    assert recon.shape == clustered.shape
+    assert recon.dtype == np.float32
+
+
+def test_scalar_use_before_fit_raises():
+    sq = ScalarQuantizer()
+
+    with pytest.raises(RuntimeError):
+        sq.encode(np.zeros((1, 16), dtype=np.float32))

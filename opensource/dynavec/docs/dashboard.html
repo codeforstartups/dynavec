@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Dashboard · dynavec docs</title>
+  <title>Telemetry dashboard · dynavec docs</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -62,10 +62,10 @@
 <li><a href="quantization.html">Product quantization</a></li>
 <li><a href="concurrency.html">Concurrency</a></li>
 <li><a href="credentials.html">Credentials & IAM</a></li>
-<li><a href="dashboard.html" class="is-current">Telemetry dashboard</a></li>
 </ul></div>
 <div class="side__group"><p class="side__title">Ecosystem</p><ul class="side__list">
 <li><a href="integrations.html">Framework integrations</a></li>
+<li><a href="dashboard.html" class="is-current">Telemetry dashboard</a></li>
 <li><a href="benchmarking.html">Benchmarking</a></li>
 </ul></div>
 <div class="side__group"><p class="side__title">About</p><ul class="side__list">
@@ -76,7 +76,7 @@
       <div class="doc__crumbs"><a href="../index.html">dynavec</a> / <a href="index.html">Docs</a> / Telemetry dashboard</div>
       <h1>Telemetry dashboard</h1>
       <p class="doc__sub">A Langfuse-style observability UI for live query traces, latency, and cache performance.</p>
-
+      
 <p>Enable telemetry on your client, serve it over a small JSON API, and point the dashboard app at it:</p>
 <pre class="code"><code>your app ──▶ Dynavec(..., telemetry=recorder)      # records real events (Python)
                      │
@@ -86,7 +86,6 @@
                      │  (fetch)
                      ▼
         dashboard/  (Next.js + Tailwind + Recharts) # frontend app (TypeScript)</code></pre>
-
 <h2>Run it</h2>
 <pre class="code"><code># 1) produce real telemetry + serve the API (no AWS needed)
 python examples/dashboard_demo.py            # API on http://127.0.0.1:8779
@@ -96,7 +95,6 @@ cd dashboard
 npm install
 NEXT_PUBLIC_DYNAVEC_API=http://127.0.0.1:8779 npm run dev   # http://localhost:3000</code></pre>
 <p>With no API configured, the dashboard falls back to sample data, so <code>npm run dev</code> works standalone.</p>
-
 <h2>Tracing view</h2>
 <table class="doc__params">
 <tr><th>Panel</th><th>Shows</th></tr>
@@ -108,7 +106,7 @@ NEXT_PUBLIC_DYNAVEC_API=http://127.0.0.1:8779 npm run dev   # http://localhost:3
 <img src="../images/dashboard_tracing.png" alt="Tracing view" class="doc__img" />
 <p>Click any row to open a detail drawer with per-call similarity scores, filter state, and error details.</p>
 
-      <div class="doc__next"><a href="credentials.html"><span>Previous</span>Credentials & IAM</a><a href="integrations.html" style="text-align:right"><span>Next</span>Framework integrations</a></div>
+      <div class="doc__next"><a href="integrations.html"><span>Previous</span>Framework integrations</a><a href="benchmarking.html" style="text-align:right"><span>Next</span>Benchmarking</a></div>
     </main>
   </div>
 

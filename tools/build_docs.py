@@ -41,8 +41,9 @@ NAV = [
         ("credentials", "Credentials & IAM"),
     ]),
     ("Ecosystem", [
-        ("integrations", "Framework integrations"),
-        ("benchmarking", "Benchmarking"),
+    ("integrations", "Framework integrations"),
+    ("dashboard", "Telemetry dashboard"),
+    ("benchmarking", "Benchmarking"),
     ]),
     ("About", [
         ("release-notes", "Release notes"),
@@ -833,6 +834,39 @@ embedders, namespace RAG, product quantization, RRF fusion, MMR rerank, the Grap
 caching backends, framework adapters, and one-shot provisioning.</p>
 """)
 
+
+PAGES["dashboard"] = ("Telemetry dashboard",
+    "A Langfuse-style observability UI for live query traces, latency, and cache performance.",
+    """
+<p>Enable telemetry on your client, serve it over a small JSON API, and point the dashboard app at it:</p>
+""" + code("""your app ──▶ Dynavec(..., telemetry=recorder)      # records real events (Python)
+                     │
+                     ▼
+        dynavec.dashboard.serve(recorder)           # JSON API  (Python, stdlib)
+          GET /api/metrics · /api/traces · /api/trace/{id}
+                     │  (fetch)
+                     ▼
+        dashboard/  (Next.js + Tailwind + Recharts) # frontend app (TypeScript)""") + """
+<h2>Run it</h2>
+""" + code("""# 1) produce real telemetry + serve the API (no AWS needed)
+python examples/dashboard_demo.py            # API on http://127.0.0.1:8779
+
+# 2) run the dashboard against it
+cd dashboard
+npm install
+NEXT_PUBLIC_DYNAVEC_API=http://127.0.0.1:8779 npm run dev   # http://localhost:3000""") + """
+<p>With no API configured, the dashboard falls back to sample data, so <code>npm run dev</code> works standalone.</p>
+<h2>Tracing view</h2>
+<table class="doc__params">
+<tr><th>Panel</th><th>Shows</th></tr>
+<tr><td>KPI cards</td><td>Queries/min, p95 latency, cache hit rate, average results, error rate</td></tr>
+<tr><td>Query volume</td><td>Histogram of trace counts per time bucket</td></tr>
+<tr><td>Latency percentiles</td><td>p50 / p95 / p99 latency in ms</td></tr>
+<tr><td>Traces table</td><td>Every recorded <code>search</code>, <code>graph_search</code>, and <code>upsert</code> call — namespace, latency, results, cache hit/miss, rank strategy — filterable by op, status, and namespace</td></tr>
+</table>
+<img src="../images/dashboard_tracing.png" alt="Tracing view" class="doc__img" />
+<p>Click any row to open a detail drawer with per-call similarity scores, filter state, and error details.</p>
+""")
 
 def render(slug: str) -> str:
     title, sub, body = PAGES[slug]

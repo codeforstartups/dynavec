@@ -48,6 +48,18 @@ from .spfresh import (
     SPFreshHotIndex,
     SPFreshRebalancer,
 )
+from .ingest import (
+    DocxSource,
+    IterableSource,
+    MarkdownSource,
+    MCPResourceSource,
+    PDFSource,
+    PptxSource,
+    Record,
+    URLSource,
+    XlsxSource,
+    ingest,
+)
 from .transforms import LambdaTransform, TransformContext, TransformPipeline
 
 __version__ = "0.4.0"
@@ -76,6 +88,17 @@ __all__ = [
     "TransformPipeline",
     "TransformContext",
     "LambdaTransform",
+    # Ingestion
+    "Record",
+    "ingest",
+    "IterableSource",
+    "PDFSource",
+    "DocxSource",
+    "PptxSource",
+    "XlsxSource",
+    "URLSource",
+    "MarkdownSource",
+    "MCPResourceSource",
     # exceptions
     "DynavecError",
     "ConfigurationError",
@@ -85,3 +108,4 @@ __all__ = [
     "NotFoundError",
     "MissingDependencyError",
 ]
+

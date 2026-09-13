@@ -3,7 +3,13 @@
 All notable changes to dynavec are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Office document ingestion sources** — added `DocxSource`, `PptxSource`, and `XlsxSource` for Word, PowerPoint, and Excel files to `dynavec.ingest`.
+
 ## [0.4.0] - 2026-09-12
+
 
 ### Added
 - **In-memory hot tier** (#186) — opt-in `hot_tier=True` keeps the hot working

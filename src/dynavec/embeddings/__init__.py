@@ -14,12 +14,12 @@ from .base import Embedder, Vector
 if TYPE_CHECKING:  # for type checkers / IDEs only
     from .bedrock import BedrockEmbedder, BedrockTitanMultimodalEmbedder
     from .gemini import GeminiEmbedder
+    from .huggingface import HFInferenceEmbedder
     from .mistral import MistralEmbedder
     from .ollama import OllamaEmbedder
     from .openai import OpenAIEmbedder
     from .sentence_transformers import SentenceTransformerEmbedder
     from .voyage import VoyageEmbedder
-    from .huggingface import HFInferenceEmbedder
 
 __all__ = [
     "Embedder",

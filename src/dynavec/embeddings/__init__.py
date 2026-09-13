@@ -19,6 +19,7 @@ if TYPE_CHECKING:  # for type checkers / IDEs only
     from .openai import OpenAIEmbedder
     from .sentence_transformers import SentenceTransformerEmbedder
     from .voyage import VoyageEmbedder
+    from .huggingface import HFInferenceEmbedder
 
 __all__ = [
     "Embedder",
@@ -31,6 +32,7 @@ __all__ = [
     "VoyageEmbedder",
     "MistralEmbedder",
     "OllamaEmbedder",
+    "HFInferenceEmbedder",
 ]
 
 _LAZY = {
@@ -48,6 +50,7 @@ _LAZY = {
     "VoyageEmbedder": ("dynavec.embeddings.voyage", "VoyageEmbedder"),
     "MistralEmbedder": ("dynavec.embeddings.mistral", "MistralEmbedder"),
     "OllamaEmbedder": ("dynavec.embeddings.ollama", "OllamaEmbedder"),
+    "HFInferenceEmbedder": ("dynavec.embeddings.huggingface", "HFInferenceEmbedder"),
 }
 
 

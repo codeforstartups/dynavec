@@ -1,15 +1,21 @@
-"""Live AWS integration test (opt-in).
+"""End-to-end integration test (opt-in) — runs against real AWS or a local emulator.
 
-Runs the real thing end-to-end against YOUR account: auto-provisions an S3 vector
-bucket + index + DynamoDB table, upserts vectors, queries, verifies metadata
-filtering + document hydration, then deletes every resource it created.
+Auto-provisions an S3 vector bucket + index + DynamoDB table, upserts vectors,
+queries, verifies metadata filtering + document hydration, then deletes every
+resource it created.
 
-Enable with:
+Against real AWS (costs money, uses YOUR account):
     export DYNAVEC_LIVE=1
     export AWS_REGION=us-east-1          # a region where S3 Vectors is available
     pytest tests/integration/test_live_aws.py -v -s
 
-Skipped by default so the normal suite needs no AWS credentials or cost.
+Against a local emulator (free, no account) — see "Local development" in the README:
+    docker compose up -d --wait
+    export AWS_ENDPOINT_URL=http://localhost:4566
+    pytest tests/integration/test_live_aws.py -v -s
+
+boto3 honours AWS_ENDPOINT_URL natively, so dynavec needs no endpoint plumbing.
+Skipped by default: the normal suite needs no credentials, no Docker, no cost.
 """
 
 from __future__ import annotations
@@ -21,14 +27,23 @@ import uuid
 import numpy as np
 import pytest
 
+LOCAL_ENDPOINT = os.environ.get("AWS_ENDPOINT_URL")
+
+if LOCAL_ENDPOINT:
+    # Emulators accept any non-empty credentials, but boto3 still refuses to sign
+    # without them. setdefault so a real profile/role is never overridden.
+    os.environ.setdefault("AWS_ACCESS_KEY_ID", "test")
+    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "test")
+
 pytestmark = pytest.mark.skipif(
-    os.environ.get("DYNAVEC_LIVE") != "1",
-    reason="set DYNAVEC_LIVE=1 (and AWS creds) to run live AWS integration tests",
+    os.environ.get("DYNAVEC_LIVE") != "1" and not LOCAL_ENDPOINT,
+    reason="set DYNAVEC_LIVE=1 (real AWS) or AWS_ENDPOINT_URL (local emulator) to run",
 )
 
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 DIM = 32
 N = 40
+NS = "it"  # searches must target the same namespace the upserts wrote to
 
 
 def _unit(rng, n, d):
@@ -68,9 +83,11 @@ def live_db():
     db.close()
 
 
-def _query_with_retry(db, vector, top_k, filter=None, tries=8, delay=3):
+def _query_with_retry(db, vector, top_k, filter=None, namespace=NS, tries=8, delay=3):
+    if LOCAL_ENDPOINT:
+        delay = 0  # emulators are immediately consistent; don't burn 24s in CI
     for _ in range(tries):
-        hits = db.search(vector=vector, top_k=top_k, filter=filter)
+        hits = db.search(vector=vector, top_k=top_k, filter=filter, namespace=namespace)
         if hits:
             return hits
         time.sleep(delay)  # S3 Vectors is eventually consistent after ingest
@@ -91,7 +108,7 @@ def test_provision_upsert_search_roundtrip(live_db):
         )
         for i in range(N)
     ]
-    live_db.upsert(docs, namespace="it")
+    live_db.upsert(docs, namespace=NS)
 
     # nearest neighbor of vec[0] should be v0 itself
     hits = _query_with_retry(live_db, vecs[0].tolist(), top_k=5)
@@ -110,11 +127,11 @@ def test_update_and_delete(live_db):
 
     rng = np.random.default_rng(1)
     v = _unit(rng, 1, DIM)[0].tolist()
-    live_db.upsert([Document(id="u1", vector=v, text="original", metadata={"tag": "a"})], namespace="it")
+    live_db.upsert([Document(id="u1", vector=v, text="original", metadata={"tag": "a"})], namespace=NS)
 
-    live_db.update("u1", namespace="it", metadata={"tag": "b"}, merge_metadata=False)
-    got = live_db.get(["u1"], namespace="it")[0]
+    live_db.update("u1", namespace=NS, metadata={"tag": "b"}, merge_metadata=False)
+    got = live_db.get(["u1"], namespace=NS)[0]
     assert got.metadata["tag"] == "b"
 
-    live_db.delete(["u1"], namespace="it")
-    assert live_db.get(["u1"], namespace="it") == []
+    live_db.delete(["u1"], namespace=NS)
+    assert live_db.get(["u1"], namespace=NS) == []

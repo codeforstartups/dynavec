@@ -22,8 +22,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import requests
-
 from .client import Dynavec
 from .exceptions import MissingDependencyError
 from .models import Document
@@ -106,42 +104,165 @@ class PDFSource:
                 },
             )
 
+
+class DocxSource:
+    """Yield one Record containing readable paragraph text from a Word document (.docx)."""
+
+    def __init__(self, path: str | Path) -> None:
+        try:
+            import docx
+        except ImportError as exc:
+            raise MissingDependencyError(
+                "DocxSource",
+                "python-docx",
+                "ingest",
+            ) from exc
+
+        self._path = Path(path)
+        self._document_cls = docx.Document
+
+    def __iter__(self) -> Iterator[Record]:
+        doc = self._document_cls(self._path)
+        paragraphs = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
+        if not paragraphs:
+            return
+
+        text = "\n\n".join(paragraphs)
+        path_str = self._path.as_posix()
+        yield Record(
+            id=path_str,
+            text=text,
+            metadata={
+                "source": "docx",
+                "path": path_str,
+            },
+        )
+
+
+class PptxSource:
+    """Yield one Record per slide in a PowerPoint presentation (.pptx)."""
+
+    def __init__(self, path: str | Path) -> None:
+        try:
+            from pptx import Presentation
+        except ImportError as exc:
+            raise MissingDependencyError(
+                "PptxSource",
+                "python-pptx",
+                "ingest",
+            ) from exc
+
+        self._path = Path(path)
+        self._presentation_cls = Presentation
+
+    def __iter__(self) -> Iterator[Record]:
+        prs = self._presentation_cls(self._path)
+        path_str = self._path.as_posix()
+
+        for slide_num, slide in enumerate(prs.slides, start=1):
+            text_runs = []
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text and shape.text.strip():
+                    text_runs.append(shape.text.strip())
+
+            if not text_runs:
+                continue
+
+            slide_text = "\n".join(text_runs)
+            yield Record(
+                id=f"{path_str}#slide{slide_num}",
+                text=slide_text,
+                metadata={
+                    "source": "pptx",
+                    "path": path_str,
+                    "slide": slide_num,
+                },
+            )
+
+
+class XlsxSource:
+    """Yield one Record per worksheet in an Excel workbook (.xlsx)."""
+
+    def __init__(self, path: str | Path) -> None:
+        try:
+            import openpyxl
+        except ImportError as exc:
+            raise MissingDependencyError(
+                "XlsxSource",
+                "openpyxl",
+                "ingest",
+            ) from exc
+
+        self._path = Path(path)
+        self._load_workbook = openpyxl.load_workbook
+
+    def __iter__(self) -> Iterator[Record]:
+        wb = self._load_workbook(self._path, data_only=True)
+        path_str = self._path.as_posix()
+
+        for sheet_name in wb.sheetnames:
+            sheet = wb[sheet_name]
+            rows_text = []
+            for row in sheet.iter_rows(values_only=True):
+                row_vals = [str(cell).strip() for cell in row if cell is not None and str(cell).strip()]
+                if row_vals:
+                    rows_text.append(" | ".join(row_vals))
+
+            if not rows_text:
+                continue
+
+            sheet_text = "\n".join(rows_text)
+            yield Record(
+                id=f"{path_str}#{sheet_name}",
+                text=sheet_text,
+                metadata={
+                    "source": "xlsx",
+                    "path": path_str,
+                    "sheet": sheet_name,
+                },
+            )
+
+
 class URLSource:
     """Yield one Record containing readable text extracted from a URL."""
-    def __init__(self, url: str, timeout: float=10)->None:
+
+    def __init__(self, url: str, timeout: float = 10) -> None:
         try:
+            import requests
             from bs4 import BeautifulSoup
         except ImportError as exc:
             raise MissingDependencyError(
                 "URLSource",
-                "beautifulsoup4",
-                "ingest"
+                "requests",
+                "ingest",
             ) from exc
-        self._url= url
-        self._timeout= timeout
-        self._parser_cls= BeautifulSoup
-    
-    def __iter__(self)-> Iterator[Record]:
-        response=requests.get(
+        self._url = url
+        self._timeout = timeout
+        self._requests = requests
+        self._parser_cls = BeautifulSoup
+
+    def __iter__(self) -> Iterator[Record]:
+        response = self._requests.get(
             self._url,
             timeout=self._timeout,
             headers={"User-Agent": "dynavec/1.0"},
         )
         response.raise_for_status()
-        soup=self._parser_cls(response.text,"html.parser")  
-        for tag in soup(["script","style"]):
+        soup = self._parser_cls(response.text, "html.parser")
+        for tag in soup(["script", "style"]):
             tag.decompose()
-        page_text=soup.get_text(separator=" ",strip=True)
+        page_text = soup.get_text(separator=" ", strip=True)
         if not page_text:
             return
         yield Record(
-            id= self._url,
-            text= page_text,
+            id=self._url,
+            text=page_text,
             metadata={
                 "source": "url",
-                "url": self._url
-                },
-            )
+                "url": self._url,
+            },
+        )
+
 
 class MarkdownSource:
     """Read UTF-8 Markdown and text files from a directory.
@@ -296,3 +417,19 @@ def ingest(
         )
         total += res.count
     return total
+
+
+__all__ = [
+    "Record",
+    "chunk_text",
+    "ingest",
+    "IterableSource",
+    "PDFSource",
+    "DocxSource",
+    "PptxSource",
+    "XlsxSource",
+    "URLSource",
+    "MarkdownSource",
+    "MCPResourceSource",
+]
+

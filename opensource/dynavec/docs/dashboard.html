@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Installation · dynavec docs</title>
+  <title>Dashboard · dynavec docs</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -38,7 +38,7 @@
 <nav class="side" aria-label="Docs">
 <div class="side__group"><p class="side__title">Getting started</p><ul class="side__list">
 <li><a href="index.html">Overview</a></li>
-<li><a href="installation.html" class="is-current">Installation</a></li>
+<li><a href="installation.html">Installation</a></li>
 <li><a href="quickstart.html">Quickstart</a></li>
 <li><a href="configuration.html">Configuration</a></li>
 <li><a href="faq.html">FAQ</a></li>
@@ -62,7 +62,7 @@
 <li><a href="quantization.html">Product quantization</a></li>
 <li><a href="concurrency.html">Concurrency</a></li>
 <li><a href="credentials.html">Credentials & IAM</a></li>
-<li><a href="dashboard.html">Telemetry dashboard</a></li>
+<li><a href="dashboard.html" class="is-current">Telemetry dashboard</a></li>
 </ul></div>
 <div class="side__group"><p class="side__title">Ecosystem</p><ul class="side__list">
 <li><a href="integrations.html">Framework integrations</a></li>
@@ -73,35 +73,42 @@
 </ul></div>
 </nav>
     <main class="doc">
-      <div class="doc__crumbs"><a href="../index.html">dynavec</a> / <a href="index.html">Docs</a> / Installation</div>
-      <h1>Installation</h1>
-      <p class="doc__sub">Base install is boto3 + numpy. Everything else is an optional extra.</p>
-      
-<p>Install with pip or uv — both pull from PyPI.</p>
-<pre class="code"><code># base (boto3 + numpy only)
-pip install dynavec
-uv add dynavec
+      <div class="doc__crumbs"><a href="../index.html">dynavec</a> / <a href="index.html">Docs</a> / Telemetry dashboard</div>
+      <h1>Telemetry dashboard</h1>
+      <p class="doc__sub">A Langfuse-style observability UI for live query traces, latency, and cache performance.</p>
 
-# with an embedder
-pip install "dynavec[openai]"
-pip install "dynavec[sentence-transformers]"
+<p>Enable telemetry on your client, serve it over a small JSON API, and point the dashboard app at it:</p>
+<pre class="code"><code>your app ──▶ Dynavec(..., telemetry=recorder)      # records real events (Python)
+                     │
+                     ▼
+        dynavec.dashboard.serve(recorder)           # JSON API  (Python, stdlib)
+          GET /api/metrics · /api/traces · /api/trace/{id}
+                     │  (fetch)
+                     ▼
+        dashboard/  (Next.js + Tailwind + Recharts) # frontend app (TypeScript)</code></pre>
 
-# everything (all embedders + framework adapters)
-pip install "dynavec[all]"</code></pre>
-<h2>Optional extras</h2>
+<h2>Run it</h2>
+<pre class="code"><code># 1) produce real telemetry + serve the API (no AWS needed)
+python examples/dashboard_demo.py            # API on http://127.0.0.1:8779
+
+# 2) run the dashboard against it
+cd dashboard
+npm install
+NEXT_PUBLIC_DYNAVEC_API=http://127.0.0.1:8779 npm run dev   # http://localhost:3000</code></pre>
+<p>With no API configured, the dashboard falls back to sample data, so <code>npm run dev</code> works standalone.</p>
+
+<h2>Tracing view</h2>
 <table class="doc__params">
-<tr><th>Extra</th><th>Adds</th></tr>
-<tr><td><code>openai</code>, <code>gemini</code>, <code>cohere</code></td><td>hosted embedders (bring your own key)</td></tr>
-<tr><td><code>sentence-transformers</code></td><td>local / offline embedder, also used for cross-encoder rerank</td></tr>
-<tr><td><code>langchain</code>, <code>llamaindex</code>, <code>crewai</code></td><td>framework vector stores / tools</td></tr>
-<tr><td><code>redis</code></td><td>RedisCache (AWS ElastiCache)</td></tr>
-<tr><td><code>mcp</code></td><td>MCP client ingestion</td></tr>
-<tr><td><code>benchmark</code></td><td>pandas / matplotlib for the benchmark suite</td></tr>
+<tr><th>Panel</th><th>Shows</th></tr>
+<tr><td>KPI cards</td><td>Queries/min, p95 latency, cache hit rate, average results, error rate</td></tr>
+<tr><td>Query volume</td><td>Histogram of trace counts per time bucket</td></tr>
+<tr><td>Latency percentiles</td><td>p50 / p95 / p99 latency in ms</td></tr>
+<tr><td>Traces table</td><td>Every recorded <code>search</code>, <code>graph_search</code>, and <code>upsert</code> call — namespace, latency, results, cache hit/miss, rank strategy — filterable by op, status, and namespace</td></tr>
 </table>
-<div class="callout">dynavec needs AWS credentials with permission for S3 Vectors and DynamoDB.
-See <a href="credentials.html">Credentials &amp; IAM</a>.</div>
+<img src="../images/dashboard_tracing.png" alt="Tracing view" class="doc__img" />
+<p>Click any row to open a detail drawer with per-call similarity scores, filter state, and error details.</p>
 
-      <div class="doc__next"><a href="index.html"><span>Previous</span>Overview</a><a href="quickstart.html" style="text-align:right"><span>Next</span>Quickstart</a></div>
+      <div class="doc__next"><a href="credentials.html"><span>Previous</span>Credentials & IAM</a><a href="integrations.html" style="text-align:right"><span>Next</span>Framework integrations</a></div>
     </main>
   </div>
 

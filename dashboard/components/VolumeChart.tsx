@@ -17,12 +17,12 @@ export default function VolumeChart({ m }: { m: Metrics }) {
           <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <XAxis dataKey="i" hide />
             <Tooltip
-              cursor={{ fill: "#fdeee8" }}
-              contentStyle={{ fontFamily: "JetBrains Mono", fontSize: 12, border: "1px solid #ece6df", borderRadius: 8 }}
+              cursor={{ fill: "var(--accent-soft)" }}
+              contentStyle={{ fontFamily: "JetBrains Mono", fontSize: 12, background: "var(--tip-bg)", color: "var(--ink)", border: "1px solid var(--tip-line)", borderRadius: 8 }}
               labelFormatter={() => ""}
               formatter={(v: number) => [v, "queries"]}
             />
-            <Bar dataKey="count" fill="#e8623b" radius={[2, 2, 0, 0]} />
+            <Bar dataKey="count" fill="var(--accent)" radius={[2, 2, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>

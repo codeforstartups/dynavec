@@ -35,6 +35,18 @@ from .exceptions import (
 )
 from .graph import GraphStore
 from .hot import HotTier
+from .ingest import (
+    DocxSource,
+    IterableSource,
+    MarkdownSource,
+    MCPResourceSource,
+    PDFSource,
+    PptxSource,
+    Record,
+    URLSource,
+    XlsxSource,
+    ingest,
+)
 from .models import Document, SearchResult, UpsertResult
 from .namespace import NamespaceView
 from .quantization import ProductQuantizer
@@ -47,18 +59,6 @@ from .spfresh import (
     SPFreshConfig,
     SPFreshHotIndex,
     SPFreshRebalancer,
-)
-from .ingest import (
-    DocxSource,
-    IterableSource,
-    MarkdownSource,
-    MCPResourceSource,
-    PDFSource,
-    PptxSource,
-    Record,
-    URLSource,
-    XlsxSource,
-    ingest,
 )
 from .transforms import LambdaTransform, TransformContext, TransformPipeline
 

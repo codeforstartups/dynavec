@@ -106,42 +106,90 @@ class PDFSource:
                 },
             )
 
+
+class DocxSource:
+    """Yield one Record per non-empty paragraph in a DOCX file.
+
+    Each paragraph is tagged with the most recent Heading/Title paragraph's
+    text as a ``section`` metadata field. (python-docx's own
+    ``Document.sections`` are page-layout sections — margins, headers,
+    footers — and carry no text, so they aren't usable as a content
+    grouping here.)
+    """
+
+    def __init__(self, path: str | Path) -> None:
+        try:
+            from docx import Document as _DocxDocument
+        except ImportError as exc:
+            raise MissingDependencyError(
+                "DocxSource",
+                "python-docx",
+                "ingest",
+            ) from exc
+
+        self._path = Path(path)
+        self._document_cls = _DocxDocument
+
+    def __iter__(self) -> Iterator[Record]:
+        document = self._document_cls(self._path)
+        path_str = self._path.as_posix()
+        section: str | None = None
+        para_number = 0
+
+        for paragraph in document.paragraphs:
+            text = paragraph.text
+
+            if not text or not text.strip():
+                continue
+
+            para_number += 1
+            style_name = (paragraph.style.name if paragraph.style else "") or ""
+            if style_name.startswith("Heading") or style_name == "Title":
+                section = text.strip()
+
+            yield Record(
+                id=f"{path_str}#para{para_number}",
+                text=text,
+                metadata={
+                    "source": "docx",
+                    "path": path_str,
+                    "paragraph": para_number,
+                    "section": section,
+                },
+            )
+
+
 class URLSource:
     """Yield one Record containing readable text extracted from a URL."""
-    def __init__(self, url: str, timeout: float=10)->None:
+
+    def __init__(self, url: str, timeout: float = 10) -> None:
         try:
             from bs4 import BeautifulSoup
         except ImportError as exc:
-            raise MissingDependencyError(
-                "URLSource",
-                "beautifulsoup4",
-                "ingest"
-            ) from exc
-        self._url= url
-        self._timeout= timeout
-        self._parser_cls= BeautifulSoup
-    
-    def __iter__(self)-> Iterator[Record]:
-        response=requests.get(
+            raise MissingDependencyError("URLSource", "beautifulsoup4", "ingest") from exc
+        self._url = url
+        self._timeout = timeout
+        self._parser_cls = BeautifulSoup
+
+    def __iter__(self) -> Iterator[Record]:
+        response = requests.get(
             self._url,
             timeout=self._timeout,
             headers={"User-Agent": "dynavec/1.0"},
         )
         response.raise_for_status()
-        soup=self._parser_cls(response.text,"html.parser")  
-        for tag in soup(["script","style"]):
+        soup = self._parser_cls(response.text, "html.parser")
+        for tag in soup(["script", "style"]):
             tag.decompose()
-        page_text=soup.get_text(separator=" ",strip=True)
+        page_text = soup.get_text(separator=" ", strip=True)
         if not page_text:
             return
         yield Record(
-            id= self._url,
-            text= page_text,
-            metadata={
-                "source": "url",
-                "url": self._url
-                },
-            )
+            id=self._url,
+            text=page_text,
+            metadata={"source": "url", "url": self._url},
+        )
+
 
 class MarkdownSource:
     """Read UTF-8 Markdown and text files from a directory.
@@ -172,9 +220,7 @@ class MarkdownSource:
         try:
             import yaml
         except ImportError as exc:
-            raise MissingDependencyError(
-                "Markdown front matter", "PyYAML", "ingest"
-            ) from exc
+            raise MissingDependencyError("Markdown front matter", "PyYAML", "ingest") from exc
 
         try:
             metadata = yaml.safe_load("".join(lines[1:end]))
@@ -243,7 +289,9 @@ class MCPResourceSource:
                 continue
             if self._uri_filter and not self._uri_filter(str(uri)):
                 continue
-            name = getattr(res, "name", None) or (res.get("name") if isinstance(res, dict) else None)
+            name = getattr(res, "name", None) or (
+                res.get("name") if isinstance(res, dict) else None
+            )
             contents = self._session.read_resource(uri)
             text = self._extract_text(contents)
             if not text:

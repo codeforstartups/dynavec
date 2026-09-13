@@ -6,7 +6,15 @@ from types import SimpleNamespace
 import requests
 
 from dynavec.exceptions import MissingDependencyError
-from dynavec.ingest import MCPResourceSource, PDFSource, Record, URLSource, chunk_text, ingest
+from dynavec.ingest import (
+    DocxSource,
+    MCPResourceSource,
+    PDFSource,
+    Record,
+    URLSource,
+    chunk_text,
+    ingest,
+)
 from dynavec.models import UpsertResult
 
 
@@ -85,6 +93,59 @@ def test_pdf_source_missing_dependency(monkeypatch):
         PDFSource("sample.pdf")
 
 
+class _DocxStyle:
+    def __init__(self, name):
+        self.name = name
+
+
+class _DocxParagraph:
+    def __init__(self, text, style_name="Normal"):
+        self.text = text
+        self.style = _DocxStyle(style_name)
+
+
+class _DocxDocument:
+    def __init__(self, path):
+        self.path = path
+        self.paragraphs = [
+            _DocxParagraph("Introduction", "Heading 1"),
+            _DocxParagraph("This is the intro paragraph."),
+            _DocxParagraph("   \n"),
+            _DocxParagraph("Methodology", "Heading 1"),
+            _DocxParagraph("This describes the methodology."),
+        ]
+
+
+def test_docx_source_yields_paragraph_records(monkeypatch):
+    fake_docx = SimpleNamespace(Document=_DocxDocument)
+    monkeypatch.setitem(sys.modules, "docx", fake_docx)
+
+    records = list(DocxSource("docs/sample.docx"))
+
+    assert len(records) == 4
+
+    assert records[0].id == "docs/sample.docx#para1"
+    assert records[0].text == "Introduction"
+    assert records[0].metadata == {
+        "source": "docx",
+        "path": "docs/sample.docx",
+        "paragraph": 1,
+        "section": "Introduction",
+    }
+
+    assert records[1].metadata["section"] == "Introduction"
+    assert records[2].id == "docs/sample.docx#para3"
+    assert records[2].metadata["section"] == "Methodology"
+
+
+def test_docx_source_missing_dependency(monkeypatch):
+    import pytest
+
+    monkeypatch.setitem(sys.modules, "docx", None)
+
+    with pytest.raises(MissingDependencyError, match=r"dynavec\[ingest\]"):
+        DocxSource("sample.docx")
+
 
 def test_url_source_yields_readable_text(monkeypatch):
     class FakeResponse:
@@ -128,6 +189,7 @@ def test_url_source_yields_readable_text(monkeypatch):
 
 def test_url_source_raises_for_http_error(monkeypatch):
     import pytest
+
     class FakeResponse:
         text = ""
 
@@ -204,9 +266,7 @@ def test_mcp_resource_source_yields_records():
 
 
 def test_mcp_uri_filter():
-    session = FakeMCPSession(
-        {"notion://a": ("A", "x"), "confluence://b": ("B", "y")}
-    )
+    session = FakeMCPSession({"notion://a": ("A", "x"), "confluence://b": ("B", "y")})
     records = list(MCPResourceSource(session, uri_filter=lambda u: u.startswith("notion")))
     assert [r.id for r in records] == ["notion://a"]
 

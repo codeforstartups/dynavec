@@ -10,7 +10,8 @@ Three backends, pick per your infra:
   ElastiCache**, great across many workers/hosts.
 
 All expose the same ``get`` / ``put`` interface, keyed on
-(namespace, query vector, top_k, filter).
+(namespace, query vector, top_k, filter). Use :func:`warm` to pre-populate any
+backend from a list of common queries at startup.
 """
 
 from __future__ import annotations
@@ -22,11 +23,15 @@ import sys
 import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from .exceptions import MissingDependencyError
+from .exceptions import ConfigurationError, MissingDependencyError
 from .models import SearchResult
+
+if TYPE_CHECKING:
+    from .client import Dynavec
 
 
 def _signature(namespace: str, top_k: int, filter: dict | None) -> str:
@@ -284,3 +289,49 @@ class RedisCache(BaseCache):
             _serialize(results),
             ex=self.ttl_seconds,
         )
+
+
+def warm(
+    client: Dynavec,
+    queries: list[str],
+    *,
+    namespace: str = "default",
+    top_k: int = 10,
+    **search_kwargs,
+) -> int:
+    """Pre-populate the query cache from a list of common queries.
+
+    Runs each query once through ``client.search`` with the cache enabled, so
+    the results land in the configured backend and future — identical or, for
+    :class:`SemanticCache`, similar — queries skip the vector store. Returns the
+    number of queries processed.
+
+    Parameters
+    ----------
+    client:
+        A :class:`dynavec.Dynavec` instance configured with a ``cache``.
+    queries:
+        The common queries to warm (each must embed without a vector, i.e. the
+        client needs an embedder for text queries).
+    namespace, top_k:
+        Where and how many results to cache per query.
+    search_kwargs:
+        Any other :meth:`dynavec.client.Dynavec.search` options (``filter``,
+        ``rescore``, ``rerank``, ...) to shape the cached entries. Use the same
+        options as your runtime queries so cache keys line up.
+
+    Raises
+    ------
+    ConfigurationError:
+        If ``client`` has no cache configured.
+    """
+    if getattr(client, "cache", None) is None:
+        raise ConfigurationError(
+            "warm() needs a cache to populate. Pass cache=SemanticCache() (or "
+            "RedisCache / DynamoDBCache) to Dynavec(...) before calling warm()."
+        )
+    for query in queries:
+        client.search(
+            query, namespace=namespace, top_k=top_k, use_cache=True, **search_kwargs
+        )
+    return len(queries)

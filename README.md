@@ -376,6 +376,20 @@ result object graph, and inspect `size_bytes` for the current accounted size:
 cache = SemanticCache(max_size=2_048, max_bytes=64 * 1024 * 1024)
 ```
 
+Pre-populate the cache from a list of common queries at startup with `warm()` —
+it runs each query once (through `search`, so results land in the cache) and
+returns the number of queries processed:
+
+```python
+from dynavec import Dynavec, DynavecConfig, SemanticCache, warm
+
+db = Dynavec(DynavecConfig(...), embedder=..., cache=SemanticCache())
+warm(db, ["what is vector search", "how do i upsert documents"], top_k=10)
+```
+
+Pass the same `filter` / `rescore` / `rerank` options you use at runtime so the
+warmed entries share cache keys with real queries.
+
 ## Status
 
 **v0.4.0 (current)** — adds the **in-memory hot tier** (`hot_tier=True` + `warm()`: serve a namespace entirely from RAM for in-memory-engine latency without a paid cluster), a retrieval-quality runner (recall@k / MRR / nDCG), async LangChain retrieval, graph export (Mermaid / Graphviz), an Ollama embedder, and URL/Markdown ingestion — on top of the v0.3 feature set and the v0.1 hybrid core.

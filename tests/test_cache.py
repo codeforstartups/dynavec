@@ -3,8 +3,9 @@ from unittest.mock import patch
 
 import pytest
 
-from dynavec.cache import DynamoDBCache, RedisCache, SemanticCache
+from dynavec.cache import DynamoDBCache, RedisCache, SemanticCache, warm
 from dynavec.config import DynavecConfig
+from dynavec.exceptions import ConfigurationError
 from dynavec.models import SearchResult
 
 
@@ -249,3 +250,61 @@ def test_redis_cache_stats():
 
     cache.reset_stats()
     assert cache.stats() == {"hits": 0, "misses": 0, "hit_rate": 0.0}
+
+
+def test_warm_prepopulates_cache():
+    class FakeClient:
+        def __init__(self, cache):
+            self.cache = cache
+            self.searches = []
+            self._vecs = {
+                "how do i upsert": [1.0, 0.0],
+                "what is a namespace": [0.0, 1.0],
+            }
+
+        def search(self, query, *, namespace="default", top_k=10, use_cache=None, **kw):
+            vector = self._vecs[query]
+            if use_cache:
+                cached = self.cache.get(namespace, vector, top_k, None)
+                if cached is not None:
+                    return cached
+            self.searches.append(query)
+            results = _res(query)
+            if use_cache:
+                self.cache.put(namespace, vector, top_k, None, results)
+            return results
+
+    cache = SemanticCache()
+    client = FakeClient(cache)
+    queries = list(client._vecs)
+
+    assert warm(client, queries, top_k=5) == 2
+    assert client.searches == queries
+
+    # a repeat of a warmed query is served from the cache, not re-searched
+    hit = client.search("how do i upsert", top_k=5, use_cache=True)
+    assert hit and hit[0].id == "how do i upsert"
+    assert client.searches == queries
+    assert cache.stats()["hits"] == 1
+    assert cache.stats()["misses"] == 2
+
+
+def test_warm_reports_zero_for_empty_queries():
+    class FakeClient:
+        cache = SemanticCache()
+
+        def search(self, *args, **kwargs):
+            raise AssertionError("no queries to search")
+
+    assert warm(FakeClient(), []) == 0
+
+
+def test_warm_requires_a_cache():
+    class FakeClient:
+        cache = None
+
+        def search(self, *args, **kwargs):
+            raise AssertionError("should not search without a cache")
+
+    with pytest.raises(ConfigurationError, match="cache"):
+        warm(FakeClient(), ["what is vector search"])

@@ -207,6 +207,7 @@ cfg = DynavecConfig(
     over_fetch=4,                 # candidate multiplier when reranking
     top_k_page_size=50,           # optional client-side stream batch size
     max_workers=8,                # thread pool for parallel I/O
+    structured_logging=True,      # opt-in structured JSON logging across stores
     auto_provision=True,
 )
 """) + """
@@ -219,6 +220,8 @@ cfg = DynavecConfig(
 <tr><td><code>over_fetch</code></td><td>How many extra candidates to pull before reranking/rescoring.</td></tr>
 <tr><td><code>top_k_page_size</code></td><td>Client-side stream hydration batch. <code>None</code> (default) uses native S3 Vectors pages (at most 100). Does not change the service page size.</td></tr>
 <tr><td><code>max_workers</code>, <code>parallel_writes</code></td><td>Thread-pool <a href="concurrency.html">concurrency</a> controls.</td></tr>
+<tr><td><code>structured_logging</code></td><td>Opt-in structured JSON logging across DynamoDB and S3 Vectors store operations with automatic secret redaction. Defaults to <code>False</code>.</td></tr>
+<tr><td><code>log_level</code></td><td>Minimum log level (<code>"DEBUG"</code>, <code>"INFO"</code>, etc.). Defaults to <code>"INFO"</code>.</td></tr>
 </table>
 """)
 

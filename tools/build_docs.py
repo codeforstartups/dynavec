@@ -570,6 +570,10 @@ pq = ProductQuantizer(m=96, nbits=8).fit(training_vectors)   # 768-d -> 96 bytes
 codes = pq.encode(vectors)          # uint8 codes
 dists = pq.asymmetric_distances(query, codes)   # ADC, fast at scale
 print(pq.reconstruction_error(vectors))
+
+# Persist and reload codebooks across restarts
+pq.save("pq_model.npz")
+loaded_pq = ProductQuantizer.load("pq_model.npz")
 """) + """
 <table class="doc__params">
 <tr><th>Param</th><th>Meaning</th></tr>

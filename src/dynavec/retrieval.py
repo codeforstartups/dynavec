@@ -70,6 +70,54 @@ def reciprocal_rank_fusion(
     return out
 
 
+# def maximal_marginal_relevance(
+#     query_vector: list[float],
+#     candidates: list[SearchResult],
+#     top_k: int,
+#     lambda_mult: float = 0.5,
+# ) -> list[SearchResult]:
+#     """Re-rank candidates for relevance *and* diversity (MMR).
+
+#     Requires each candidate to carry its ``vector`` (dynavec fetches these via
+#     S3 Vectors ``get_vectors`` when MMR is requested). ``lambda_mult=1`` is pure
+#     relevance; ``0`` is pure diversity.
+#     """
+#     usable = [c for c in candidates if c.vector is not None]
+#     if not usable:
+#         return candidates[:top_k]
+
+#     q = np.asarray(query_vector, dtype=np.float32)
+#     mat = np.asarray([c.vector for c in usable], dtype=np.float32)
+
+#     def _norm(x: np.ndarray) -> np.ndarray:
+#         n = np.linalg.norm(x, axis=-1, keepdims=True)
+#         return x / np.clip(n, 1e-12, None)
+
+#     qn = _norm(q.reshape(1, -1))[0]
+#     mn = _norm(mat)
+
+#     query_sim = mn @ qn  # cosine similarity to the query
+#     doc_sim = mn @ mn.T  # pairwise cosine similarity
+
+#     selected: list[int] = []
+#     remaining = set(range(len(usable)))
+#     top_k = min(top_k, len(usable))
+
+#     while len(selected) < top_k:
+#         best_idx = None
+#         best_score = -np.inf
+#         for i in remaining:
+#             diversity = max((doc_sim[i][j] for j in selected), default=0.0)
+#             score = lambda_mult * query_sim[i] - (1 - lambda_mult) * diversity
+#             if score > best_score:
+#                 best_score = score
+#                 best_idx = i
+#         selected.append(best_idx)
+#         remaining.discard(best_idx)
+
+#     return [usable[i] for i in selected]
+
+
 def maximal_marginal_relevance(
     query_vector: list[float],
     candidates: list[SearchResult],
@@ -96,23 +144,33 @@ def maximal_marginal_relevance(
     qn = _norm(q.reshape(1, -1))[0]
     mn = _norm(mat)
 
-    query_sim = mn @ qn  # cosine similarity to the query
-    doc_sim = mn @ mn.T  # pairwise cosine similarity
+    query_sim = mn @ qn  # shape: (N,)
+    doc_sim = mn @ mn.T  # shape: (N, N)
+
+    n_candidates = len(usable)
+    top_k = min(top_k, n_candidates)
 
     selected: list[int] = []
-    remaining = set(range(len(usable)))
-    top_k = min(top_k, len(usable))
+    unselected = np.ones(n_candidates, dtype=bool)
+    max_sim_to_selected = np.full(n_candidates, -np.inf, dtype=np.float32)
+
+    # First pick: pure query relevance
+    first_idx = int(np.argmax(query_sim))
+    selected.append(first_idx)
+    unselected[first_idx] = False
 
     while len(selected) < top_k:
-        best_idx = None
-        best_score = -np.inf
-        for i in remaining:
-            diversity = max((doc_sim[i][j] for j in selected), default=0.0)
-            score = lambda_mult * query_sim[i] - (1 - lambda_mult) * diversity
-            if score > best_score:
-                best_score = score
-                best_idx = i
+        last_selected = selected[-1]
+
+        # Vectorized update: update max similarity to selected set for all remaining candidates
+        max_sim_to_selected = np.maximum(max_sim_to_selected, doc_sim[:, last_selected])
+
+        # Calculate MMR score for unselected candidates
+        mmr_scores = lambda_mult * query_sim - (1 - lambda_mult) * max_sim_to_selected
+        mmr_scores[~unselected] = -np.inf
+
+        best_idx = int(np.argmax(mmr_scores))
         selected.append(best_idx)
-        remaining.discard(best_idx)
+        unselected[best_idx] = False
 
     return [usable[i] for i in selected]

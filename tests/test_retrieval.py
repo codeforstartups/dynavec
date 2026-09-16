@@ -1,5 +1,8 @@
 """Tests for the retrieval algorithms (pure, no AWS)."""
 
+import time
+
+import numpy as np
 import pytest
 
 from dynavec.models import SearchResult
@@ -76,3 +79,28 @@ def test_mmr_without_vectors_falls_back():
     cands = [SearchResult(id="a", score=0.0), SearchResult(id="b", score=0.0)]
     picked = maximal_marginal_relevance([1.0, 0.0], cands, top_k=1)
     assert len(picked) == 1
+
+
+def test_mmr_performance_large_candidate_set():
+    # 1000 candidates test for vectorization speedup
+    np.random.seed(42)
+    query = np.random.randn(128).tolist()
+
+    candidates = [
+        SearchResult(
+            id=f"doc_{i}",
+            score=0.0,
+            distance=0.0,
+            text=f"text {i}",
+            metadata={},
+            vector=np.random.randn(128).tolist(),
+        )
+        for i in range(1000)
+    ]
+
+    start_time = time.perf_counter()
+    results = maximal_marginal_relevance(query, candidates, top_k=50, lambda_mult=0.5)
+    elapsed = time.perf_counter() - start_time
+
+    assert len(results) == 50
+    assert elapsed < 0.1  # Vectorized execution under 100ms

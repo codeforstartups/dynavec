@@ -14,6 +14,7 @@ from .base import Embedder, Vector
 if TYPE_CHECKING:  # for type checkers / IDEs only
     from .bedrock import BedrockEmbedder, BedrockTitanMultimodalEmbedder
     from .gemini import GeminiEmbedder
+    from .huggingface import HFInferenceEmbedder
     from .mistral import MistralEmbedder
     from .ollama import OllamaEmbedder
     from .openai import OpenAIEmbedder
@@ -31,6 +32,7 @@ __all__ = [
     "VoyageEmbedder",
     "MistralEmbedder",
     "OllamaEmbedder",
+    "HFInferenceEmbedder",
 ]
 
 _LAZY = {
@@ -48,6 +50,7 @@ _LAZY = {
     "VoyageEmbedder": ("dynavec.embeddings.voyage", "VoyageEmbedder"),
     "MistralEmbedder": ("dynavec.embeddings.mistral", "MistralEmbedder"),
     "OllamaEmbedder": ("dynavec.embeddings.ollama", "OllamaEmbedder"),
+    "HFInferenceEmbedder": ("dynavec.embeddings.huggingface", "HFInferenceEmbedder"),
 }
 
 

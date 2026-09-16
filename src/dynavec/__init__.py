@@ -35,6 +35,18 @@ from .exceptions import (
 )
 from .graph import GraphStore
 from .hot import HotTier
+from .ingest import (
+    DocxSource,
+    IterableSource,
+    MarkdownSource,
+    MCPResourceSource,
+    PDFSource,
+    PptxSource,
+    Record,
+    URLSource,
+    XlsxSource,
+    ingest,
+)
 from .models import Document, SearchResult, UpsertResult
 from .namespace import NamespaceView
 from .quantization import ProductQuantizer, ScalarQuantizer
@@ -50,7 +62,7 @@ from .spfresh import (
 )
 from .transforms import LambdaTransform, TransformContext, TransformPipeline
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "Dynavec",
@@ -77,6 +89,17 @@ __all__ = [
     "TransformPipeline",
     "TransformContext",
     "LambdaTransform",
+    # Ingestion
+    "Record",
+    "ingest",
+    "IterableSource",
+    "PDFSource",
+    "DocxSource",
+    "PptxSource",
+    "XlsxSource",
+    "URLSource",
+    "MarkdownSource",
+    "MCPResourceSource",
     # exceptions
     "DynavecError",
     "ConfigurationError",
@@ -86,3 +109,4 @@ __all__ = [
     "NotFoundError",
     "MissingDependencyError",
 ]
+

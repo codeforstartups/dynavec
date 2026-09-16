@@ -296,7 +296,8 @@ def test_optimized_product_quantizer_training_errors():
     assert len(opq_pq.training_errors) == 3
     assert all(np.isfinite(error) for error in opq_pq.training_errors)
 # OptimizedProductQuantizer END
-=======
+
+
 def test_save_before_fit_raises(tmp_path):
     pq = ProductQuantizer(m=4)
     with pytest.raises(RuntimeError, match="must be .fit\\(\\) before use"):
@@ -389,4 +390,3 @@ def test_load_corrupted_file_raises(tmp_path):
     corrupt.write_bytes(b"not a valid npz archive")
     with pytest.raises(ValueError):
         ProductQuantizer.load(corrupt)
-

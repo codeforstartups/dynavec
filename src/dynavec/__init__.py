@@ -33,6 +33,7 @@ from .exceptions import (
     NotFoundError,
     ProvisioningError,
 )
+from .fusion import RRFWeightFitter
 from .graph import GraphStore
 from .hot import HotTier
 from .models import Document, SearchResult, UpsertResult
@@ -67,6 +68,7 @@ __all__ = [
     "SemanticCache",
     "DynamoDBCache",
     "RedisCache",
+    "RRFWeightFitter",
     "reciprocal_rank_fusion",
     "maximal_marginal_relevance",
     "HotTier",

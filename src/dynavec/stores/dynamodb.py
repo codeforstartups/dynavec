@@ -12,10 +12,13 @@ can filter on metadata fields directly in DynamoDB.
 
 from __future__ import annotations
 
+import logging
+import time
 from decimal import Decimal
 from typing import Any
 
 from ..config import DynavecConfig
+from ..logging import log_store_event
 from ..utils import KEY_SEPARATOR, encode_key_component, retry
 
 Metadata = dict[str, Any]
@@ -49,6 +52,8 @@ def _from_dynamo(obj: Any) -> Any:
 class DynamoDBStore:
     """Thin, dependency-light wrapper over a single DynamoDB table."""
 
+    _logger = logging.getLogger("dynavec.stores.dynamodb")
+
     def __init__(self, config: DynavecConfig, boto_session=None) -> None:
         import boto3  # local import: base import stays cheap
 
@@ -60,6 +65,7 @@ class DynamoDBStore:
             resource_kwargs["config"] = botocore_config
         self._ddb = session.resource("dynamodb", **resource_kwargs)  # type: ignore[arg-type]
         self._table = self._ddb.Table(config.table)
+        self._logger = logging.getLogger("dynavec.stores.dynamodb")
 
     @staticmethod
     def _pk(namespace: str, doc_id: str) -> str:
@@ -71,6 +77,7 @@ class DynamoDBStore:
         items: list[tuple[str, str | None, Metadata]],
     ) -> None:
         """Upsert (id, text, metadata) triples. Uses batch writer (auto-retry)."""
+        t0 = time.perf_counter()
         with self._table.batch_writer(overwrite_by_pkeys=["pk"]) as batch:
             for doc_id, text, metadata in items:
                 item = {
@@ -83,10 +90,31 @@ class DynamoDBStore:
                     item["text"] = text
                 batch.put_item(Item=item)
 
+        log_store_event(
+            self._logger,
+            "dynamodb.put_many",
+            self._config.structured_logging,
+            table=self._config.table,
+            namespace=namespace,
+            count=len(items),
+            duration_ms=round((time.perf_counter() - t0) * 1000, 2),
+        )
+
     @retry()
     def get_many(self, namespace: str, ids: list[str]) -> dict[str, dict[str, Any]]:
         """Hydrate documents by id. Returns ``{id: {"text":..., "metadata":...}}``."""
+        t0 = time.perf_counter()
         if not ids:
+            log_store_event(
+                self._logger,
+                "dynamodb.get_many",
+                self._config.structured_logging,
+                table=self._config.table,
+                namespace=namespace,
+                requested_count=0,
+                returned_count=0,
+                duration_ms=0.0,
+            )
             return {}
         keys = [{"pk": self._pk(namespace, doc_id)} for doc_id in ids]
         out: dict[str, dict[str, Any]] = {}
@@ -104,9 +132,30 @@ class DynamoDBStore:
                 unprocessed = resp.get("UnprocessedKeys") or {}
                 request = unprocessed if unprocessed else None
 
+        log_store_event(
+            self._logger,
+            "dynamodb.get_many",
+            self._config.structured_logging,
+            table=self._config.table,
+            namespace=namespace,
+            requested_count=len(ids),
+            returned_count=len(out),
+            duration_ms=round((time.perf_counter() - t0) * 1000, 2),
+        )
         return out
 
     def delete_many(self, namespace: str, ids: list[str]) -> None:
+        t0 = time.perf_counter()
         with self._table.batch_writer() as batch:
             for doc_id in ids:
                 batch.delete_item(Key={"pk": self._pk(namespace, doc_id)})
+
+        log_store_event(
+            self._logger,
+            "dynamodb.delete_many",
+            self._config.structured_logging,
+            table=self._config.table,
+            namespace=namespace,
+            count=len(ids),
+            duration_ms=round((time.perf_counter() - t0) * 1000, 2),
+        )

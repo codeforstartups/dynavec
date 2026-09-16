@@ -92,6 +92,10 @@ class DynavecConfig:
     auto_provision: bool = False
     dynamodb_billing_mode: Literal["PAY_PER_REQUEST", "PROVISIONED"] = "PAY_PER_REQUEST"
 
+    # observability
+    structured_logging: bool = False
+    log_level: str = "INFO"
+
     def botocore_config(self):  # type: ignore[no-untyped-def]
         """Return a botocore Config with pool tuning, or None for defaults.
 
@@ -119,3 +123,6 @@ class DynavecConfig:
             raise ValueError("hot_tier_max_vectors must be a positive integer")
         if self.hot_tier_n_probe < 1:
             raise ValueError("hot_tier_n_probe must be >= 1")
+        valid_log_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        if self.log_level.upper() not in valid_log_levels:
+            raise ValueError(f"log_level must be one of {valid_log_levels}")

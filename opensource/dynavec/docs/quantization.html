@@ -65,6 +65,7 @@
 </ul></div>
 <div class="side__group"><p class="side__title">Ecosystem</p><ul class="side__list">
 <li><a href="integrations.html">Framework integrations</a></li>
+<li><a href="dashboard.html">Telemetry dashboard</a></li>
 <li><a href="benchmarking.html">Benchmarking</a></li>
 </ul></div>
 <div class="side__group"><p class="side__title">About</p><ul class="side__list">
@@ -84,7 +85,11 @@ the vectors <em>dynavec</em> caches — the in-memory hot tier and local candida
 pq = ProductQuantizer(m=96, nbits=8).fit(training_vectors)   # 768-d -> 96 bytes (32x)
 codes = pq.encode(vectors)          # uint8 codes
 dists = pq.asymmetric_distances(query, codes)   # ADC, fast at scale
-print(pq.reconstruction_error(vectors))</code></pre>
+print(pq.reconstruction_error(vectors))
+
+# Persist and reload codebooks across restarts
+pq.save("pq_model.npz")
+loaded_pq = ProductQuantizer.load("pq_model.npz")</code></pre>
 <table class="doc__params">
 <tr><th>Param</th><th>Meaning</th></tr>
 <tr><td><code>m</code></td><td>Number of subspaces; must divide the vector dimension.</td></tr>

@@ -378,11 +378,11 @@ cache = SemanticCache(max_size=2_048, max_bytes=64 * 1024 * 1024)
 
 ## Status
 
-**v0.4.0 (current)** — adds the **in-memory hot tier** (`hot_tier=True` + `warm()`: serve a namespace entirely from RAM for in-memory-engine latency without a paid cluster), a retrieval-quality runner (recall@k / MRR / nDCG), async LangChain retrieval, graph export (Mermaid / Graphviz), an Ollama embedder, and URL/Markdown ingestion — on top of the v0.3 feature set and the v0.1 hybrid core.
+**v0.5.0 (current)** — adds **office-document ingestion** (Docx/Pptx/Xlsx), a **Hugging Face Inference embedder**, a **DSPy retrieval integration**, opt-in **structured JSON logging** (with secret redaction), **ProductQuantizer save/load**, dashboard **dark mode**, and **vectorized MMR** reranking — on top of the v0.4 in-memory hot tier and the v0.1 hybrid core.
 
 See the full history in **[CHANGELOG.md](CHANGELOG.md)**, the browsable **[Release notes](https://codeforstartups.github.io/dynavec/docs/release-notes.html)** page, or the **[GitHub Releases](https://github.com/codeforstartups/dynavec/releases)** tab.
 
-**Roadmap (v0.5):** optional `hnswlib`/`faiss` hot-tier backend for very large hot sets, sparse/BM25 hybrid computed from DynamoDB, and more turnkey file parsers (DOCX/PPTX/XLSX) as ingestion sources.
+**Roadmap (v0.6):** optional `hnswlib`/`faiss` hot-tier backend for very large hot sets, sparse/BM25 hybrid computed from DynamoDB, and OPQ (rotated product quantization).
 
 ## Publishing (maintainers)
 

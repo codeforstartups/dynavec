@@ -12,8 +12,12 @@ Pure numpy, no external deps. Symmetric + asymmetric (ADC) distance supported.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+from typing import BinaryIO
 
 import numpy as np
+
+FORMAT_VERSION = 1
 
 
 def _kmeans(x: np.ndarray, k: int, iters: int, seed: int) -> np.ndarray:
@@ -134,6 +138,79 @@ class ProductQuantizer:
         x = np.asarray(vectors, dtype=np.float32)
         recon = self.decode(self.encode(x))
         return float(((x - recon) ** 2).sum(axis=1).mean())
+
+    # ----------------------------------------------------------- serialization
+    def save(self, file: str | Path | BinaryIO) -> None:
+        """Serialize the trained ProductQuantizer to a file or file-like object.
+
+        Includes a version header (``format_version=1``), configuration parameters
+        (``m``, ``nbits``, ``iters``, ``seed``, ``dsub``), and the trained codebooks.
+
+        Raises
+        ------
+        RuntimeError
+            If the quantizer has not been .fit() yet.
+        """
+        self._check_fitted()
+        payload = {
+            "format_version": np.array(FORMAT_VERSION, dtype=np.int32),
+            "m": np.array(self.m, dtype=np.int32),
+            "nbits": np.array(self.nbits, dtype=np.int32),
+            "iters": np.array(self.iters, dtype=np.int32),
+            "seed": np.array(self.seed, dtype=np.int32),
+            "dsub": np.array(self._dsub, dtype=np.int32),
+            "codebooks": self._codebooks,
+        }
+        if isinstance(file, (str, Path)):
+            with open(file, "wb") as f:
+                np.savez(f, **payload)
+        else:
+            np.savez(file, **payload)
+
+    @classmethod
+    def load(cls, file: str | Path | BinaryIO) -> ProductQuantizer:
+        """Load a serialized ProductQuantizer from a file or file-like object.
+
+        Parameters
+        ----------
+        file:
+            A file path or binary file-like object.
+
+        Returns
+        -------
+        ProductQuantizer
+            A fully fitted ProductQuantizer instance.
+
+        Raises
+        ------
+        ValueError
+            If the file format is invalid or has an unsupported version header.
+        """
+        try:
+            with np.load(file, allow_pickle=False) as data:
+                if "format_version" not in data:
+                    raise ValueError("Invalid quantizer file: missing format_version header")
+                version = int(data["format_version"])
+                if version != FORMAT_VERSION:
+                    raise ValueError(f"Unsupported quantizer format version: {version}")
+
+                for key in ("m", "nbits", "iters", "seed", "dsub", "codebooks"):
+                    if key not in data:
+                        raise ValueError(f"Invalid quantizer file: missing '{key}' field")
+
+                m = int(data["m"])
+                nbits = int(data["nbits"])
+                iters = int(data["iters"])
+                seed = int(data["seed"])
+
+                pq = cls(m=m, nbits=nbits, iters=iters, seed=seed)
+                pq._dsub = int(data["dsub"])
+                pq._codebooks = np.asarray(data["codebooks"], dtype=np.float32)
+                return pq
+        except (ValueError, RuntimeError):
+            raise
+        except Exception as exc:
+            raise ValueError(f"Failed to load ProductQuantizer: {exc}") from exc
 
     def _check_fitted(self) -> None:
         if self._codebooks is None:

@@ -25,10 +25,12 @@ rewrite. (A native asyncio client is on the roadmap.)
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any, Union
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, TextIO, Union
 
 if TYPE_CHECKING:
     from .cache import BaseCache
@@ -906,33 +908,125 @@ class Dynavec:
             raise ConfigurationError(
                 "Hot tier is disabled. Set DynavecConfig(hot_tier=True) to use warm()."
             )
-        items: list[tuple[str, list[float], str | None, dict[str, Any]]] = []
-        ids: list[str] = []
-        raw: list[tuple[str, list[float], dict[str, Any]]] = []
-        for page in self._vectors.list_pages(return_data=True, return_metadata=True):
-            for v in page:
-                ns, doc_id = self._split_key(v["key"])
-                if ns != namespace:
-                    continue
-                vector = v.get("data", {}).get("float32")
-                if vector is None:
-                    continue
-                raw.append((doc_id, vector, v.get("metadata", {}) or {}))
-                ids.append(doc_id)
-
-        # Hydrate canonical text + full metadata from DynamoDB in one batch.
-        hydrated = self._docs.get_many(namespace, ids) if ids else {}
-        for doc_id, vector, s3_meta in raw:
-            doc = hydrated.get(doc_id, {})
-            meta = doc.get("metadata") or {k: val for k, val in s3_meta.items()
-                                            if k not in (NS_METADATA_KEY, TEXT_METADATA_KEY)}
-            text = doc.get("text")
-            if text is None:
-                text = s3_meta.get(TEXT_METADATA_KEY)
-            items.append((doc_id, vector, text, meta))
-
+        items = [
+            (doc["id"], doc["vector"], doc["text"], doc["metadata"])
+            for doc in self.iter_namespace(namespace)
+        ]
         return len(items) if self._hot.load(namespace, items) else 0
 
     def hot_stats(self) -> dict[str, Any] | None:
         """Residency stats for the hot tier, or ``None`` if it's disabled."""
         return self._hot.stats() if self._hot is not None else None
+
+    # ------------------------------------------------------------- export / import
+    def iter_namespace(self, namespace: str = "default") -> Iterator[dict[str, Any]]:
+        """Yield all documents and vectors for ``namespace``.
+
+        Each item is a dictionary with keys:
+        - ``id``: str
+        - ``vector``: list[float]
+        - ``text``: str | None
+        - ``metadata``: dict[str, Any]
+        """
+        for result in self.list_vectors(namespace=namespace, include_vectors=True, hydrate=True):
+            yield {
+                "id": result.id,
+                "vector": result.vector,
+                "text": result.text,
+                "metadata": result.metadata,
+            }
+
+    def export_namespace(
+        self,
+        output: str | Path | TextIO,
+        *,
+        namespace: str = "default",
+    ) -> int:
+        """Export all vectors and documents for a namespace as JSON Lines (JSONL).
+
+        Parameters
+        ----------
+        output:
+            File path (str or Path) or writable text stream (e.g. sys.stdout).
+        namespace:
+            The namespace to dump (default: "default").
+
+        Returns
+        -------
+        int
+            Number of documents exported.
+        """
+        count = 0
+        if isinstance(output, (str, Path)):
+            with open(output, "w", encoding="utf-8") as f:
+                for item in self.iter_namespace(namespace):
+                    f.write(json.dumps(item, default=str) + "\n")
+                    count += 1
+        else:
+            for item in self.iter_namespace(namespace):
+                output.write(json.dumps(item, default=str) + "\n")
+                count += 1
+        return count
+
+    def import_namespace(
+        self,
+        input: str | Path | TextIO,
+        *,
+        namespace: str = "default",
+        batch_size: int = 100,
+    ) -> int:
+        """Import vectors and documents from a JSON Lines (JSONL) source into a namespace.
+
+        Parameters
+        ----------
+        input:
+            File path (str or Path) or readable text stream (e.g. sys.stdin).
+        namespace:
+            Target namespace to restore into (default: "default").
+        batch_size:
+            Batch size for upserting records (default: 100).
+
+        Returns
+        -------
+        int
+            Number of documents imported.
+        """
+        if batch_size <= 0:
+            raise ValueError("batch_size must be a positive integer")
+
+        def _process(stream: TextIO) -> int:
+            count = 0
+            batch: list[Document] = []
+            for line_no, raw_line in enumerate(stream, start=1):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except Exception as exc:
+                    raise ValueError(f"Invalid JSON at line {line_no}: {exc}") from exc
+
+                if "id" not in obj or "vector" not in obj:
+                    raise ValueError(f"Missing required 'id' or 'vector' field at line {line_no}")
+
+                doc = Document(
+                    id=str(obj["id"]),
+                    vector=obj["vector"],
+                    text=obj.get("text"),
+                    metadata=obj.get("metadata") or {},
+                )
+                batch.append(doc)
+                if len(batch) >= batch_size:
+                    self.upsert(batch, namespace=namespace)
+                    count += len(batch)
+                    batch = []
+
+            if batch:
+                self.upsert(batch, namespace=namespace)
+                count += len(batch)
+            return count
+
+        if isinstance(input, (str, Path)):
+            with open(input, encoding="utf-8") as f:
+                return _process(f)
+        return _process(input)

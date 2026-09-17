@@ -47,5 +47,14 @@ class NamespaceView:
     def delete(self, ids, **kw) -> None:
         return self._db.delete(ids, namespace=self._ns, **kw)
 
+    def export_namespace(self, output, **kw) -> int:
+        return self._db.export_namespace(output, namespace=self._ns, **kw)
+
+    def import_namespace(self, input, **kw) -> int:
+        return self._db.import_namespace(input, namespace=self._ns, **kw)
+
+    def __iter__(self):
+        return self._db.iter_namespace(namespace=self._ns)
+
     def __repr__(self) -> str:
         return f"NamespaceView(namespace={self._ns!r})"

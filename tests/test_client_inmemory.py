@@ -354,6 +354,26 @@ def test_graph_search_scopes_to_related_docs(db):
     hits = db.graph_search("apple", seed_entities=["fruit"], top_k=5)
     assert {h.id for h in hits} == {"d1", "d2"}  # d3 excluded by the graph
 
+def test_hybrid_graph_search_fuses_ann_and_graph_results(db):
+    db.upsert(
+        [
+            Document(id="d1", text="apple pie recipe"),
+            Document(id="d2", text="apple orchard tour"),
+            Document(id="d3", text="rocket launch"),
+        ]
+    )
+
+    db.graph_add_node("fruit", ntype="topic")
+    db.graph_link("fruit", ["d1", "d2"])
+
+    hits = db.hybrid_graph_search(
+        "apple",
+        seed_entities=["fruit"],
+        top_k=3,
+    )
+
+    assert {hit.id for hit in hits} == {"d1", "d2", "d3"}
+
 
 def test_graph_traversal_hops(db):
     db.upsert([Document(id="d1", text="x"), Document(id="d2", text="y")])

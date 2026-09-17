@@ -663,6 +663,21 @@ class Dynavec:
         if bidirectional:
             self.graph.add_edge(namespace, dst, relation, src)
 
+    def graph_delete_node(self, entity_id, *, namespace="default"):
+        """Delete an entity with its outbound and inbound edges (idempotent).
+
+        Linked documents and their embeddings are left untouched. Returns the
+        number of inbound edges removed. Finding those scans the namespace.
+        """
+        return self.graph.delete_node(namespace, entity_id)
+
+    def graph_delete_edge(self, src, relation, dst, *, namespace="default", bidirectional=False):
+        """Remove ``(src) -[relation]-> (dst)`` (idempotent); return edges removed."""
+        removed = self.graph.delete_edge(namespace, src, relation, dst)
+        if bidirectional:
+            removed += self.graph.delete_edge(namespace, dst, relation, src)
+        return removed
+
     def graph_link(self, entity_id, doc_ids, *, namespace="default"):
         """Attach documents (their S3 Vectors embeddings) to an entity."""
         self.graph.link_docs(namespace, entity_id, list(doc_ids))

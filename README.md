@@ -390,6 +390,16 @@ warm_cache(db, ["what is vector search", "how do i upsert documents"], top_k=10)
 Pass the same `filter` / `rescore` / `rerank` options you use at runtime so the
 warmed entries share cache keys with real queries.
 
+Remove graph entities and relations with `graph_delete_node()` and
+`graph_delete_edge()`. Both are idempotent and return the number of edges removed.
+Deleting a node also strips every edge pointing at it (a namespace scan) but
+leaves its linked documents and their embeddings untouched:
+
+```python
+db.graph_delete_edge("acme", "competes_with", "globex", namespace="kb", bidirectional=True)
+db.graph_delete_node("globex", namespace="kb")
+```
+
 ## Status
 
 **v0.5.0 (current)** — adds **office-document ingestion** (Docx/Pptx/Xlsx), a **Hugging Face Inference embedder**, a **DSPy retrieval integration**, opt-in **structured JSON logging** (with secret redaction), **ProductQuantizer save/load**, dashboard **dark mode**, and **vectorized MMR** reranking — on top of the v0.4 in-memory hot tier and the v0.1 hybrid core.

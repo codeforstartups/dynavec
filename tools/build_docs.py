@@ -559,6 +559,19 @@ hits = db.graph_search(
 """) + """
 <p>Traversal helpers: <code>graph_add_node</code>, <code>graph_add_edge</code>, <code>graph_link</code>,
 <code>graph_neighbors</code>.</p>
+<h2>Removing nodes and edges</h2>
+<p>Both deletes are idempotent — removing something that is already gone returns <code>0</code> — and both
+return the number of edges removed.</p>
+""" + code("""# drop one relation (pass bidirectional=True to remove the reverse edge too)
+db.graph_delete_edge("acme", "competes_with", "globex", namespace="kb")
+
+# drop an entity, its outbound edges, and every edge pointing at it
+db.graph_delete_node("globex", namespace="kb")
+""") + """
+<p><code>graph_delete_node</code> leaves linked documents and their embeddings in place; delete those with
+<code>db.delete(...)</code> if you want them gone. Nothing indexes inbound edges, so finding them scans the
+namespace (<code>dynamodb:Scan</code>) — fine for occasional cleanup, not for a hot path. Edge removal is a
+conditional write that retries if another writer changes the adjacency list concurrently.</p>
 <div class="callout">The graph uses embedded adjacency lists (one item per node). Very high fan-out entities
 want a sort-key adjacency design — on the roadmap.</div>
 """)

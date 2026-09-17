@@ -123,6 +123,27 @@ class FakeGraph(client_mod.GraphStore):
     def link_docs(self, ns, entity_id, doc_ids):
         self._node(ns, entity_id)["docs"].extend(doc_ids)
 
+    def delete_edge(self, ns, src, relation, dst):
+        node = self.get_node(ns, src)
+        if not node:
+            return 0
+        before = len(node["edges"])
+        node["edges"] = [
+            e for e in node["edges"] if not (e["relation"] == relation and e["target"] == dst)
+        ]
+        return before - len(node["edges"])
+
+    def delete_node(self, ns, entity_id):
+        removed = 0
+        for (node_ns, eid), node in self._nodes.items():
+            if node_ns != ns or eid == entity_id:
+                continue
+            before = len(node["edges"])
+            node["edges"] = [e for e in node["edges"] if e["target"] != entity_id]
+            removed += before - len(node["edges"])
+        self._nodes.pop((ns, entity_id), None)
+        return removed
+
     def get_node(self, ns, entity_id):
         return self._nodes.get((ns, entity_id))
 
@@ -371,6 +392,24 @@ def test_graph_traversal_handles_cycles(db):
     db.graph_add_edge("c", "related_to", "a")
 
     assert set(db.graph_neighbors("a", hops=10)) == {"b", "c"}
+
+
+def test_graph_delete_edge_bidirectional(db):
+    db.graph_add_edge("a", "related_to", "b", bidirectional=True)
+
+    assert db.graph_delete_edge("a", "related_to", "b", bidirectional=True) == 2
+    assert db.graph_neighbors("a") == []
+    assert db.graph_neighbors("b") == []
+    assert db.graph_delete_edge("a", "related_to", "b", bidirectional=True) == 0
+
+
+def test_graph_delete_node_drops_it_from_traversal(db):
+    db.graph_add_edge("a", "related_to", "b")
+    db.graph_add_edge("b", "related_to", "c")
+
+    assert db.graph_delete_node("b") == 1
+    assert db.graph_neighbors("a", hops=10) == []
+    assert db.graph_delete_node("b") == 0
 
 
 def test_semantic_cache_hits_on_repeat(db):

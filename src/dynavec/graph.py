@@ -28,9 +28,25 @@ from collections import deque
 from typing import Any
 
 from .config import DynavecConfig
-from .utils import KEY_SEPARATOR, decode_key_component, encode_key_component, retry
+from .utils import (
+    KEY_SEPARATOR,
+    decode_key_component,
+    encode_key_component,
+    is_retryable,
+    retry,
+)
 
 Props = dict[str, Any]
+
+
+def _edges_changed_or_retryable(exc: Exception) -> bool:
+    """Retry policy for the read-filter-write edge removal.
+
+    A failed ``edges = :old`` condition means another writer touched the
+    adjacency list between our read and our write — re-read and try again.
+    """
+    code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+    return code == "ConditionalCheckFailedException" or is_retryable(exc)
 
 EXPORT_FORMATS = ("mermaid", "dot")
 
@@ -209,6 +225,68 @@ class GraphStore:
             ExpressionAttributeValues={":d": list(doc_ids), ":empty": []},
         )
 
+    def delete_edge(self, ns: str, src: str, relation: str, dst: str) -> int:
+        """Remove every ``(src) -[relation]-> (dst)`` edge; return how many.
+
+        Idempotent: a missing node or edge removes nothing and returns ``0``.
+        Neither endpoint node is deleted.
+        """
+        return self._drop_edges(ns, src, dst, relation)
+
+    def delete_node(self, ns: str, entity_id: str) -> int:
+        """Delete a node, its outbound edges, and every inbound edge in ``ns``.
+
+        Returns the number of inbound edges removed from other nodes.
+        Idempotent: deleting a missing node is a no-op.
+
+        Adjacency is embedded in the source node, so nothing indexes who points
+        at ``entity_id``; finding inbound edges takes one scan of the namespace.
+        Inbound edges are stripped before the node itself goes, so a failure
+        partway through leaves the node in place and a retry finishes the job.
+        """
+        removed = 0
+        for source_id, item in self._scan_nodes(ns, "pk, entity_id, edges"):
+            if source_id == entity_id:  # self-loops go with the node
+                continue
+            if any(edge.get("target") == entity_id for edge in item.get("edges", [])):
+                removed += self._drop_edges(ns, source_id, entity_id)
+        self._delete_node_item(ns, entity_id)
+        return removed
+
+    @retry()
+    def _delete_node_item(self, ns: str, entity_id: str) -> None:
+        self._table.delete_item(Key={"pk": self._node_pk(ns, entity_id)})
+
+    @retry(retry_on=_edges_changed_or_retryable)
+    def _drop_edges(self, ns: str, src: str, dst: str, relation: str | None = None) -> int:
+        """Read ``src``'s adjacency, filter, and write it back if it is unchanged.
+
+        DynamoDB cannot remove list elements by value, and removing by index
+        races with concurrent appends — hence the conditional whole-list write.
+        ``relation=None`` matches edges to ``dst`` of any relation.
+        """
+        node = self.get_node(ns, src)
+        if not node:
+            return 0
+        edges = node.get("edges", [])
+        kept = [
+            edge
+            for edge in edges
+            if not (
+                edge.get("target") == dst
+                and (relation is None or edge.get("relation") == relation)
+            )
+        ]
+        if len(kept) == len(edges):
+            return 0
+        self._table.update_item(
+            Key={"pk": self._node_pk(ns, src)},
+            UpdateExpression="SET edges = :kept",
+            ConditionExpression="edges = :old",
+            ExpressionAttributeValues={":kept": kept, ":old": edges},
+        )
+        return len(edges) - len(kept)
+
     # ------------------------------------------------------------------ reads
     @retry()
     def get_node(self, ns: str, entity_id: str) -> dict | None:
@@ -238,7 +316,6 @@ class GraphStore:
                     ordered.append(doc_id)
         return ordered
 
-    @retry()
     def list_node_ids(self, ns: str) -> list[str]:
         """Every entity id stored under ``ns``, sorted.
 
@@ -252,23 +329,28 @@ class GraphStore:
         This is a table scan. Fine for the export/debugging graphs this exists
         for; not something to put on a hot path.
         """
+        return sorted(entity_id for entity_id, _ in self._scan_nodes(ns, "pk, entity_id"))
+
+    @retry()
+    def _scan_nodes(self, ns: str, projection: str) -> list[tuple[str, dict]]:
+        """``(entity_id, item)`` for every node in ``ns``, following pagination."""
         prefix = f"{encode_key_component(ns)}{KEY_SEPARATOR}node{KEY_SEPARATOR}"
         params: dict[str, Any] = {
             "FilterExpression": "begins_with(pk, :prefix)",
             "ExpressionAttributeValues": {":prefix": prefix},
-            "ProjectionExpression": "pk, entity_id",
+            "ProjectionExpression": projection,
         }
-        ids: list[str] = []
+        nodes: list[tuple[str, dict]] = []
         while True:
             resp = self._table.scan(**params)
             for item in resp.get("Items", []):
                 entity_id = item.get("entity_id")
                 if entity_id is None:  # pre-``entity_id`` item: recover from the key
                     entity_id = decode_key_component(item["pk"][len(prefix) :])
-                ids.append(entity_id)
+                nodes.append((entity_id, item))
             start_key = resp.get("LastEvaluatedKey")
             if not start_key:
-                return sorted(ids)
+                return nodes
             params["ExclusiveStartKey"] = start_key
 
     # ----------------------------------------------------------------- export

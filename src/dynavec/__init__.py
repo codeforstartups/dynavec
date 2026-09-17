@@ -51,7 +51,6 @@ from .ingest import (
 )
 from .models import Document, SearchResult, UpsertResult
 from .namespace import NamespaceView
-from .quantization import ProductQuantizer, ScalarQuantizer
 from .quantization import (
     OPQRotation,
     OptimizedProductQuantizer,
@@ -122,4 +121,3 @@ __all__ = [
     "NotFoundError",
     "MissingDependencyError",
 ]
-

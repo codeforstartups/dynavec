@@ -50,6 +50,7 @@ from .namespace import NamespaceView
 from .provisioning import provision_all
 from .retrieval import distance_to_score, maximal_marginal_relevance, reciprocal_rank_fusion
 from .stores import DynamoDBStore, S3VectorsStore
+from .stores.dynamodb import check_item_size
 from .transforms import TransformContext, as_pipeline
 from .utils import KEY_SEPARATOR, chunked, decode_key_component, encode_key_component
 
@@ -204,6 +205,8 @@ class Dynavec:
                 auto.update(meta)
                 meta = auto
             s3_meta, ddb_meta = split_metadata(meta, self.config, namespace, d.text)
+            # fail before either store is written, not partway through a batch
+            check_item_size(namespace, d.id, d.text, ddb_meta)
             s3_payload.append((self._s3_key(namespace, d.id), d.vector, s3_meta))
             ddb_payload.append((d.id, d.text, ddb_meta))
             ids.append(d.id)

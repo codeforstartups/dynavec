@@ -444,6 +444,36 @@ def test_reserved_key_separator_is_escaped_before_writes(db):
     assert db._docs._store[("tenant#one", "doc#one")]["text"] is None
 
 
+def test_oversized_document_fails_upsert_before_any_write(db):
+    from dynavec import ItemTooLargeError
+
+    with pytest.raises(ItemTooLargeError) as info:
+        db.upsert(
+            [
+                Document(id="small", text="fits"),
+                Document(id="huge", text="x" * 500_000),
+            ]
+        )
+
+    assert info.value.doc_id == "huge"
+    assert info.value.size_bytes > info.value.limit_bytes
+    assert "'huge'" in str(info.value) and "chunk_text" in str(info.value)
+    # neither store saw the batch, so S3 Vectors and DynamoDB stay in sync
+    assert db._vectors._store == {}
+    assert db._docs._store == {}
+
+
+def test_oversized_metadata_fails_update_and_keeps_the_stored_document(db):
+    from dynavec import ItemTooLargeError
+
+    db.upsert([Document(id="1", text="apple pie", metadata={"cat": "food"})])
+
+    with pytest.raises(ItemTooLargeError):
+        db.update("1", metadata={"blob": "y" * 500_000})
+
+    assert db._docs._store[("default", "1")]["metadata"] == {"cat": "food"}
+
+
 def test_search_records_telemetry(db):
     from dynavec.telemetry import TelemetryRecorder
 

@@ -18,12 +18,16 @@ from decimal import Decimal
 from typing import Any
 
 from ..config import DynavecConfig
+from ..exceptions import ItemTooLargeError
 from ..logging import log_store_event
 from ..utils import KEY_SEPARATOR, encode_key_component, retry
 
 Metadata = dict[str, Any]
 
 _BATCH_GET_LIMIT = 100
+
+# DynamoDB's hard per-item limit, attribute names included.
+MAX_ITEM_BYTES = 400 * 1024
 
 
 def _to_dynamo(obj: Any) -> Any:
@@ -49,6 +53,64 @@ def _from_dynamo(obj: Any) -> Any:
     return obj
 
 
+def _pk(namespace: str, doc_id: str) -> str:
+    return f"{encode_key_component(namespace)}{KEY_SEPARATOR}{encode_key_component(doc_id)}"
+
+
+def _build_item(namespace: str, doc_id: str, text: str | None, metadata: Metadata) -> dict:
+    item = {
+        "pk": _pk(namespace, doc_id),
+        "ns": namespace,
+        "id": doc_id,
+        "metadata": _to_dynamo(metadata or {}),
+    }
+    if text is not None:
+        item["text"] = text
+    return item
+
+
+def _value_size(value: Any) -> int:
+    """Approximate stored size of one attribute value, per DynamoDB's sizing rules."""
+    if value is None or isinstance(value, bool):
+        return 1
+    if isinstance(value, str):
+        return len(value.encode("utf-8"))
+    if isinstance(value, (bytes, bytearray)):
+        return len(value)
+    if isinstance(value, (int, Decimal)):
+        # 1 byte per two significant digits, plus 1
+        digits = len(Decimal(value).normalize().as_tuple().digits)
+        return (digits + 1) // 2 + 1
+    if isinstance(value, dict):
+        # 3 bytes overhead + 1 per element, plus each key name and value
+        return 3 + sum(1 + len(str(k).encode("utf-8")) + _value_size(v) for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return 3 + sum(1 + _value_size(v) for v in value)
+    if isinstance(value, (set, frozenset)):
+        return sum(_value_size(v) for v in value)
+    return len(str(value).encode("utf-8"))
+
+
+def item_size_bytes(item: dict) -> int:
+    """Approximate DynamoDB size of ``item``: attribute name bytes plus value sizes."""
+    return sum(len(name.encode("utf-8")) + _value_size(value) for name, value in item.items())
+
+
+def check_item_size(namespace: str, doc_id: str, text: str | None, metadata: Metadata) -> None:
+    """Raise :class:`ItemTooLargeError` if the document would exceed the item limit.
+
+    Called before any write so an oversized document fails the whole upsert up
+    front, instead of DynamoDB rejecting it partway through a batch.
+    """
+    _check_built_item(_build_item(namespace, doc_id, text, metadata))
+
+
+def _check_built_item(item: dict) -> None:
+    size = item_size_bytes(item)
+    if size > MAX_ITEM_BYTES:
+        raise ItemTooLargeError(item["id"], item["ns"], size, MAX_ITEM_BYTES)
+
+
 class DynamoDBStore:
     """Thin, dependency-light wrapper over a single DynamoDB table."""
 
@@ -69,25 +131,24 @@ class DynamoDBStore:
 
     @staticmethod
     def _pk(namespace: str, doc_id: str) -> str:
-        return f"{encode_key_component(namespace)}{KEY_SEPARATOR}{encode_key_component(doc_id)}"
+        return _pk(namespace, doc_id)
 
     def put_many(
         self,
         namespace: str,
         items: list[tuple[str, str | None, Metadata]],
     ) -> None:
-        """Upsert (id, text, metadata) triples. Uses batch writer (auto-retry)."""
+        """Upsert (id, text, metadata) triples. Uses batch writer (auto-retry).
+
+        Raises :class:`ItemTooLargeError` before writing anything if any item is
+        over DynamoDB's 400 KB limit.
+        """
         t0 = time.perf_counter()
+        built = [_build_item(namespace, doc_id, text, metadata) for doc_id, text, metadata in items]
+        for item in built:
+            _check_built_item(item)
         with self._table.batch_writer(overwrite_by_pkeys=["pk"]) as batch:
-            for doc_id, text, metadata in items:
-                item = {
-                    "pk": self._pk(namespace, doc_id),
-                    "ns": namespace,
-                    "id": doc_id,
-                    "metadata": _to_dynamo(metadata or {}),
-                }
-                if text is not None:
-                    item["text"] = text
+            for item in built:
                 batch.put_item(Item=item)
 
         log_store_event(

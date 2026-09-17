@@ -29,6 +29,7 @@ from .exceptions import (
     DimensionMismatchError,
     DynavecError,
     EmbeddingError,
+    ItemTooLargeError,
     MissingDependencyError,
     NotFoundError,
     ProvisioningError,
@@ -119,6 +120,7 @@ __all__ = [
     "EmbeddingError",
     "DimensionMismatchError",
     "NotFoundError",
+    "ItemTooLargeError",
     "MissingDependencyError",
 ]
 

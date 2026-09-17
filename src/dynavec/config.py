@@ -88,6 +88,7 @@ class DynavecConfig:
     hot_tier: bool = False
     hot_tier_max_vectors: int = 200_000  # global RAM safety cap across namespaces
     hot_tier_n_probe: int = 8            # partitions probed per query (recall vs latency)
+    hot_tier_eviction: Literal["lru", "fifo", "none"] = "lru"
 
     # provisioning
     auto_provision: bool = False
@@ -124,6 +125,8 @@ class DynavecConfig:
             raise ValueError("hot_tier_max_vectors must be a positive integer")
         if self.hot_tier_n_probe < 1:
             raise ValueError("hot_tier_n_probe must be >= 1")
+        if self.hot_tier_eviction not in ("lru", "fifo", "none"):
+            raise ValueError("hot_tier_eviction must be 'lru', 'fifo', or 'none'")
         valid_log_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
         if self.log_level.upper() not in valid_log_levels:
             raise ValueError(f"log_level must be one of {valid_log_levels}")

@@ -18,6 +18,7 @@ wrong.
 from __future__ import annotations
 
 import threading
+from collections import OrderedDict
 from typing import Any
 
 from .config import DynavecConfig
@@ -95,9 +96,11 @@ class HotTier:
         self._metric = config.distance_metric
         self._max_vectors = config.hot_tier_max_vectors
         self._n_probe = config.hot_tier_n_probe
+        self._eviction_policy = config.hot_tier_eviction
         self._lock = threading.RLock()
         self._indexes: dict[str, SPFreshHotIndex] = {}
         self._authoritative: set[str] = set()
+        self._access_order: OrderedDict[str, None] = OrderedDict()
 
     # ------------------------------------------------------------------ internal
     def _new_index(self) -> SPFreshHotIndex:
@@ -118,6 +121,30 @@ class HotTier:
         """Drop a namespace from the hot tier (frees RAM; falls back to S3)."""
         self._indexes.pop(namespace, None)
         self._authoritative.discard(namespace)
+        self._access_order.pop(namespace, None)
+
+    def _evict_to_fit(self, needed_vectors: int, exclude: str | None = None) -> bool:
+        """Evict cold namespaces until ``self._total + needed_vectors <= self._max_vectors``.
+
+        Returns True if capacity is sufficient, or False if even after eviction
+        the needed vectors cannot fit.
+        """
+        if self._total + needed_vectors <= self._max_vectors:
+            return True
+        if self._eviction_policy == "none":
+            return False
+
+        while self._total + needed_vectors > self._max_vectors:
+            cand = None
+            for ns in self._access_order:
+                if ns != exclude:
+                    cand = ns
+                    break
+            if cand is None:
+                break
+            self._demote(cand)
+
+        return self._total + needed_vectors <= self._max_vectors
 
     # -------------------------------------------------------------------- writes
     def insert_many(
@@ -129,8 +156,8 @@ class HotTier:
 
         Only touches namespaces that already have a hot index (i.e. were warmed
         or are being built). If the write would push total residency past the RAM
-        cap, the namespace is demoted (dropped) so we never hold a partial set
-        while claiming authority over it.
+        cap, cold namespaces are evicted under LRU/FIFO or the namespace is demoted
+        so we never hold a partial set while claiming authority over it.
         """
         if not items:
             return
@@ -138,12 +165,13 @@ class HotTier:
             index = self._indexes.get(namespace)
             if index is None:
                 return  # namespace not tracked; nothing to keep in sync
-            projected = self._total + len(items)
-            if projected > self._max_vectors:
+            if not self._evict_to_fit(len(items), exclude=namespace):
                 self._demote(namespace)
                 return
             for doc_id, vector, text, metadata in items:
                 index.insert(id=doc_id, vector=vector, metadata=metadata or {}, text=text)
+            if self._eviction_policy == "lru" and namespace in self._access_order:
+                self._access_order.move_to_end(namespace)
 
     def delete(self, namespace: str, ids: list[str]) -> None:
         with self._lock:
@@ -161,18 +189,22 @@ class HotTier:
         """Bulk-load a full namespace and mark it authoritative if it fits.
 
         Returns True if the namespace is now authoritative (RAM-resident), False
-        if it exceeds the RAM budget (left on the S3 path).
+        if it exceeds the RAM budget (left on the S3 path). Under LRU or FIFO
+        eviction policies, older namespaces are evicted to make room.
         """
         with self._lock:
             # Free any prior residency for this namespace before recomputing budget.
             self._demote(namespace)
-            if self._total + len(items) > self._max_vectors:
+            if len(items) > self._max_vectors:
+                return False
+            if not self._evict_to_fit(len(items)):
                 return False
             index = self._new_index()
             for doc_id, vector, text, metadata in items:
                 index.insert(id=doc_id, vector=vector, metadata=metadata or {}, text=text)
             self._indexes[namespace] = index
             self._authoritative.add(namespace)
+            self._access_order[namespace] = None
             return True
 
     # --------------------------------------------------------------------- reads
@@ -198,6 +230,8 @@ class HotTier:
             index = self._indexes.get(namespace)
             if index is None:
                 return None
+            if self._eviction_policy == "lru" and namespace in self._access_order:
+                self._access_order.move_to_end(namespace)
 
         try:
             filter_fn = None
@@ -221,6 +255,7 @@ class HotTier:
             if namespace is None:
                 self._indexes.clear()
                 self._authoritative.clear()
+                self._access_order.clear()
             else:
                 self._demote(namespace)
 
@@ -230,5 +265,6 @@ class HotTier:
                 "authoritative_namespaces": sorted(self._authoritative),
                 "resident_vectors": self._total,
                 "max_vectors": self._max_vectors,
+                "eviction_policy": self._eviction_policy,
                 "namespaces": {ns: len(ix) for ns, ix in self._indexes.items()},
             }

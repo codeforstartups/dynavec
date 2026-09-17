@@ -3,7 +3,48 @@
 All notable changes to dynavec are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`warm_cache()`** (#194) — pre-populate the query cache from a list of common queries.
+- **Learned RRF fusion weights** (#204) — `RRFWeightFitter` fits per-retriever RRF
+  weights by maximizing nDCG over labeled queries.
+- **Optimized Product Quantization** (#198) — `OPQRotation` and
+  `OptimizedProductQuantizer` (rotate-then-PQ with Procrustes refinement).
+- **Hybrid graph + ANN search** (#206) — `Dynavec.hybrid_graph_search` fuses plain ANN
+  and graph-scoped results with weighted RRF.
+- **`CsvSource`** and row-wise spreadsheet ingestion (#205).
+
+### Changed
+- **`XlsxSource` now yields one record per row** (first row = header, rendered as
+  `"column: value"` pairs) instead of one record per worksheet (#205). Behavior change
+  vs 0.5.0.
+
+## [0.5.0] - 2026-09-16
+
+### Added
+- **Office document ingestion** (#188) — `DocxSource`, `PptxSource`, and `XlsxSource`
+  for Word, PowerPoint, and Excel files, each lazy-importing its parser.
+- **Hugging Face Inference embedder** (#191) — `HFInferenceEmbedder` backed by the
+  HF Serverless Inference API.
+- **DSPy retrieval integration** (#195) — `DynavecRM(dspy.Retrieve)` so a dynavec
+  client can back a DSPy pipeline (closes #68).
+- **Structured logging** (#200) — opt-in `structured_logging=True` emits JSON store
+  events with secret redaction; `log_level` config.
+- **ProductQuantizer persistence** (#199) — `save()` / `load()` via `np.savez` with
+  `allow_pickle=False` (safe serialization).
+- **Dashboard dark mode** (#187) — theme toggle + parity with the landing page.
+
+### Changed / Performance
+- **Vectorized MMR** (#197) — reranking over large candidate sets is now
+  O(k·N) instead of O(k·N·k).
+
+### Tests
+- Property-based tests for the metric layer via Hypothesis (#192), plus rescore
+  metric-override coverage (#196).
+
 ## [0.4.0] - 2026-09-12
+
 
 ### Added
 - **In-memory hot tier** (#186) — opt-in `hot_tier=True` keeps the hot working

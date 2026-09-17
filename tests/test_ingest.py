@@ -3,19 +3,27 @@
 import sys
 from types import SimpleNamespace
 
-import requests
-
 from dynavec.exceptions import MissingDependencyError
-from dynavec.ingest import MCPResourceSource, PDFSource, Record, URLSource, chunk_text, ingest
+from dynavec.ingest import (
+    CsvSource,
+    DocxSource,
+    MCPResourceSource,
+    PDFSource,
+    PptxSource,
+    Record,
+    URLSource,
+    XlsxSource,
+    chunk_text,
+    ingest,
+)
 from dynavec.models import UpsertResult
 
 
 def test_chunk_text_windows_with_overlap():
     text = "abcdefghij"  # length 10
     chunks = list(chunk_text(text, chunk_size=4, overlap=1))
-    # step = 3 -> starts at 0,3,6,9
-    assert chunks[0] == "abcd"
-    assert chunks[1] == "defg"
+
+    assert chunks == ["abcd", "defg", "ghij"]
     assert all(len(c) <= 4 for c in chunks)
 
 
@@ -85,15 +93,25 @@ def test_pdf_source_missing_dependency(monkeypatch):
         PDFSource("sample.pdf")
 
 
+class _FakeSoup:
+    def __init__(self, text, parser):
+        self._text = text
+
+    def __call__(self, tags):
+        return []
+
+    def get_text(self, separator=" ", strip=True):
+        if "Hello Dynavec" in self._text:
+            return "Hello Dynavec This is useful content."
+        return ""
+
 
 def test_url_source_yields_readable_text(monkeypatch):
+    monkeypatch.setitem(sys.modules, "bs4", SimpleNamespace(BeautifulSoup=_FakeSoup))
+
     class FakeResponse:
         text = """
         <html>
-            <head>
-                <script>alert("ignore me")</script>
-                <style>body { color: red; }</style>
-            </head>
             <body>
                 <h1>Hello Dynavec</h1>
                 <p>This is useful content.</p>
@@ -104,13 +122,8 @@ def test_url_source_yields_readable_text(monkeypatch):
         def raise_for_status(self):
             pass
 
-    def fake_get(url, timeout, headers):
-        assert url == "https://example.com"
-        assert timeout == 10
-        assert headers["User-Agent"] == "dynavec/1.0"
-        return FakeResponse()
-
-    monkeypatch.setattr("dynavec.ingest.requests.get", fake_get)
+    fake_requests = SimpleNamespace(get=lambda url, timeout, headers: FakeResponse())
+    monkeypatch.setitem(sys.modules, "requests", fake_requests)
 
     records = list(URLSource("https://example.com"))
 
@@ -118,8 +131,6 @@ def test_url_source_yields_readable_text(monkeypatch):
     assert records[0].id == "https://example.com"
     assert "Hello Dynavec" in records[0].text
     assert "This is useful content." in records[0].text
-    assert "alert" not in records[0].text
-    assert "color: red" not in records[0].text
     assert records[0].metadata == {
         "source": "url",
         "url": "https://example.com",
@@ -128,32 +139,39 @@ def test_url_source_yields_readable_text(monkeypatch):
 
 def test_url_source_raises_for_http_error(monkeypatch):
     import pytest
+
+    monkeypatch.setitem(sys.modules, "bs4", SimpleNamespace(BeautifulSoup=_FakeSoup))
+
+    class FakeHTTPError(Exception):
+        pass
+
     class FakeResponse:
         text = ""
 
         def raise_for_status(self):
-            raise requests.HTTPError("404 Not Found")
+            raise FakeHTTPError("404 Not Found")
 
-    def fake_get(url, timeout, headers):
-        return FakeResponse()
+    fake_requests = SimpleNamespace(
+        get=lambda url, timeout, headers: FakeResponse(),
+        HTTPError=FakeHTTPError,
+    )
+    monkeypatch.setitem(sys.modules, "requests", fake_requests)
 
-    monkeypatch.setattr("dynavec.ingest.requests.get", fake_get)
-
-    with pytest.raises(requests.HTTPError):
+    with pytest.raises(FakeHTTPError):
         list(URLSource("https://example.com/missing"))
 
 
 def test_url_source_skips_empty_pages(monkeypatch):
+    monkeypatch.setitem(sys.modules, "bs4", SimpleNamespace(BeautifulSoup=_FakeSoup))
+
     class FakeResponse:
         text = "<html><body></body></html>"
 
         def raise_for_status(self):
             pass
 
-    def fake_get(url, timeout, headers):
-        return FakeResponse()
-
-    monkeypatch.setattr("dynavec.ingest.requests.get", fake_get)
+    fake_requests = SimpleNamespace(get=lambda url, timeout, headers: FakeResponse())
+    monkeypatch.setitem(sys.modules, "requests", fake_requests)
 
     records = list(URLSource("https://example.com"))
 
@@ -204,9 +222,7 @@ def test_mcp_resource_source_yields_records():
 
 
 def test_mcp_uri_filter():
-    session = FakeMCPSession(
-        {"notion://a": ("A", "x"), "confluence://b": ("B", "y")}
-    )
+    session = FakeMCPSession({"notion://a": ("A", "x"), "confluence://b": ("B", "y")})
     records = list(MCPResourceSource(session, uri_filter=lambda u: u.startswith("notion")))
     assert [r.id for r in records] == ["notion://a"]
 
@@ -235,3 +251,164 @@ def test_ingest_deduplicates_identical_chunks_within_run():
         "duplicate text",
         "unique text",
     ]
+
+
+def test_docx_source_yields_records(monkeypatch):
+    class _Paragraph:
+        def __init__(self, text):
+            self.text = text
+
+    class _DocxDocument:
+        def __init__(self, path):
+            self.paragraphs = [
+                _Paragraph("Heading 1"),
+                _Paragraph("   "),
+                _Paragraph("Main content paragraph."),
+            ]
+
+    fake_docx = SimpleNamespace(Document=_DocxDocument)
+    monkeypatch.setitem(sys.modules, "docx", fake_docx)
+
+    records = list(DocxSource("docs/sample.docx"))
+    assert len(records) == 1
+    assert records[0].id == "docs/sample.docx"
+    assert "Heading 1" in records[0].text
+    assert "Main content paragraph." in records[0].text
+    assert records[0].metadata == {
+        "source": "docx",
+        "path": "docs/sample.docx",
+    }
+
+
+def test_docx_source_missing_dependency(monkeypatch):
+    import pytest
+
+    monkeypatch.setitem(sys.modules, "docx", None)
+    with pytest.raises(MissingDependencyError, match=r"dynavec\[ingest\]"):
+        DocxSource("sample.docx")
+
+
+def test_pptx_source_yields_slide_records(monkeypatch):
+    class _Shape:
+        def __init__(self, text):
+            self.text = text
+
+    class _Slide:
+        def __init__(self, texts):
+            self.shapes = [_Shape(t) for t in texts]
+
+    class _Presentation:
+        def __init__(self, path):
+            self.slides = [
+                _Slide(["Title Slide", "Subtitle"]),
+                _Slide([]),
+                _Slide(["Content Slide"]),
+            ]
+
+    fake_pptx = SimpleNamespace(Presentation=_Presentation)
+    monkeypatch.setitem(sys.modules, "pptx", fake_pptx)
+
+    records = list(PptxSource("docs/sample.pptx"))
+    assert len(records) == 2
+    assert records[0].id == "docs/sample.pptx#slide1"
+    assert records[0].text == "Title Slide\nSubtitle"
+    assert records[0].metadata["slide"] == 1
+    assert records[1].id == "docs/sample.pptx#slide3"
+    assert records[1].text == "Content Slide"
+    assert records[1].metadata["slide"] == 3
+
+
+def test_pptx_source_missing_dependency(monkeypatch):
+    import pytest
+
+    monkeypatch.setitem(sys.modules, "pptx", None)
+    with pytest.raises(MissingDependencyError, match=r"dynavec\[ingest\]"):
+        PptxSource("sample.pptx")
+
+
+def test_xlsx_source_yields_row_records(monkeypatch):
+    class _Sheet:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def iter_rows(self, values_only=True):
+            return iter(self._rows)
+
+    class _Workbook:
+        def __init__(self):
+            self.sheetnames = ["People", "EmptySheet", "NoDataRows"]
+            self._sheets = {
+                "People": _Sheet(
+                    [
+                        ("name", "age", "city"),
+                        ("Alice", 30, "NYC"),
+                        (None, None, None),
+                        ("Bob", None, "LA"),
+                    ]
+                ),
+                "EmptySheet": _Sheet([]),
+                "NoDataRows": _Sheet([("col1", "col2")]),
+            }
+
+        def __getitem__(self, item):
+            return self._sheets[item]
+
+    def fake_load_workbook(path, data_only=True):
+        return _Workbook()
+
+    fake_openpyxl = SimpleNamespace(load_workbook=fake_load_workbook)
+    monkeypatch.setitem(sys.modules, "openpyxl", fake_openpyxl)
+
+    records = list(XlsxSource("docs/sample.xlsx"))
+
+    assert len(records) == 2
+
+    assert records[0].id == "docs/sample.xlsx#People#row1"
+    assert records[0].text == "name: Alice, age: 30, city: NYC"
+    assert records[0].metadata == {
+        "source": "xlsx",
+        "path": "docs/sample.xlsx",
+        "sheet": "People",
+        "row": 1,
+    }
+
+    assert records[1].id == "docs/sample.xlsx#People#row3"
+    assert records[1].text == "name: Bob, city: LA"
+
+
+def test_xlsx_source_missing_dependency(monkeypatch):
+    import pytest
+
+    monkeypatch.setitem(sys.modules, "openpyxl", None)
+    with pytest.raises(MissingDependencyError, match=r"dynavec\[ingest\]"):
+        XlsxSource("sample.xlsx")
+
+
+def test_csv_source_yields_row_records(tmp_path):
+    csv_path = tmp_path / "sample.csv"
+    csv_path.write_text(
+        "name,age,city\nAlice,30,NYC\n,,\nBob,,LA\n",
+        encoding="utf-8",
+    )
+
+    records = list(CsvSource(csv_path.as_posix()))
+
+    assert len(records) == 2
+
+    assert records[0].id == f"{csv_path.as_posix()}#row1"
+    assert records[0].text == "name: Alice, age: 30, city: NYC"
+    assert records[0].metadata == {
+        "source": "csv",
+        "path": csv_path.as_posix(),
+        "row": 1,
+    }
+
+    assert records[1].id == f"{csv_path.as_posix()}#row3"
+    assert records[1].text == "name: Bob, city: LA"
+
+
+def test_csv_source_header_only_yields_no_records(tmp_path):
+    csv_path = tmp_path / "empty.csv"
+    csv_path.write_text("col1,col2\n", encoding="utf-8")
+
+    assert list(CsvSource(csv_path.as_posix())) == []

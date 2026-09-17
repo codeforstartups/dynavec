@@ -48,7 +48,7 @@ from .metrics import score as metric_score
 from .models import Document, SearchResult, UpsertResult
 from .namespace import NamespaceView
 from .provisioning import provision_all
-from .retrieval import distance_to_score, maximal_marginal_relevance
+from .retrieval import distance_to_score, maximal_marginal_relevance, reciprocal_rank_fusion
 from .stores import DynamoDBStore, S3VectorsStore
 from .transforms import TransformContext, as_pipeline
 from .utils import KEY_SEPARATOR, chunked, decode_key_component, encode_key_component
@@ -741,6 +741,47 @@ class Dynavec:
                 )
             )
         return out
+
+    def hybrid_graph_search(
+        self,
+        query: str | None = None,
+        *,
+        seed_entities: list[str],
+        vector: list[float] | None = None,
+        namespace: str = "default",
+        relation: str | None = None,
+        hops: int = 1,
+        top_k: int = 10,
+        metric: str = "cosine",
+        weight: float = 1.0,
+    ) -> list[SearchResult]:
+        """Fuse plain ANN and graph-scoped search results with RRF.
+
+        ``weight`` controls the contribution of graph search relative to
+        plain ANN search. ANN always has a weight of ``1.0``.
+        """
+        ann_results = self.search(
+            query=query,
+            vector=vector,
+            top_k=top_k,
+            namespace=namespace,
+        )
+
+        graph_results = self.graph_search(
+            query=query,
+            seed_entities=seed_entities,
+            vector=vector,
+            namespace=namespace,
+            relation=relation,
+            hops=hops,
+            top_k=top_k,
+            metric=metric,
+        )
+
+        return reciprocal_rank_fusion(
+            [ann_results, graph_results],
+            weights=[1.0, weight],
+        )
 
     def delete(self, ids: list[str], namespace: str = "default") -> None:
         """Delete documents from both stores (and the hot tier, if enabled)."""

@@ -376,13 +376,27 @@ result object graph, and inspect `size_bytes` for the current accounted size:
 cache = SemanticCache(max_size=2_048, max_bytes=64 * 1024 * 1024)
 ```
 
+Pre-populate the cache from a list of common queries at startup with `warm_cache()` —
+it runs each query once (through `search`, so results land in the cache) and
+returns the number of queries processed:
+
+```python
+from dynavec import Dynavec, DynavecConfig, SemanticCache, warm_cache
+
+db = Dynavec(DynavecConfig(...), embedder=..., cache=SemanticCache())
+warm_cache(db, ["what is vector search", "how do i upsert documents"], top_k=10)
+```
+
+Pass the same `filter` / `rescore` / `rerank` options you use at runtime so the
+warmed entries share cache keys with real queries.
+
 ## Status
 
-**v0.4.0 (current)** — adds the **in-memory hot tier** (`hot_tier=True` + `warm()`: serve a namespace entirely from RAM for in-memory-engine latency without a paid cluster), a retrieval-quality runner (recall@k / MRR / nDCG), async LangChain retrieval, graph export (Mermaid / Graphviz), an Ollama embedder, and URL/Markdown ingestion — on top of the v0.3 feature set and the v0.1 hybrid core.
+**v0.5.0 (current)** — adds **office-document ingestion** (Docx/Pptx/Xlsx), a **Hugging Face Inference embedder**, a **DSPy retrieval integration**, opt-in **structured JSON logging** (with secret redaction), **ProductQuantizer save/load**, dashboard **dark mode**, and **vectorized MMR** reranking — on top of the v0.4 in-memory hot tier and the v0.1 hybrid core.
 
 See the full history in **[CHANGELOG.md](CHANGELOG.md)**, the browsable **[Release notes](https://codeforstartups.github.io/dynavec/docs/release-notes.html)** page, or the **[GitHub Releases](https://github.com/codeforstartups/dynavec/releases)** tab.
 
-**Roadmap (v0.5):** optional `hnswlib`/`faiss` hot-tier backend for very large hot sets, sparse/BM25 hybrid computed from DynamoDB, and more turnkey file parsers (DOCX/PPTX/XLSX) as ingestion sources.
+**Roadmap (v0.6):** optional `hnswlib`/`faiss` hot-tier backend for very large hot sets, sparse/BM25 hybrid computed from DynamoDB, and OPQ (rotated product quantization).
 
 ## Publishing (maintainers)
 

@@ -20,7 +20,7 @@ Quick start
 
 from __future__ import annotations
 
-from .cache import BaseCache, DynamoDBCache, RedisCache, SemanticCache
+from .cache import BaseCache, DynamoDBCache, RedisCache, SemanticCache, warm_cache
 from .client import Dynavec
 from .config import DynavecConfig
 from .credentials import AWSCredentials
@@ -33,11 +33,31 @@ from .exceptions import (
     NotFoundError,
     ProvisioningError,
 )
+from .fusion import RRFWeightFitter
 from .graph import GraphStore
 from .hot import HotTier
+from .ingest import (
+    CsvSource,
+    DocxSource,
+    IterableSource,
+    MarkdownSource,
+    MCPResourceSource,
+    PDFSource,
+    PptxSource,
+    Record,
+    URLSource,
+    XlsxSource,
+    ingest,
+)
 from .models import Document, SearchResult, UpsertResult
 from .namespace import NamespaceView
 from .quantization import ProductQuantizer, ScalarQuantizer
+from .quantization import (
+    OPQRotation,
+    OptimizedProductQuantizer,
+    ProductQuantizer,
+    ScalarQuantizer,
+)
 from .retrieval import (
     maximal_marginal_relevance,
     reciprocal_rank_fusion,
@@ -50,7 +70,7 @@ from .spfresh import (
 )
 from .transforms import LambdaTransform, TransformContext, TransformPipeline
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "Dynavec",
@@ -62,13 +82,17 @@ __all__ = [
     "NamespaceView",
     "ProductQuantizer",
     "ScalarQuantizer",
+    "OPQRotation",
+    "OptimizedProductQuantizer",
     "GraphStore",
     "BaseCache",
     "SemanticCache",
     "DynamoDBCache",
     "RedisCache",
+    "warm_cache",
     "reciprocal_rank_fusion",
     "maximal_marginal_relevance",
+    "RRFWeightFitter",
     "HotTier",
     "Partition",
     "SPFreshConfig",
@@ -77,6 +101,18 @@ __all__ = [
     "TransformPipeline",
     "TransformContext",
     "LambdaTransform",
+    # Ingestion
+    "Record",
+    "ingest",
+    "IterableSource",
+    "PDFSource",
+    "CsvSource",
+    "DocxSource",
+    "PptxSource",
+    "XlsxSource",
+    "URLSource",
+    "MarkdownSource",
+    "MCPResourceSource",
     # exceptions
     "DynavecError",
     "ConfigurationError",
@@ -86,3 +122,4 @@ __all__ = [
     "NotFoundError",
     "MissingDependencyError",
 ]
+

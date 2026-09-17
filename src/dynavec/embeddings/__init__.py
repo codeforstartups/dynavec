@@ -13,6 +13,8 @@ from .base import Embedder, Vector
 
 if TYPE_CHECKING:  # for type checkers / IDEs only
     from .bedrock import BedrockEmbedder, BedrockTitanMultimodalEmbedder
+    from .cache import EmbeddingCache, InMemoryCache  # ← add this line
+    from .cached import CachedEmbedder  # ← add this line
     from .gemini import GeminiEmbedder
     from .huggingface import HFInferenceEmbedder
     from .mistral import MistralEmbedder
@@ -33,6 +35,9 @@ __all__ = [
     "MistralEmbedder",
     "OllamaEmbedder",
     "HFInferenceEmbedder",
+    "EmbeddingCache",     # ← add
+    "InMemoryCache",      # ← add
+    "CachedEmbedder",     # ← add
 ]
 
 _LAZY = {
@@ -51,6 +56,9 @@ _LAZY = {
     "MistralEmbedder": ("dynavec.embeddings.mistral", "MistralEmbedder"),
     "OllamaEmbedder": ("dynavec.embeddings.ollama", "OllamaEmbedder"),
     "HFInferenceEmbedder": ("dynavec.embeddings.huggingface", "HFInferenceEmbedder"),
+    "EmbeddingCache":  ("dynavec.embeddings.cache",  "EmbeddingCache"),   # ← add
+    "InMemoryCache":   ("dynavec.embeddings.cache",  "InMemoryCache"),    # ← add
+    "CachedEmbedder":  ("dynavec.embeddings.cached", "CachedEmbedder"),
 }
 
 

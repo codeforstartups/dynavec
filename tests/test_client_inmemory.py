@@ -5,6 +5,8 @@ without any AWS calls or boto3.
 """
 
 import math
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,6 +14,7 @@ import dynavec.client as client_mod
 from dynavec import Document, Dynavec, DynavecConfig, SemanticCache
 from dynavec.config import NS_METADATA_KEY
 from dynavec.embeddings.base import Embedder
+from dynavec.exceptions import ConfigurationError
 
 
 class HashEmbedder(Embedder):
@@ -153,9 +156,29 @@ def db(monkeypatch):
     monkeypatch.setattr(client_mod, "S3VectorsStore", FakeS3)
     monkeypatch.setattr(client_mod, "DynamoDBStore", FakeDDB)
     monkeypatch.setattr(client_mod, "GraphStore", FakeGraph)
-    cfg = DynavecConfig(vector_bucket="b", index="i", table="t", dimension=8)
+
+    cfg = DynavecConfig(
+        vector_bucket="b",
+        index="i",
+        table="t",
+        dimension=8,
+    )
     return Dynavec(cfg, embedder=HashEmbedder(8))
 
+@pytest.fixture
+def cross_encoder_db(monkeypatch):
+    monkeypatch.setattr(client_mod, "S3VectorsStore", FakeS3)
+    monkeypatch.setattr(client_mod, "DynamoDBStore", FakeDDB)
+    monkeypatch.setattr(client_mod, "GraphStore", FakeGraph)
+
+    cfg = DynavecConfig(
+        vector_bucket="b",
+        index="i",
+        table="t",
+        dimension=8,
+        cross_encoder_model="toy-cross-encoder",
+    )
+    return Dynavec(cfg, embedder=HashEmbedder(8))
 
 def test_upsert_and_search_roundtrip(db):
     res = db.upsert(
@@ -474,3 +497,88 @@ def test_search_telemetry_marks_cache_hit(db):
     db.search("apple pie", top_k=3)   # hit
     hits = [e.cache_hit for e in rec.events()]
     assert True in hits and False in hits
+
+def test_cross_encoder_rerank_on_toy_data(monkeypatch, cross_encoder_db):
+    class FakeCrossEncoder:
+        instance = None
+
+        def __init__(self, model_name):
+            self.model_name = model_name
+            FakeCrossEncoder.instance = self
+
+        def predict(self, pairs):
+            return [
+                0.95 if "target document" in document else 0.10
+                for _, document in pairs
+            ]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "sentence_transformers",
+        SimpleNamespace(CrossEncoder=FakeCrossEncoder),
+    )
+
+    cross_encoder_db.upsert([
+        Document(
+            id="d1",
+            text="ordinary document",
+            vector=[0.1] * 8,
+        ),
+        Document(
+            id="d2",
+            text="target document",
+            vector=[0.1] * 8,
+        ),
+    ])
+
+    results = cross_encoder_db.search(
+        "find the target",
+        top_k=1,
+        rerank="cross-encoder",
+    )
+
+    assert results[0].id == "d2"
+    assert results[0].score == 0.95
+    assert FakeCrossEncoder.instance.model_name == "toy-cross-encoder"
+
+def test_cross_encoder_rerank_requires_text_query(cross_encoder_db):
+    cross_encoder_db.upsert([
+        Document(
+            id="d1",
+            text="some document",
+            vector=[0.1] * 8,
+        ),
+    ])
+
+    with pytest.raises(ConfigurationError, match="requires a text query"):
+        cross_encoder_db.search(
+            vector=[0.1] * 8,
+            top_k=1,
+            rerank="cross-encoder",
+        )
+
+def test_cross_encoder_rerank_requires_document_text(monkeypatch, cross_encoder_db):
+    class FakeCrossEncoder:
+        def __init__(self, model_name):
+            pass
+
+    monkeypatch.setitem(
+        sys.modules,
+        "sentence_transformers",
+        SimpleNamespace(CrossEncoder=FakeCrossEncoder),
+    )
+
+    cross_encoder_db.upsert([
+        Document(
+            id="d1",
+            text=None,
+            vector=[0.1] * 8,
+        ),
+    ])
+
+    with pytest.raises(ConfigurationError, match="requires document text"):
+        cross_encoder_db.search(
+            "find something",
+            top_k=1,
+            rerank="cross-encoder",
+        )

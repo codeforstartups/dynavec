@@ -3,10 +3,9 @@
 import sys
 from types import SimpleNamespace
 
-import requests
-
 from dynavec.exceptions import MissingDependencyError
 from dynavec.ingest import (
+    CsvSource,
     DocxSource,
     MCPResourceSource,
     PDFSource,
@@ -23,9 +22,8 @@ from dynavec.models import UpsertResult
 def test_chunk_text_windows_with_overlap():
     text = "abcdefghij"  # length 10
     chunks = list(chunk_text(text, chunk_size=4, overlap=1))
-    # step = 3 -> starts at 0,3,6,9
-    assert chunks[0] == "abcd"
-    assert chunks[1] == "defg"
+
+    assert chunks == ["abcd", "defg", "ghij"]
     assert all(len(c) <= 4 for c in chunks)
 
 
@@ -95,7 +93,6 @@ def test_pdf_source_missing_dependency(monkeypatch):
         PDFSource("sample.pdf")
 
 
-
 class _FakeSoup:
     def __init__(self, text, parser):
         self._text = text
@@ -107,6 +104,7 @@ class _FakeSoup:
         if "Hello Dynavec" in self._text:
             return "Hello Dynavec This is useful content."
         return ""
+
 
 def test_url_source_yields_readable_text(monkeypatch):
     monkeypatch.setitem(sys.modules, "bs4", SimpleNamespace(BeautifulSoup=_FakeSoup))
@@ -141,6 +139,7 @@ def test_url_source_yields_readable_text(monkeypatch):
 
 def test_url_source_raises_for_http_error(monkeypatch):
     import pytest
+
     monkeypatch.setitem(sys.modules, "bs4", SimpleNamespace(BeautifulSoup=_FakeSoup))
 
     class FakeHTTPError(Exception):
@@ -177,7 +176,6 @@ def test_url_source_skips_empty_pages(monkeypatch):
     records = list(URLSource("https://example.com"))
 
     assert records == []
-
 
 
 # ---- fake MCP session mirroring the SDK's list_resources / read_resource ----
@@ -224,9 +222,7 @@ def test_mcp_resource_source_yields_records():
 
 
 def test_mcp_uri_filter():
-    session = FakeMCPSession(
-        {"notion://a": ("A", "x"), "confluence://b": ("B", "y")}
-    )
+    session = FakeMCPSession({"notion://a": ("A", "x"), "confluence://b": ("B", "y")})
     records = list(MCPResourceSource(session, uri_filter=lambda u: u.startswith("notion")))
     assert [r.id for r in records] == ["notion://a"]
 
@@ -330,21 +326,28 @@ def test_pptx_source_missing_dependency(monkeypatch):
         PptxSource("sample.pptx")
 
 
-def test_xlsx_source_yields_sheet_records(monkeypatch):
+def test_xlsx_source_yields_row_records(monkeypatch):
     class _Sheet:
         def __init__(self, rows):
             self._rows = rows
 
         def iter_rows(self, values_only=True):
-            return self._rows
+            return iter(self._rows)
 
     class _Workbook:
         def __init__(self):
-            self.sheetnames = ["Summary", "EmptySheet", "Data"]
+            self.sheetnames = ["People", "EmptySheet", "NoDataRows"]
             self._sheets = {
-                "Summary": _Sheet([("Header 1", "Header 2"), ("Val A", 100)]),
+                "People": _Sheet(
+                    [
+                        ("name", "age", "city"),
+                        ("Alice", 30, "NYC"),
+                        (None, None, None),
+                        ("Bob", None, "LA"),
+                    ]
+                ),
                 "EmptySheet": _Sheet([]),
-                "Data": _Sheet([("Row 1", None, "Col 3")]),
+                "NoDataRows": _Sheet([("col1", "col2")]),
             }
 
         def __getitem__(self, item):
@@ -357,17 +360,20 @@ def test_xlsx_source_yields_sheet_records(monkeypatch):
     monkeypatch.setitem(sys.modules, "openpyxl", fake_openpyxl)
 
     records = list(XlsxSource("docs/sample.xlsx"))
+
     assert len(records) == 2
-    assert records[0].id == "docs/sample.xlsx#Summary"
-    assert "Header 1 | Header 2" in records[0].text
-    assert "Val A | 100" in records[0].text
+
+    assert records[0].id == "docs/sample.xlsx#People#row1"
+    assert records[0].text == "name: Alice, age: 30, city: NYC"
     assert records[0].metadata == {
         "source": "xlsx",
         "path": "docs/sample.xlsx",
-        "sheet": "Summary",
+        "sheet": "People",
+        "row": 1,
     }
-    assert records[1].id == "docs/sample.xlsx#Data"
-    assert records[1].text == "Row 1 | Col 3"
+
+    assert records[1].id == "docs/sample.xlsx#People#row3"
+    assert records[1].text == "name: Bob, city: LA"
 
 
 def test_xlsx_source_missing_dependency(monkeypatch):
@@ -377,3 +383,32 @@ def test_xlsx_source_missing_dependency(monkeypatch):
     with pytest.raises(MissingDependencyError, match=r"dynavec\[ingest\]"):
         XlsxSource("sample.xlsx")
 
+
+def test_csv_source_yields_row_records(tmp_path):
+    csv_path = tmp_path / "sample.csv"
+    csv_path.write_text(
+        "name,age,city\nAlice,30,NYC\n,,\nBob,,LA\n",
+        encoding="utf-8",
+    )
+
+    records = list(CsvSource(csv_path.as_posix()))
+
+    assert len(records) == 2
+
+    assert records[0].id == f"{csv_path.as_posix()}#row1"
+    assert records[0].text == "name: Alice, age: 30, city: NYC"
+    assert records[0].metadata == {
+        "source": "csv",
+        "path": csv_path.as_posix(),
+        "row": 1,
+    }
+
+    assert records[1].id == f"{csv_path.as_posix()}#row3"
+    assert records[1].text == "name: Bob, city: LA"
+
+
+def test_csv_source_header_only_yields_no_records(tmp_path):
+    csv_path = tmp_path / "empty.csv"
+    csv_path.write_text("col1,col2\n", encoding="utf-8")
+
+    assert list(CsvSource(csv_path.as_posix())) == []

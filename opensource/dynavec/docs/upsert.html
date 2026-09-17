@@ -95,7 +95,24 @@ db.upsert([
 <p>Re-upserting the same <code>id</code> overwrites it. Writes to the two stores run in parallel; see
 <a href="concurrency.html">Concurrency</a>. To change part of a document, use
 <a href="update-and-lambda.html">update</a>.</p>
+<h2>Document size limit</h2>
+<p>Each document's text and metadata are stored as one DynamoDB item, which DynamoDB caps at 400 KB.
+<code>upsert()</code> and <code>update()</code> check every document's size before writing anything, and
+raise <code>ItemTooLargeError</code> (with <code>doc_id</code>, <code>namespace</code>,
+<code>size_bytes</code>, and <code>limit_bytes</code>) if one is too big. The whole call fails, so S3 Vectors
+and DynamoDB never end up with half a batch.</p>
+<pre class="code"><code>from dynavec import ItemTooLargeError
+from dynavec.ingest import chunk_text
 
+try:
+    db.upsert([Document(id="manual", text=long_text)], namespace="kb")
+except ItemTooLargeError as err:
+    print(err.doc_id, err.size_bytes, err.limit_bytes)
+    db.upsert(
+        [Document(id=f"manual#chunk{i}", text=chunk)
+         for i, chunk in enumerate(chunk_text(long_text, chunk_size=2000))],
+        namespace="kb",
+    )</code></pre>
       <div class="doc__next"><a href="embeddings.html"><span>Previous</span>Embeddings</a><a href="update-and-lambda.html" style="text-align:right"><span>Next</span>Update & Lambda</a></div>
     </main>
   </div>

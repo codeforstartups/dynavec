@@ -38,7 +38,12 @@ import numpy as np
 from .config import NS_METADATA_KEY, TEXT_METADATA_KEY, DynavecConfig
 from .credentials import AWSCredentials, resolve_session
 from .embeddings.base import Embedder
-from .exceptions import ConfigurationError, DimensionMismatchError, NotFoundError
+from .exceptions import (
+    ConfigurationError,
+    DimensionMismatchError,
+    MissingDependencyError,
+    NotFoundError,
+)
 from .graph import GraphStore
 from .hot import HotTier
 from .metadata import build_s3_filter, generate_auto_metadata, split_metadata
@@ -48,8 +53,9 @@ from .metrics import score as metric_score
 from .models import Document, SearchResult, UpsertResult
 from .namespace import NamespaceView
 from .provisioning import provision_all
-from .retrieval import distance_to_score, maximal_marginal_relevance
+from .retrieval import distance_to_score, maximal_marginal_relevance, reciprocal_rank_fusion
 from .stores import DynamoDBStore, S3VectorsStore
+from .stores.dynamodb import check_item_size
 from .transforms import TransformContext, as_pipeline
 from .utils import KEY_SEPARATOR, chunked, decode_key_component, encode_key_component
 
@@ -85,6 +91,7 @@ class Dynavec:
         self._graph_store: GraphStore | None = None
         self._pool: ThreadPoolExecutor | None = None
         self._hot: HotTier | None = HotTier(config) if config.hot_tier else None
+        self._cross_encoder = None
 
         if embedder is not None and embedder.dimension != config.dimension:
             raise ConfigurationError(
@@ -204,6 +211,8 @@ class Dynavec:
                 auto.update(meta)
                 meta = auto
             s3_meta, ddb_meta = split_metadata(meta, self.config, namespace, d.text)
+            # fail before either store is written, not partway through a batch
+            check_item_size(namespace, d.id, d.text, ddb_meta)
             s3_payload.append((self._s3_key(namespace, d.id), d.vector, s3_meta))
             ddb_payload.append((d.id, d.text, ddb_meta))
             ids.append(d.id)
@@ -351,8 +360,16 @@ class Dynavec:
                     return cached
 
             results = self._search_core(
-                query_vector, top_k, namespace, filter, rescore, rerank,
-                mmr_lambda, include_vectors, normalize_scores,
+                query_vector,
+                query=query,
+                top_k=top_k,
+                namespace=namespace,
+                filter=filter,
+                rescore=rescore,
+                rerank=rerank,
+                mmr_lambda=mmr_lambda,
+                include_vectors=include_vectors,
+                normalize_scores=normalize_scores,
             )
 
             if cache_on and self._cache is not None and results:
@@ -372,8 +389,18 @@ class Dynavec:
             raise
 
     def _search_core(
-        self, query_vector, top_k, namespace, filter, rescore, rerank,
-        mmr_lambda, include_vectors, normalize_scores,
+        self,
+        query_vector,
+        *,
+        query: str | None = None,
+        top_k,
+        namespace,
+        filter,
+        rescore,
+        rerank,
+        mmr_lambda,
+        include_vectors,
+        normalize_scores,
     ) -> list[SearchResult]:
         needs_vectors = rerank == "mmr" or rescore is not None or include_vectors
         fetch_k = top_k * self.config.over_fetch if (rerank or rescore) else top_k
@@ -429,7 +456,18 @@ class Dynavec:
         if rescore is not None:
             results = self._apply_rescore(query_vector, results, rescore)
         if rerank == "mmr":
-            results = maximal_marginal_relevance(query_vector, results, top_k, mmr_lambda)
+            results = maximal_marginal_relevance(
+                results,
+                query_vector,
+                top_k=top_k,
+                lambda_mult=mmr_lambda,
+            )
+        elif rerank == "cross-encoder":
+            results = self._cross_encoder_rerank(
+                query,
+                results,
+                top_k=top_k,
+            )
         else:
             results = results[:top_k]
 
@@ -484,6 +522,51 @@ class Dynavec:
             r.score = float(scores[int(rank_pos)])
             out.append(r)
         return out
+
+    def _cross_encoder_rerank(
+        self,
+        query: str | None,
+        results: list[SearchResult],
+        *,
+        top_k: int,
+    ) -> list[SearchResult]:
+        if query is None:
+            raise ConfigurationError(
+                "Cross-encoder reranking requires a text query. "
+                "Provide 'query' instead of a raw 'vector'."
+            )
+
+        if any(result.text is None for result in results):
+            raise ConfigurationError(
+                "Cross-encoder reranking requires document text."
+            )
+
+        try:
+            from sentence_transformers import CrossEncoder
+        except ImportError as exc:
+
+            raise MissingDependencyError(
+                "Cross-encoder reranking",
+                "sentence-transformers",
+                "rerank",
+            ) from exc
+
+        if self._cross_encoder is None:
+            self._cross_encoder = CrossEncoder(self.config.cross_encoder_model)
+
+        pairs = [(query, result.text) for result in results]
+        scores = self._cross_encoder.predict(pairs)
+
+        reranked = sorted(
+            zip(results, scores),
+            key=lambda item: float(item[1]),
+            reverse=True,
+        )
+
+        for result, score in reranked:
+            result.score = float(score)
+
+        return [result for result, _ in reranked[:top_k]]
 
     def search_stream(
         self,
@@ -663,6 +746,21 @@ class Dynavec:
         if bidirectional:
             self.graph.add_edge(namespace, dst, relation, src)
 
+    def graph_delete_node(self, entity_id, *, namespace="default"):
+        """Delete an entity with its outbound and inbound edges (idempotent).
+
+        Linked documents and their embeddings are left untouched. Returns the
+        number of inbound edges removed. Finding those scans the namespace.
+        """
+        return self.graph.delete_node(namespace, entity_id)
+
+    def graph_delete_edge(self, src, relation, dst, *, namespace="default", bidirectional=False):
+        """Remove ``(src) -[relation]-> (dst)`` (idempotent); return edges removed."""
+        removed = self.graph.delete_edge(namespace, src, relation, dst)
+        if bidirectional:
+            removed += self.graph.delete_edge(namespace, dst, relation, src)
+        return removed
+
     def graph_link(self, entity_id, doc_ids, *, namespace="default"):
         """Attach documents (their S3 Vectors embeddings) to an entity."""
         self.graph.link_docs(namespace, entity_id, list(doc_ids))
@@ -741,6 +839,47 @@ class Dynavec:
                 )
             )
         return out
+
+    def hybrid_graph_search(
+        self,
+        query: str | None = None,
+        *,
+        seed_entities: list[str],
+        vector: list[float] | None = None,
+        namespace: str = "default",
+        relation: str | None = None,
+        hops: int = 1,
+        top_k: int = 10,
+        metric: str = "cosine",
+        weight: float = 1.0,
+    ) -> list[SearchResult]:
+        """Fuse plain ANN and graph-scoped search results with RRF.
+
+        ``weight`` controls the contribution of graph search relative to
+        plain ANN search. ANN always has a weight of ``1.0``.
+        """
+        ann_results = self.search(
+            query=query,
+            vector=vector,
+            top_k=top_k,
+            namespace=namespace,
+        )
+
+        graph_results = self.graph_search(
+            query=query,
+            seed_entities=seed_entities,
+            vector=vector,
+            namespace=namespace,
+            relation=relation,
+            hops=hops,
+            top_k=top_k,
+            metric=metric,
+        )
+
+        return reciprocal_rank_fusion(
+            [ann_results, graph_results],
+            weights=[1.0, weight],
+        )
 
     def delete(self, ids: list[str], namespace: str = "default") -> None:
         """Delete documents from both stores (and the hot tier, if enabled)."""

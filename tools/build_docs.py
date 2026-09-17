@@ -248,7 +248,7 @@ PAGES["faq"] = ("Frequently Asked Questions",
 <p>dynavec uses a two-store hybrid model for metadata:</p>
 <ul>
   <li><strong>Filterable metadata:</strong> Indexed directly in S3 Vectors for fast pre-filtering. Pass only the keys you need to filter on via <code>DynavecConfig(filterable_keys=[...])</code> (e.g. <code>["topic", "tenant_id", "year"]</code>).</li>
-  <li><strong>Document metadata &amp; text:</strong> The complete payload is stored in DynamoDB, subject to DynamoDB's standard <strong>400 KB per item</strong> limit.</li>
+  <li><strong>Document metadata &amp; text:</strong> The complete payload is stored in DynamoDB, subject to DynamoDB's standard <strong>400 KB per item</strong> limit. Oversized documents raise <code>ItemTooLargeError</code> before anything is written (see <a href="upsert.html">Upsert</a>).</li>
 </ul>
 
 <h3>What is the maximum <code>top_k</code> query limit?</h3>
@@ -348,7 +348,25 @@ db.upsert([
 <p>Re-upserting the same <code>id</code> overwrites it. Writes to the two stores run in parallel; see
 <a href="concurrency.html">Concurrency</a>. To change part of a document, use
 <a href="update-and-lambda.html">update</a>.</p>
-""")
+<h2>Document size limit</h2>
+<p>Each document's text and metadata are stored as one DynamoDB item, which DynamoDB caps at 400 KB.
+<code>upsert()</code> and <code>update()</code> check every document's size before writing anything, and
+raise <code>ItemTooLargeError</code> (with <code>doc_id</code>, <code>namespace</code>,
+<code>size_bytes</code>, and <code>limit_bytes</code>) if one is too big. The whole call fails, so S3 Vectors
+and DynamoDB never end up with half a batch.</p>
+""" + code("""from dynavec import ItemTooLargeError
+from dynavec.ingest import chunk_text
+
+try:
+    db.upsert([Document(id="manual", text=long_text)], namespace="kb")
+except ItemTooLargeError as err:
+    print(err.doc_id, err.size_bytes, err.limit_bytes)
+    db.upsert(
+        [Document(id=f"manual#chunk{i}", text=chunk)
+         for i, chunk in enumerate(chunk_text(long_text, chunk_size=2000))],
+        namespace="kb",
+    )
+"""))
 
 PAGES["update-and-lambda"] = ("Update &amp; Lambda transforms",
     "Change text, vector, or metadata — and transform data in-account.",
@@ -559,6 +577,19 @@ hits = db.graph_search(
 """) + """
 <p>Traversal helpers: <code>graph_add_node</code>, <code>graph_add_edge</code>, <code>graph_link</code>,
 <code>graph_neighbors</code>.</p>
+<h2>Removing nodes and edges</h2>
+<p>Both deletes are idempotent — removing something that is already gone returns <code>0</code> — and both
+return the number of edges removed.</p>
+""" + code("""# drop one relation (pass bidirectional=True to remove the reverse edge too)
+db.graph_delete_edge("acme", "competes_with", "globex", namespace="kb")
+
+# drop an entity, its outbound edges, and every edge pointing at it
+db.graph_delete_node("globex", namespace="kb")
+""") + """
+<p><code>graph_delete_node</code> leaves linked documents and their embeddings in place; delete those with
+<code>db.delete(...)</code> if you want them gone. Nothing indexes inbound edges, so finding them scans the
+namespace (<code>dynamodb:Scan</code>) — fine for occasional cleanup, not for a hot path. Edge removal is a
+conditional write that retries if another writer changes the adjacency list concurrently.</p>
 <div class="callout">The graph uses embedded adjacency lists (one item per node). Very high fan-out entities
 want a sort-key adjacency design — on the roadmap.</div>
 """)

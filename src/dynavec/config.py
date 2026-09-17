@@ -74,6 +74,7 @@ class DynavecConfig:
     # retrieval tuning
     over_fetch: int = 4
     top_k_page_size: int | None = None
+    cross_encoder_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     # concurrency (I/O-bound: threads give real parallelism as boto3 releases
     # the GIL during network calls). See client._executor.

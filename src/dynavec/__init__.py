@@ -20,7 +20,7 @@ Quick start
 
 from __future__ import annotations
 
-from .cache import BaseCache, DynamoDBCache, RedisCache, SemanticCache
+from .cache import BaseCache, DynamoDBCache, RedisCache, SemanticCache, warm_cache
 from .client import Dynavec
 from .config import DynavecConfig
 from .credentials import AWSCredentials
@@ -29,6 +29,7 @@ from .exceptions import (
     DimensionMismatchError,
     DynavecError,
     EmbeddingError,
+    ItemTooLargeError,
     MissingDependencyError,
     NotFoundError,
     ProvisioningError,
@@ -37,6 +38,7 @@ from .fusion import RRFWeightFitter
 from .graph import GraphStore
 from .hot import HotTier
 from .ingest import (
+    CsvSource,
     DocxSource,
     IterableSource,
     MarkdownSource,
@@ -50,7 +52,12 @@ from .ingest import (
 )
 from .models import Document, SearchResult, UpsertResult
 from .namespace import NamespaceView
-from .quantization import ProductQuantizer, ScalarQuantizer
+from .quantization import (
+    OPQRotation,
+    OptimizedProductQuantizer,
+    ProductQuantizer,
+    ScalarQuantizer,
+)
 from .retrieval import (
     maximal_marginal_relevance,
     reciprocal_rank_fusion,
@@ -75,14 +82,17 @@ __all__ = [
     "NamespaceView",
     "ProductQuantizer",
     "ScalarQuantizer",
+    "OPQRotation",
+    "OptimizedProductQuantizer",
     "GraphStore",
     "BaseCache",
     "SemanticCache",
     "DynamoDBCache",
     "RedisCache",
-    "RRFWeightFitter",
+    "warm_cache",
     "reciprocal_rank_fusion",
     "maximal_marginal_relevance",
+    "RRFWeightFitter",
     "HotTier",
     "Partition",
     "SPFreshConfig",
@@ -96,6 +106,7 @@ __all__ = [
     "ingest",
     "IterableSource",
     "PDFSource",
+    "CsvSource",
     "DocxSource",
     "PptxSource",
     "XlsxSource",
@@ -109,6 +120,7 @@ __all__ = [
     "EmbeddingError",
     "DimensionMismatchError",
     "NotFoundError",
+    "ItemTooLargeError",
     "MissingDependencyError",
 ]
 

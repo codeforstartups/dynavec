@@ -181,7 +181,12 @@ class PptxSource:
 
 
 class XlsxSource:
-    """Yield one Record per worksheet in an Excel workbook (.xlsx)."""
+    """Yield one Record per data row in each worksheet of an Excel workbook (.xlsx).
+
+    The first row of each sheet is treated as the header; each subsequent
+    row is rendered as ``"column: value"`` pairs (skipping blank cells) so
+    a chunk still stands on its own once split off from the rest.
+    """
 
     def __init__(self, path: str | Path) -> None:
         try:
@@ -202,25 +207,77 @@ class XlsxSource:
 
         for sheet_name in wb.sheetnames:
             sheet = wb[sheet_name]
-            rows_text = []
-            for row in sheet.iter_rows(values_only=True):
-                row_vals = [str(cell).strip() for cell in row if cell is not None and str(cell).strip()]
-                if row_vals:
-                    rows_text.append(" | ".join(row_vals))
+            row_iter = iter(sheet.iter_rows(values_only=True))
 
-            if not rows_text:
+            try:
+                header = next(row_iter)
+            except StopIteration:
                 continue
+            header = [str(cell).strip() if cell is not None else "" for cell in header]
 
-            sheet_text = "\n".join(rows_text)
-            yield Record(
-                id=f"{path_str}#{sheet_name}",
-                text=sheet_text,
-                metadata={
-                    "source": "xlsx",
-                    "path": path_str,
-                    "sheet": sheet_name,
-                },
-            )
+            for row_number, row in enumerate(row_iter, start=1):
+                pairs = [
+                    f"{col}: {val}"
+                    for col, val in zip(header, row)
+                    if val is not None and str(val).strip()
+                ]
+                text = ", ".join(pairs)
+
+                if not text:
+                    continue
+
+                yield Record(
+                    id=f"{path_str}#{sheet_name}#row{row_number}",
+                    text=text,
+                    metadata={
+                        "source": "xlsx",
+                        "path": path_str,
+                        "sheet": sheet_name,
+                        "row": row_number,
+                    },
+                )
+
+
+class CsvSource:
+    """Yield one Record per data row in a CSV file (first row = header).
+
+    Each row is rendered as ``"column: value"`` pairs (skipping blank
+    cells), mirroring XlsxSource's row format.
+    """
+
+    def __init__(self, path: str | Path, *, delimiter: str = ",") -> None:
+        self._path = Path(path)
+        self._delimiter = delimiter
+
+    def __iter__(self) -> Iterator[Record]:
+        import csv
+
+        path_str = self._path.as_posix()
+
+        with self._path.open(newline="", encoding="utf-8-sig") as fh:
+            reader = csv.reader(fh, delimiter=self._delimiter)
+
+            try:
+                header = next(reader)
+            except StopIteration:
+                return
+
+            for row_number, row in enumerate(reader, start=1):
+                pairs = [f"{col}: {val}" for col, val in zip(header, row) if val and val.strip()]
+                text = ", ".join(pairs)
+
+                if not text:
+                    continue
+
+                yield Record(
+                    id=f"{path_str}#row{row_number}",
+                    text=text,
+                    metadata={
+                        "source": "csv",
+                        "path": path_str,
+                        "row": row_number,
+                    },
+                )
 
 
 class URLSource:
@@ -293,9 +350,7 @@ class MarkdownSource:
         try:
             import yaml
         except ImportError as exc:
-            raise MissingDependencyError(
-                "Markdown front matter", "PyYAML", "ingest"
-            ) from exc
+            raise MissingDependencyError("Markdown front matter", "PyYAML", "ingest") from exc
 
         try:
             metadata = yaml.safe_load("".join(lines[1:end]))
@@ -364,7 +419,9 @@ class MCPResourceSource:
                 continue
             if self._uri_filter and not self._uri_filter(str(uri)):
                 continue
-            name = getattr(res, "name", None) or (res.get("name") if isinstance(res, dict) else None)
+            name = getattr(res, "name", None) or (
+                res.get("name") if isinstance(res, dict) else None
+            )
             contents = self._session.read_resource(uri)
             text = self._extract_text(contents)
             if not text:
@@ -432,4 +489,3 @@ __all__ = [
     "MarkdownSource",
     "MCPResourceSource",
 ]
-

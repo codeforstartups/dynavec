@@ -221,7 +221,31 @@ dynavec mcp
 }
 ```
 
-LlamaIndex, CrewAI, and Strands adapters are on the roadmap; the core client works in any of them today.
+### Strands Agents
+
+Use the framework-agnostic `make_retriever_fn` as a native Strands tool:
+
+```bash
+pip install "dynavec[sentence-transformers]" strands-agents
+```
+
+```python
+from strands import Agent, tool
+
+from dynavec.integrations.tools import make_retriever_fn
+
+retrieve = make_retriever_fn(db, namespace="kb", top_k=2)
+
+@tool
+def search_knowledge_base(query: str) -> str:
+    """Search the dynavec knowledge base for relevant passages."""
+    return retrieve(query)
+
+agent = Agent(tools=[search_knowledge_base])
+agent("Where is dynavec vector data stored?")
+```
+
+See [`examples/strands_retriever.py`](examples/strands_retriever.py) for a complete example that provisions a database and indexes sample documents. LlamaIndex integration remains on the roadmap; the core client works in any agent framework today.
 
 ---
 

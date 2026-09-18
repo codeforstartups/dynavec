@@ -6,6 +6,9 @@ All notable changes to dynavec are documented here. This project adheres to
 ## [Unreleased]
 
 ### Added
+- **`MultiQueryRetriever` and `HyDERetriever`** (#215) — first-class query-expansion
+  retrievers that fan out LLM-generated reformulations (or a hypothetical answer passage)
+  and fuse the ranked lists with RRF. Take plain callables; no new dependencies.
 - **`warm_cache()`** (#194) — pre-populate the query cache from a list of common queries.
 - **Learned RRF fusion weights** (#204) — `RRFWeightFitter` fits per-retriever RRF
   weights by maximizing nDCG over labeled queries.

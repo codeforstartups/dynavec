@@ -12,10 +12,11 @@ from typing import Any, Callable
 
 from ..client import Dynavec
 from ..namespace import NamespaceView
+from ..retrievers import QueryExpansionRetriever
 
 
 def make_retriever_fn(
-    source: Dynavec | NamespaceView,
+    source: Dynavec | NamespaceView | QueryExpansionRetriever,
     *,
     top_k: int = 4,
     namespace: str = "default",
@@ -27,10 +28,16 @@ def make_retriever_fn(
     """Return ``fn(query: str) -> str`` — the lowest common denominator tool.
 
     Works as-is in LangGraph nodes, CrewAI tools, Strands tools, or any
-    function-calling agent.
+    function-calling agent. ``source`` may also be a
+    :class:`~dynavec.retrievers.MultiQueryRetriever` or
+    :class:`~dynavec.retrievers.HyDERetriever` (``rescore`` is not supported there).
     """
+    if isinstance(source, QueryExpansionRetriever) and rescore is not None:
+        raise ValueError("rescore is not supported with query-expansion retrievers")
 
     def _search(query: str):
+        if isinstance(source, QueryExpansionRetriever):
+            return source.search(query, top_k=top_k, filter=filter)
         if isinstance(source, NamespaceView):
             return source.search(query, top_k=top_k, filter=filter, rescore=rescore)
         return source.search(
@@ -63,9 +70,7 @@ def as_langchain_tool(source, *, name: str = "dynavec_search", **kw) -> Any:
         raise MissingDependencyError("as_langchain_tool", "langchain-core", "langchain") from exc
 
     fn = make_retriever_fn(source, **kw)
-    return StructuredTool.from_function(
-        func=fn, name=name, description=fn.__doc__
-    )
+    return StructuredTool.from_function(func=fn, name=name, description=fn.__doc__)
 
 
 def as_crewai_tool(source, *, name: str = "dynavec_search", **kw) -> Any:

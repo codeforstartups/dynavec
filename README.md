@@ -179,6 +179,34 @@ hits = db.search(vector=my_query_vector, top_k=5)
 
 Control the split with `DynavecConfig.filterable_keys` (allowlist of keys pushed to S3 Vectors for filtering) — keep it small; S3 Vectors caps filterable metadata size per vector.
 
+### Query expansion: Multi-Query and HyDE
+
+Short or oddly-worded queries often miss documents that use different vocabulary.
+Two adapters widen the candidate pool and fuse the ranked lists with RRF. They take
+plain callables, so there is no LLM dependency:
+
+```python
+from dynavec import MultiQueryRetriever, HyDERetriever
+
+multi = MultiQueryRetriever(
+    db.namespace("kb"),
+    generate_queries=lambda q: my_llm_variations(q, n=3),   # -> list[str]
+    top_k=4,
+)
+hyde = HyDERetriever(
+    db.namespace("kb"),
+    generate_hypothetical=lambda q: my_llm_answer(q),       # -> str
+    top_k=4,
+)
+hits = multi.search("how does serverless vector storage work?")
+```
+
+Fused results carry the **RRF score** (not cosine), and each sub-search costs one S3
+Vectors query plus one DynamoDB hydration, so a call runs roughly `1 + n_queries`
+searches. If the LLM callable fails, the original query is searched alone (set
+`on_generate_error="raise"` to fail loudly). See `examples/query_expansion.py`
+(runs offline).
+
 ---
 
 ## Framework integrations
@@ -358,6 +386,7 @@ hit-rate, and a filterable **traces** table with per-trace drill-down.
 | **Distance metrics** | Index on cosine/euclidean (S3 Vectors native); client-side rescore in cosine / dot / euclidean / manhattan or a **weighted combination**, with optional result-set normalization | `search(..., rescore="dot", normalize_scores=True)` |
 | **Concurrency** | GIL-aware thread pool — real parallelism for I/O-bound AWS calls; parallel batched writes + `search_many`; tunable botocore connection pool (default 10, raise for high concurrency) | `DynavecConfig(max_workers=8, max_pool_connections=50)`, `db.search_many([...])` |
 | **Streaming** | Results yielded page-by-page as S3 Vectors paginates, so agents start consuming early | `for hit in db.search_stream(q): ...` |
+| **Query expansion** | LLM-driven Multi-Query and HyDE retrieval fused with RRF; plain callables, no LLM dependency | `MultiQueryRetriever(kb, gen)`, `HyDERetriever(kb, gen)` |
 | **Namespace RAG** | Per-tenant/collection handles; isolation + even partitioning | `kb = db.namespace("kb"); kb.search(...)` |
 | **Product quantization** | Compress cached/hot-tier vectors up to 32× (ADC distance) | `ProductQuantizer(m=96).fit(X)` |
 | **Knowledge graph / ER** | Entities + relations in DynamoDB linked to embeddings; traverse to scope/guide vector search (GraphRAG) | `db.graph_add_edge(...)`, `db.graph_search(q, seed_entities=[...])` |

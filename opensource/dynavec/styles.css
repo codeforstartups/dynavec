@@ -212,6 +212,96 @@ a { color: inherit; }
 .note { font-size: 13.5px; color: var(--muted); margin-top: 18px; max-width: 74ch; }
 .note code { font-family: var(--mono); color: var(--accent-ink); }
 
+/* ---------- cost calculator ---------- */
+.calc {
+  margin: 28px 0;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--surface);
+  padding: 26px 28px;
+  transition: box-shadow .16s ease;
+}
+.calc:hover { box-shadow: var(--shadow); }
+.calc__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.calc__field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+.calc__field input {
+  font-family: var(--mono);
+  font-size: 14.5px;
+  font-weight: 500;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: #faf6f1;
+  color: var(--fg);
+  width: 100%;
+  transition: border-color .12s ease;
+}
+.calc__field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: #fff;
+}
+.calc__result {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.calc__total {
+  font-size: 15px;
+  color: var(--muted);
+}
+.calc__total strong {
+  font-family: var(--mono);
+  font-size: 24px;
+  color: var(--accent-ink);
+  font-weight: 700;
+  margin-left: 6px;
+}
+.calc__breakdown {
+  flex: 1 1 100%;
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px 20px;
+}
+.calc__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  font-family: var(--mono);
+  color: var(--muted);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+@media (max-width: 860px) {
+  .calc__grid { grid-template-columns: repeat(2, 1fr); }
+  .calc__breakdown { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .calc { padding: 20px; }
+  .calc__grid { grid-template-columns: 1fr; }
+}
+
 /* ---------- tabs / code ---------- */
 .tabs { border: 1px solid var(--line-strong); background: var(--surface); box-shadow: var(--shadow); }
 .tabs__list { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line-strong); background: #faf6f1; }

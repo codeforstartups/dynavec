@@ -292,7 +292,35 @@
             </tbody>
           </table>
         </div>
-        <p class="note">
+
+
+        <div class="calc" id="cost-calculator">
+          <h3 class="table__title">Estimate your own cost</h3>
+          <div class="calc__grid">
+            <label class="calc__field">
+              Vectors
+              <input type="number" id="calc-vectors" value="1000000" min="0" step="1000" />
+            </label>
+            <label class="calc__field">
+              Dimension
+              <input type="number" id="calc-dim" value="768" min="1" step="1" />
+            </label>
+            <label class="calc__field">
+              Queries / month
+              <input type="number" id="calc-qpm" value="1000000" min="0" step="1000" />
+            </label>
+            <label class="calc__field">
+              Writes / month
+              <input type="number" id="calc-wpm" value="100000" min="0" step="1000" />
+            </label>
+          </div>
+          <div class="calc__result">
+            <span class="calc__total">Estimated: <strong id="calc-total">$0.00 / mo</strong></span>
+            <div class="calc__breakdown" id="calc-breakdown"></div>
+          </div>
+        </div>
+
+       <p class="note">
           Cost is computed by the repository's transparent cost model from public list prices —
           order-of-magnitude, verify before quoting. Recall and latency figures in the repo are
           representative until a live AWS run replaces them. Reproduce everything with

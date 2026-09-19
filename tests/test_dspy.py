@@ -70,6 +70,7 @@ def test_dynavec_rm_returns_dspy_passages():
     passages = rm("dynavec")
 
     assert len(passages) == 2
+    assert isinstance(passages[0], dspy.Prediction)
 
     assert passages[0].long_text == (
         "Retrieval-augmented generation combines retrieval with generation."
@@ -77,6 +78,7 @@ def test_dynavec_rm_returns_dspy_passages():
     assert passages[0].id == "doc-1"
     assert passages[0].score == 0.95
     assert passages[0].metadata == {"topic": "rag"}
+    assert passages[0]["id"] == "doc-1"
 
     assert client.calls == [
         (

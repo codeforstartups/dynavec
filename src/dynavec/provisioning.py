@@ -10,15 +10,18 @@ Everything is safe to call repeatedly; existing resources are left as-is.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from .config import TEXT_METADATA_KEY, DynavecConfig
 from .exceptions import ProvisioningError
 
 
 def _client_error_code(exc: Exception) -> str:
-    return getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+    response = cast(dict[str, Any], getattr(exc, "response", {}))
+    return str(response.get("Error", {}).get("Code", ""))
 
 
-def ensure_vector_bucket(config: DynavecConfig, boto_session=None) -> None:
+def ensure_vector_bucket(config: DynavecConfig, boto_session: Any | None = None) -> None:
     import boto3
 
     session = boto_session or boto3.Session()
@@ -26,7 +29,7 @@ def ensure_vector_bucket(config: DynavecConfig, boto_session=None) -> None:
     botocore_config = config.botocore_config()
     if botocore_config is not None:
         client_kwargs["config"] = botocore_config
-    s3v = session.client("s3vectors", **client_kwargs)  # type: ignore[arg-type]
+    s3v = session.client("s3vectors", **client_kwargs)
     try:
         s3v.create_vector_bucket(vectorBucketName=config.vector_bucket)
     except Exception as exc:  # noqa: BLE001
@@ -35,7 +38,7 @@ def ensure_vector_bucket(config: DynavecConfig, boto_session=None) -> None:
         raise ProvisioningError(f"Failed to create vector bucket: {exc}") from exc
 
 
-def ensure_index(config: DynavecConfig, boto_session=None) -> None:
+def ensure_index(config: DynavecConfig, boto_session: Any | None = None) -> None:
     import boto3
 
     session = boto_session or boto3.Session()
@@ -43,7 +46,7 @@ def ensure_index(config: DynavecConfig, boto_session=None) -> None:
     botocore_config = config.botocore_config()
     if botocore_config is not None:
         client_kwargs["config"] = botocore_config
-    s3v = session.client("s3vectors", **client_kwargs)  # type: ignore[arg-type]
+    s3v = session.client("s3vectors", **client_kwargs)
 
     non_filterable = list(config.non_filterable_keys)
     if config.store_text_in_s3vectors and TEXT_METADATA_KEY not in non_filterable:
@@ -67,7 +70,7 @@ def ensure_index(config: DynavecConfig, boto_session=None) -> None:
         raise ProvisioningError(f"Failed to create vector index: {exc}") from exc
 
 
-def ensure_table(config: DynavecConfig, boto_session=None) -> None:
+def ensure_table(config: DynavecConfig, boto_session: Any | None = None) -> None:
     import boto3
 
     session = boto_session or boto3.Session()
@@ -75,10 +78,10 @@ def ensure_table(config: DynavecConfig, boto_session=None) -> None:
     botocore_config = config.botocore_config()
     if botocore_config is not None:
         client_kwargs["config"] = botocore_config
-    ddb = session.client("dynamodb", **client_kwargs)  # type: ignore[arg-type]
+    ddb = session.client("dynamodb", **client_kwargs)
 
     try:
-        create_kwargs = {
+        create_kwargs: dict[str, Any] = {
             "TableName": config.table,
             "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
             "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
@@ -99,7 +102,7 @@ def ensure_table(config: DynavecConfig, boto_session=None) -> None:
     ddb.get_waiter("table_exists").wait(TableName=config.table)
 
 
-def provision_all(config: DynavecConfig, boto_session=None) -> None:
+def provision_all(config: DynavecConfig, boto_session: Any | None = None) -> None:
     """Create every resource dynavec needs. Idempotent."""
     ensure_vector_bucket(config, boto_session)
     ensure_index(config, boto_session)

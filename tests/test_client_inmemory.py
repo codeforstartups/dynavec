@@ -249,6 +249,11 @@ class WrongOutputEmbedder(HashEmbedder):
         return [[0.1, 0.2] for _ in texts]
 
 
+class MissingOutputEmbedder(HashEmbedder):
+    def embed_documents(self, texts):
+        return []
+
+
 def test_embedder_output_dimension_mismatch_raises(db):
     from dynavec.exceptions import DimensionMismatchError
 
@@ -257,6 +262,18 @@ def test_embedder_output_dimension_mismatch_raises(db):
     with pytest.raises(
         DimensionMismatchError,
         match=r"Document 'x' vector has dimension 2, expected 8",
+    ):
+        db.upsert([Document(id="x", text="hello")])
+
+
+def test_embedder_missing_output_raises_configuration_error(db):
+    from dynavec.exceptions import ConfigurationError
+
+    db.embedder = MissingOutputEmbedder(8)
+
+    with pytest.raises(
+        ConfigurationError,
+        match=r"Embedder did not return a vector for document 'x'",
     ):
         db.upsert([Document(id="x", text="hello")])
 

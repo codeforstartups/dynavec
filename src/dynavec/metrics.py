@@ -14,6 +14,8 @@ All scorers return **higher = more similar** so they compose cleanly.
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 
 Metric = str  # "cosine" | "dot" | "euclidean" | "manhattan"
@@ -34,13 +36,13 @@ def score(query: np.ndarray, mat: np.ndarray, metric: Metric) -> np.ndarray:
     if metric == "cosine":
         qn = q / (np.linalg.norm(q) + 1e-12)
         mn = m / (np.linalg.norm(m, axis=1, keepdims=True) + 1e-12)
-        return mn @ qn
+        return cast(np.ndarray, mn @ qn)
     if metric == "euclidean":
         d = np.linalg.norm(m - q, axis=1)
-        return 1.0 / (1.0 + d)
+        return cast(np.ndarray, 1.0 / (1.0 + d))
     if metric == "manhattan":
         d = np.abs(m - q).sum(axis=1)
-        return 1.0 / (1.0 + d)
+        return cast(np.ndarray, 1.0 / (1.0 + d))
     raise ValueError(f"unknown metric {metric!r}; expected one of {_VALID}")
 
 
@@ -70,11 +72,13 @@ def composite_score(
     if not weights:
         raise ValueError("weights must be non-empty")
     total = 0.0
-    acc = None
+    acc: np.ndarray | None = None
     for metric, w in weights.items():
         s = normalize_scores(score(query, mat, metric))
         acc = s * w if acc is None else acc + s * w
         total += w
+    if acc is None:  # Defensive guard for unusual mapping implementations.
+        raise ValueError("weights must be non-empty")
     return acc / (total or 1.0)
 
 
@@ -84,7 +88,7 @@ def rescore(
     spec: Metric | dict[str, float],
     *,
     normalize: bool = False,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """Return an ordering (indices, best first) for the candidates under ``spec``.
 
     ``spec`` is a metric name or a ``{metric: weight}`` combination.

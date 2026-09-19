@@ -57,7 +57,12 @@ def _pk(namespace: str, doc_id: str) -> str:
     return f"{encode_key_component(namespace)}{KEY_SEPARATOR}{encode_key_component(doc_id)}"
 
 
-def _build_item(namespace: str, doc_id: str, text: str | None, metadata: Metadata) -> dict:
+def _build_item(
+    namespace: str,
+    doc_id: str,
+    text: str | None,
+    metadata: Metadata,
+) -> dict[str, Any]:
     item = {
         "pk": _pk(namespace, doc_id),
         "ns": namespace,
@@ -91,7 +96,7 @@ def _value_size(value: Any) -> int:
     return len(str(value).encode("utf-8"))
 
 
-def item_size_bytes(item: dict) -> int:
+def item_size_bytes(item: dict[str, Any]) -> int:
     """Approximate DynamoDB size of ``item``: attribute name bytes plus value sizes."""
     return sum(len(name.encode("utf-8")) + _value_size(value) for name, value in item.items())
 
@@ -105,7 +110,7 @@ def check_item_size(namespace: str, doc_id: str, text: str | None, metadata: Met
     _check_built_item(_build_item(namespace, doc_id, text, metadata))
 
 
-def _check_built_item(item: dict) -> None:
+def _check_built_item(item: dict[str, Any]) -> None:
     size = item_size_bytes(item)
     if size > MAX_ITEM_BYTES:
         raise ItemTooLargeError(item["id"], item["ns"], size, MAX_ITEM_BYTES)
@@ -116,7 +121,7 @@ class DynamoDBStore:
 
     _logger = logging.getLogger("dynavec.stores.dynamodb")
 
-    def __init__(self, config: DynavecConfig, boto_session=None) -> None:
+    def __init__(self, config: DynavecConfig, boto_session: Any | None = None) -> None:
         import boto3  # local import: base import stays cheap
 
         session = boto_session or boto3.Session()
@@ -125,7 +130,7 @@ class DynamoDBStore:
         botocore_config = config.botocore_config()
         if botocore_config is not None:
             resource_kwargs["config"] = botocore_config
-        self._ddb = session.resource("dynamodb", **resource_kwargs)  # type: ignore[arg-type]
+        self._ddb = session.resource("dynamodb", **resource_kwargs)
         self._table = self._ddb.Table(config.table)
         self._logger = logging.getLogger("dynavec.stores.dynamodb")
 
@@ -182,7 +187,7 @@ class DynamoDBStore:
 
         for start in range(0, len(keys), _BATCH_GET_LIMIT):
             chunk = keys[start : start + _BATCH_GET_LIMIT]
-            request = {self._config.table: {"Keys": chunk}}
+            request: dict[str, Any] | None = {self._config.table: {"Keys": chunk}}
             while request:
                 resp = self._ddb.batch_get_item(RequestItems=request)
                 for item in resp["Responses"].get(self._config.table, []):

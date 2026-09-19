@@ -14,6 +14,7 @@ vectors directly (no re-embedding).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from ..client import Dynavec
@@ -24,6 +25,7 @@ try:
     from llama_index.core.schema import BaseNode, TextNode
     from llama_index.core.vector_stores.types import (
         BasePydanticVectorStore,
+        MetadataFilter,
         VectorStoreQuery,
         VectorStoreQueryResult,
     )
@@ -43,7 +45,7 @@ class DynavecLlamaStore(BasePydanticVectorStore):
     _namespace: str
 
     def __init__(self, client: Dynavec, namespace: str = "default") -> None:
-        super().__init__()
+        super().__init__(stores_text=True)
         self._client = client
         self._namespace = namespace
 
@@ -51,7 +53,7 @@ class DynavecLlamaStore(BasePydanticVectorStore):
     def client(self) -> Any:
         return self._client
 
-    def add(self, nodes: list[BaseNode], **kwargs: Any) -> list[str]:
+    def add(self, nodes: Sequence[BaseNode], **kwargs: Any) -> list[str]:
         docs = []
         for node in nodes:
             meta = node.metadata or {}
@@ -73,7 +75,12 @@ class DynavecLlamaStore(BasePydanticVectorStore):
     def query(self, query: VectorStoreQuery, **kwargs: Any) -> VectorStoreQueryResult:
         flt = None
         if query.filters is not None:
-            flt = {f.key: f.value for f in query.filters.filters}
+            simple_filters: list[MetadataFilter] = []
+            for metadata_filter in query.filters.filters:
+                if not isinstance(metadata_filter, MetadataFilter):
+                    raise ValueError("Nested LlamaIndex metadata filters are not supported.")
+                simple_filters.append(metadata_filter)
+            flt = {f.key: f.value for f in simple_filters}
 
         results = self._client.search(
             vector=query.query_embedding,

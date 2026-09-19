@@ -7,14 +7,15 @@ import json
 import os
 import sys
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from ..client import Dynavec
-from ..config import DynavecConfig
+from ..config import DistanceMetric, DynavecConfig
+from ..embeddings.base import Embedder
 from ..exceptions import ConfigurationError, MissingDependencyError
 
 
-def _resolve_embedder(env: Mapping[str, str]):
+def _resolve_embedder(env: Mapping[str, str]) -> Embedder | None:
     """Instantiate an embedder from environment variables or return None."""
     embedder_type = (env.get("DYNAVEC_EMBEDDER") or "").strip().lower()
     model = env.get("DYNAVEC_EMBEDDER_MODEL")
@@ -104,7 +105,7 @@ def client_from_env(env: Mapping[str, str] | None = None) -> Dynavec:
         index=str(index),
         table=str(table),
         dimension=dimension,
-        distance_metric=distance_metric,  # type: ignore[arg-type]
+        distance_metric=cast(DistanceMetric, distance_metric),
         region=region,
         filterable_keys=filterable_keys,
     )
@@ -123,7 +124,7 @@ def _format_hits(hits: list[Any], query: str, context_label: str = "") -> str:
     return "\n".join(lines).strip()
 
 
-def create_mcp_server(db: Dynavec | None = None, name: str = "dynavec"):
+def create_mcp_server(db: Dynavec | None = None, name: str = "dynavec") -> Any:
     """Create and configure a FastMCP server exposing dynavec search and graph search tools."""
     try:
         from mcp.server.fastmcp import FastMCP
@@ -135,7 +136,6 @@ def create_mcp_server(db: Dynavec | None = None, name: str = "dynavec"):
     def _get_db() -> Dynavec:
         return db if db is not None else client_from_env()
 
-    @mcp.tool()
     def dynavec_search(
         query: str,
         top_k: int = 5,
@@ -164,7 +164,10 @@ def create_mcp_server(db: Dynavec | None = None, name: str = "dynavec"):
         filter_dict = None
         if filter_json:
             try:
-                filter_dict = json.loads(filter_json)
+                parsed: object = json.loads(filter_json)
+                if not isinstance(parsed, dict):
+                    return "Error parsing filter_json: expected a JSON object"
+                filter_dict = cast(dict[str, Any], parsed)
             except Exception as exc:
                 return f"Error parsing filter_json: {exc}"
 
@@ -179,7 +182,6 @@ def create_mcp_server(db: Dynavec | None = None, name: str = "dynavec"):
         )
         return _format_hits(hits, query, f" in namespace '{namespace}'")
 
-    @mcp.tool()
     def dynavec_graph_search(
         query: str,
         seed_entities: list[str],
@@ -212,6 +214,8 @@ def create_mcp_server(db: Dynavec | None = None, name: str = "dynavec"):
         )
         return _format_hits(hits, query, f" (seeds: {seed_entities}, hops: {hops})")
 
+    mcp.tool()(dynavec_search)
+    mcp.tool()(dynavec_graph_search)
     return mcp
 
 

@@ -53,6 +53,13 @@ langchain = ["langchain-core>=0.3"]
 llamaindex = ["llama-index-core>=0.11"]
 crewai = ["crewai>=0.70,!=1.14.0; python_version >= '3.10'"]
 dspy = ["dspy>=3.3; python_version >= '3.10'"]
+# Framework APIs imported by strict mypy checks. Keep this in sync with the
+# integration adapters covered by tests/typing.
+typecheck = [
+    "langchain-core>=0.3",
+    "llama-index-core>=0.11",
+    "dspy>=3.3; python_version >= '3.10'",
+]
 all = [
     "openai>=1.40",
     "google-generativeai>=0.8",
@@ -75,6 +82,7 @@ dev = [
     "pytest-cov>=5.0",
     "hypothesis>=6.100",
     "moto[dynamodb]>=5.0",
+    "mypy>=1.11,<2.0",
     "ruff>=0.6",
     "pre-commit>=3.5",
 ]
@@ -109,3 +117,60 @@ target-version = "py39"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/dynavec", "tests/typing"]
+mypy_path = "typings"
+strict = true
+pretty = true
+show_error_codes = true
+
+# Optional integrations deliberately remain importable only when their extras are
+# installed. Keep those dependency boundaries explicit while still checking all
+# dynavec code that uses them.
+[[tool.mypy.overrides]]
+module = [
+    "bs4",
+    "bs4.*",
+    "boto3",
+    "boto3.*",
+    "botocore",
+    "botocore.*",
+    "crewai",
+    "crewai.*",
+    "docx",
+    "docx.*",
+    "dspy",
+    "dspy.*",
+    "google",
+    "google.*",
+    "langchain_core",
+    "langchain_core.*",
+    "llama_index",
+    "llama_index.*",
+    "matplotlib",
+    "matplotlib.*",
+    "mcp",
+    "mcp.*",
+    "mistralai",
+    "mistralai.*",
+    "openai",
+    "openai.*",
+    "openpyxl",
+    "openpyxl.*",
+    "pptx",
+    "pptx.*",
+    "pypdf",
+    "pypdf.*",
+    "redis",
+    "redis.*",
+    "requests",
+    "requests.*",
+    "sentence_transformers",
+    "sentence_transformers.*",
+    "voyageai",
+    "voyageai.*",
+    "yaml",
+]
+ignore_missing_imports = true

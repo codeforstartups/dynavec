@@ -79,7 +79,9 @@ def retry(
     return decorator
 
 
-def timed(sink: Callable[[str, float], None] | None = None):
+def timed(
+    sink: Callable[[str, float], None] | None = None,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Decorator: report wall-clock seconds to ``sink(name, seconds)``.
 
     Handy for wiring dynavec latency into an agent's tracing/telemetry.

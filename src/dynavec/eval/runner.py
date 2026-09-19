@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Union
 
 from .base import BaseJudge, RAGEvalResult
 from .metrics import evaluate_rag
+
+EvalTriplet = tuple[str, Union[str, Sequence[str]], str]
 
 
 @dataclass
@@ -63,7 +65,7 @@ class EvalRunner:
 
     def run(
         self,
-        dataset: Sequence[dict[str, Any] | tuple[str, str | Sequence[str], str]],
+        dataset: Sequence[dict[str, Any] | EvalTriplet],
         run_faithfulness: bool = True,
         run_answer_relevance: bool = True,
     ) -> EvalSummary:

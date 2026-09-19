@@ -72,7 +72,7 @@ class BedrockJudge(BaseJudge):
         model_id: str = "anthropic.claude-3-haiku-20240307-v1:0",
         region: str | None = None,
         temperature: float = 0.0,
-        boto_session=None,
+        boto_session: Any | None = None,
     ) -> None:
         session = resolve_session(None, boto_session)
         kwargs: dict[str, Any] = {}

@@ -12,10 +12,11 @@ from typing import Any, Callable
 
 from ..client import Dynavec
 from ..namespace import NamespaceView
+from ..retrievers import QueryExpansionRetriever
 
 
 def make_retriever_fn(
-    source: Dynavec | NamespaceView,
+    source: Dynavec | NamespaceView | QueryExpansionRetriever,
     *,
     top_k: int = 4,
     namespace: str = "default",
@@ -29,8 +30,12 @@ def make_retriever_fn(
     Works as-is in LangGraph nodes, CrewAI tools, Strands tools, or any
     function-calling agent.
     """
+    if isinstance(source, QueryExpansionRetriever) and rescore is not None:
+        raise ValueError("rescore is not supported with query-expansion retrievers")
 
     def _search(query: str):
+        if isinstance(source, QueryExpansionRetriever):
+            return source.search(query, top_k=top_k, filter=filter)
         if isinstance(source, NamespaceView):
             return source.search(query, top_k=top_k, filter=filter, rescore=rescore)
         return source.search(

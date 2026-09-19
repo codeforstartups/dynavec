@@ -174,3 +174,20 @@ def maximal_marginal_relevance(
         unselected[best_idx] = False
 
     return [usable[i] for i in selected]
+
+
+# Re-export query expansion retrievers for convenience
+from .retrievers import (  # noqa: E402
+    HyDERetriever,
+    MultiQueryRetriever,
+    QueryExpansionRetriever,
+)
+
+__all__ = [
+    "distance_to_score",
+    "reciprocal_rank_fusion",
+    "maximal_marginal_relevance",
+    "QueryExpansionRetriever",
+    "MultiQueryRetriever",
+    "HyDERetriever",
+]

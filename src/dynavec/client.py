@@ -629,6 +629,44 @@ class Dynavec:
         ]
         return [f.result() for f in futures]
 
+    def as_multiquery_retriever(
+        self,
+        generate_queries=None,
+        *,
+        llm_generate_queries=None,
+        namespace: str = "default",
+        **kw,
+    ):
+        """Create a :class:`~dynavec.retrievers.MultiQueryRetriever` bound to this client."""
+        from .retrievers import MultiQueryRetriever
+
+        return MultiQueryRetriever(
+            self,
+            generate_queries=generate_queries,
+            llm_generate_queries=llm_generate_queries,
+            namespace=namespace,
+            **kw,
+        )
+
+    def as_hyde_retriever(
+        self,
+        generate_hypothetical=None,
+        *,
+        llm_generate_hypothetical=None,
+        namespace: str = "default",
+        **kw,
+    ):
+        """Create a :class:`~dynavec.retrievers.HyDERetriever` bound to this client."""
+        from .retrievers import HyDERetriever
+
+        return HyDERetriever(
+            self,
+            generate_hypothetical=generate_hypothetical,
+            llm_generate_hypothetical=llm_generate_hypothetical,
+            namespace=namespace,
+            **kw,
+        )
+
     def _resolve_query_vector(
         self, query: str | None, vector: list[float] | None
     ) -> list[float]:

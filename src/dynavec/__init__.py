@@ -62,6 +62,11 @@ from .retrieval import (
     maximal_marginal_relevance,
     reciprocal_rank_fusion,
 )
+from .retrievers import (
+    HyDERetriever,
+    MultiQueryRetriever,
+    QueryExpansionRetriever,
+)
 from .spfresh import (
     Partition,
     SPFreshConfig,
@@ -92,6 +97,9 @@ __all__ = [
     "warm_cache",
     "reciprocal_rank_fusion",
     "maximal_marginal_relevance",
+    "QueryExpansionRetriever",
+    "MultiQueryRetriever",
+    "HyDERetriever",
     "RRFWeightFitter",
     "HotTier",
     "Partition",

@@ -47,5 +47,31 @@ class NamespaceView:
     def delete(self, ids, **kw) -> None:
         return self._db.delete(ids, namespace=self._ns, **kw)
 
+    def as_multiquery_retriever(
+        self, generate_queries=None, *, llm_generate_queries=None, **kw
+    ):
+        """Create a :class:`~dynavec.retrievers.MultiQueryRetriever` pinned to this namespace."""
+        from .retrievers import MultiQueryRetriever
+
+        return MultiQueryRetriever(
+            self,
+            generate_queries=generate_queries,
+            llm_generate_queries=llm_generate_queries,
+            **kw,
+        )
+
+    def as_hyde_retriever(
+        self, generate_hypothetical=None, *, llm_generate_hypothetical=None, **kw
+    ):
+        """Create a :class:`~dynavec.retrievers.HyDERetriever` pinned to this namespace."""
+        from .retrievers import HyDERetriever
+
+        return HyDERetriever(
+            self,
+            generate_hypothetical=generate_hypothetical,
+            llm_generate_hypothetical=llm_generate_hypothetical,
+            **kw,
+        )
+
     def __repr__(self) -> str:
         return f"NamespaceView(namespace={self._ns!r})"

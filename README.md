@@ -225,6 +225,44 @@ LlamaIndex, CrewAI, and Strands adapters are on the roadmap; the core client wor
 
 ---
 
+## Query expansion: Multi-Query and HyDE
+
+Single-query vector search frequently misses relevant documents when queries are short, colloquial, or use different terminology than the corpus. Dynavec provides two first-class query expansion adapters:
+
+### MultiQueryRetriever
+Expands a user query into diverse reformulations using an LLM, fans out searches concurrently, and merges results via Reciprocal Rank Fusion (RRF):
+
+```python
+from dynavec import MultiQueryRetriever
+
+retriever = MultiQueryRetriever(
+    db.namespace("docs"),
+    generate_queries=lambda q: my_llm.generate_variations(q, n=3),
+    top_k=4,
+)
+hits = retriever.search("car won't start")
+```
+
+### HyDERetriever
+Hypothetical Document Embeddings (HyDE) asks an LLM to generate an answer passage, embeds it as a document (via `embed_documents`), and retrieves nearest neighbours. Supports single-passage or multi-passage Centroid averaging (`strategy="average"`) and multi-search fusion (`strategy="fuse"`):
+
+```python
+from dynavec import HyDERetriever
+
+hyde = HyDERetriever(
+    db.namespace("docs"),
+    generate_hypothetical=lambda q: my_llm.generate_answer(q),
+    top_k=4,
+    strategy="average",
+    include_original=True,
+)
+hits = hyde.search("explain dynamo db storage pricing breakdown")
+```
+
+You can also instantiate retrievers directly via `db.as_multiquery_retriever(...)` or `db.namespace("docs").as_hyde_retriever(...)`.
+
+---
+
 ## Choosing an embedding dimension
 
 Embedding dimension trades off recall against storage cost and latency. A larger dimension usually gives higher recall, but the right choice is the **smallest dimension that meets your recall target** — not the largest. See [EMBEDDING_DIMENSIONS.md](docs/EMBEDDING_DIMENSIONS.md) for a comparison table, the S3 Vectors 4096-dim ceiling, and a step-by-step picking guide.

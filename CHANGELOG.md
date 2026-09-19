@@ -6,6 +6,9 @@ All notable changes to dynavec are documented here. This project adheres to
 ## [Unreleased]
 
 ### Added
+- **Multi-Query and HyDE fusion retrievers** (#215) — `MultiQueryRetriever` (concurrent
+  reformulation search with RRF fusion) and `HyDERetriever` (document-side hypothetical answer
+  embedding with single-passage, centroid multi-passage averaging, and fusion strategies).
 - **`warm_cache()`** (#194) — pre-populate the query cache from a list of common queries.
 - **Learned RRF fusion weights** (#204) — `RRFWeightFitter` fits per-retriever RRF
   weights by maximizing nDCG over labeled queries.

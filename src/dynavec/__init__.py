@@ -34,7 +34,7 @@ from .exceptions import (
     NotFoundError,
     ProvisioningError,
 )
-from .fusion import RRFWeightFitter
+from .fusion import FitResult, RRFWeightFitter
 from .graph import GraphStore
 from .hot import HotTier
 from .ingest import (
@@ -92,6 +92,7 @@ __all__ = [
     "warm_cache",
     "reciprocal_rank_fusion",
     "maximal_marginal_relevance",
+    "FitResult",
     "RRFWeightFitter",
     "HotTier",
     "Partition",

@@ -34,18 +34,19 @@
     if (el.textContent.indexOf("<") === -1) el.innerHTML = highlight(el.textContent);
   });
 
-  // copy buttons on code blocks
+  // copy buttons on code blocks — styled via .code__copy in docs.css
   document.querySelectorAll(".code").forEach(function (pre) {
     var btn = document.createElement("button");
     btn.className = "code__copy";
     btn.textContent = "copy";
+    btn.setAttribute("aria-label", "Copy code");
     btn.addEventListener("click", function () {
-      navigator.clipboard.writeText(pre.innerText).then(function () {
-        btn.textContent = "copied"; setTimeout(function () { btn.textContent = "copy"; }, 1300);
+      var text = pre.innerText.replace(/\ncopy$/i, "").replace(/\ncopied$/i, "").trim();
+      navigator.clipboard.writeText(text).then(function () {
+        btn.textContent = "copied";
+        setTimeout(function () { btn.textContent = "copy"; }, 1300);
       });
     });
-    pre.style.position = "relative";
-    btn.style.cssText = "position:absolute;top:8px;right:8px;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;border:1px solid var(--line);background:var(--surface);color:var(--muted);padding:4px 9px;border-radius:6px;cursor:pointer;";
     pre.appendChild(btn);
   });
 })();

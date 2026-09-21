@@ -149,34 +149,68 @@ body {
 .nav {
   position: sticky; top: 0; z-index: 100;
   height: var(--nav-h);
-  background: rgba(255,255,255,.92);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border-bottom: 1px solid transparent;
-  transition: border-color var(--t);
+  background: rgba(255,255,255,0.75);
+  backdrop-filter: blur(20px) saturate(200%);
+  -webkit-backdrop-filter: blur(20px) saturate(200%);
+  border-bottom: 1px solid rgba(232,98,59,0.08);
+  transition: border-color var(--t), background var(--t), box-shadow var(--t);
 }
-.nav.is-stuck { border-bottom-color: var(--border); }
+.nav.is-stuck {
+  border-bottom-color: var(--border);
+  box-shadow: 0 1px 40px rgba(0,0,0,0.07);
+}
 
-.nav__inner { display: flex; align-items: center; height: 100%; }
+.nav__inner { display: flex; align-items: center; height: 100%; gap: 4px; }
 
 .brand { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; flex-shrink: 0; }
 .brand__mark { color: var(--accent); }
 .brand__name { font-family: var(--mono); font-weight: 700; font-size: 17px; letter-spacing: -0.03em; }
 
-.nav__links { display: flex; gap: 2px; margin-left: 16px; margin-right: auto; }
+.nav__links { display: flex; gap: 1px; margin-left: 20px; margin-right: auto; }
 .nav__links a {
+  position: relative;
   text-decoration: none;
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 500;
   color: var(--fg-3);
-  padding: 6px 10px;
-  border-radius: 6px;
+  padding: 6px 11px;
+  border-radius: 8px;
   transition: color var(--t), background var(--t);
 }
-.nav__links a:hover { color: var(--fg); background: var(--subtle); }
+.nav__links a::after {
+  content: "";
+  position: absolute;
+  bottom: 3px; left: 50%; transform: translateX(-50%);
+  width: 0; height: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.2s var(--ease);
+}
+.nav__links a:hover { color: var(--fg); }
+.nav__links a:hover::after { width: 60%; }
 
-.star { font-size: 13px; padding: 7px 14px; flex-shrink: 0; }
-.star span[aria-hidden="true"] { color: var(--accent); }
+/* GitHub star button — pill with glow */
+.star {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border-md);
+  background: linear-gradient(135deg, #fff 0%, var(--accent-bg) 100%);
+  color: var(--fg);
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: box-shadow var(--t), border-color var(--t), transform 0.1s;
+}
+.star:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg), 0 4px 16px rgba(232,98,59,0.18);
+  transform: translateY(-1px);
+}
+.star span[aria-hidden="true"] { color: var(--accent); font-size: 14px; }
 .star__count { font-family: var(--mono); font-weight: 700; }
 
 /* ================================================

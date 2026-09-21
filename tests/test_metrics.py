@@ -11,9 +11,9 @@ def data():
     q = np.array([1.0, 0.0, 0.0], dtype=np.float32)
     mat = np.array(
         [
-            [1.0, 0.0, 0.0],   # identical
-            [0.0, 1.0, 0.0],   # orthogonal
-            [2.0, 0.0, 0.0],   # same direction, larger magnitude
+            [1.0, 0.0, 0.0],  # identical
+            [0.0, 1.0, 0.0],  # orthogonal
+            [2.0, 0.0, 0.0],  # same direction, larger magnitude
         ],
         dtype=np.float32,
     )
@@ -75,3 +75,37 @@ def test_rescore_can_return_normalized_scores(data):
     order, scores = rescore(q, mat, "dot", normalize=True)
     assert list(order)[0] == 2
     assert scores == pytest.approx([0.5, 0.0, 1.0])
+
+
+def test_rescore_cosine_metric(data):
+    q, mat = data
+
+    order, scores = rescore(q, mat, "cosine")
+
+    assert scores == pytest.approx([1.0, 0.0, 1.0], abs=1e-5)
+    assert set(order[:2]) == {0, 2}
+    assert order[2] == 1
+
+
+@pytest.mark.parametrize("metric", ["euclidean", "manhattan"])
+def test_rescore_distance_metrics(data, metric):
+    q, mat = data
+
+    order, scores = rescore(q, mat, metric)
+
+    assert order[0] == 0
+    assert scores[0] == pytest.approx(1.0)
+
+
+def test_rescore_composite_weights(data):
+    q, mat = data
+
+    order, scores = rescore(
+        q,
+        mat,
+        {"cosine": 0.5, "manhattan": 0.5},
+    )
+
+    assert len(scores) == 3
+    assert order[0] == 0
+    assert scores == pytest.approx([1.0, 0.0, 0.625], abs=1e-5)

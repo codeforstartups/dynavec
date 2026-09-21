@@ -8,12 +8,15 @@ lives in DynamoDB.
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Iterator
 from typing import Any
 
 import numpy as np
 
 from ..config import DynavecConfig
+from ..logging import log_store_event
 from ..utils import retry
 
 Metadata = dict[str, Any]
@@ -34,6 +37,8 @@ def _f32(vector: list[float]) -> list[float]:
 
 
 class S3VectorsStore:
+    _logger = logging.getLogger("dynavec.stores.s3vectors")
+
     def __init__(self, config: DynavecConfig, boto_session=None) -> None:
         import boto3  # local import: base import stays cheap
 
@@ -44,6 +49,13 @@ class S3VectorsStore:
         if botocore_config is not None:
             client_kwargs["config"] = botocore_config
         self._client = session.client("s3vectors", **client_kwargs)  # type: ignore[arg-type]
+        self._logger = logging.getLogger("dynavec.stores.s3vectors")
+
+    def get_index(self) -> dict:
+        return self._client.get_index(
+            vectorBucketName=self._config.vector_bucket,
+            indexName=self._config.index,
+        )
 
     @retry()
     def _put_batch(self, payload: list[dict]) -> None:
@@ -58,6 +70,7 @@ class S3VectorsStore:
         vectors: list[tuple[str, list[float], Metadata]],
     ) -> None:
         """Insert/overwrite (key, vector, filterable_metadata) triples."""
+        t0 = time.perf_counter()
         for start in range(0, len(vectors), _PUT_LIMIT):
             chunk = vectors[start : start + _PUT_LIMIT]
             payload = [
@@ -65,6 +78,15 @@ class S3VectorsStore:
                 for key, vec, meta in chunk
             ]
             self._put_batch(payload)
+        log_store_event(
+            self._logger,
+            "s3vectors.put_vectors",
+            self._config.structured_logging,
+            bucket=self._config.vector_bucket,
+            index=self._config.index,
+            count=len(vectors),
+            duration_ms=round((time.perf_counter() - t0) * 1000, 2),
+        )
 
     def _query_kwargs(
         self, query_vector, top_k, filter, return_metadata, return_distance
@@ -91,7 +113,19 @@ class S3VectorsStore:
         return_distance: bool = True,
     ) -> list[dict[str, Any]]:
         """Run an ANN query. Drains paginated results up to ``top_k``."""
+        t0 = time.perf_counter()
         if top_k <= 0:
+            log_store_event(
+                self._logger,
+                "s3vectors.query",
+                self._config.structured_logging,
+                bucket=self._config.vector_bucket,
+                index=self._config.index,
+                top_k=top_k,
+                filtered=filter is not None,
+                returned_count=0,
+                duration_ms=0.0,
+            )
             return []
         if top_k > _MAX_TOP_K:
             raise ValueError(
@@ -108,7 +142,19 @@ class S3VectorsStore:
             results.extend(page)
             if len(results) >= top_k:
                 break
-        return results[:top_k]
+        res = results[:top_k]
+        log_store_event(
+            self._logger,
+            "s3vectors.query",
+            self._config.structured_logging,
+            bucket=self._config.vector_bucket,
+            index=self._config.index,
+            top_k=top_k,
+            filtered=filter is not None,
+            returned_count=len(res),
+            duration_ms=round((time.perf_counter() - t0) * 1000, 2),
+        )
+        return res
 
     def query_pages(
         self,
@@ -248,7 +294,17 @@ class S3VectorsStore:
         return out
 
     def delete_vectors(self, keys: list[str]) -> None:
+        t0 = time.perf_counter()
         if not keys:
+            log_store_event(
+                self._logger,
+                "s3vectors.delete_vectors",
+                self._config.structured_logging,
+                bucket=self._config.vector_bucket,
+                index=self._config.index,
+                count=0,
+                duration_ms=0.0,
+            )
             return
         for start in range(0, len(keys), _PUT_LIMIT):
             chunk = keys[start : start + _PUT_LIMIT]
@@ -257,3 +313,12 @@ class S3VectorsStore:
                 indexName=self._config.index,
                 keys=chunk,
             )
+        log_store_event(
+            self._logger,
+            "s3vectors.delete_vectors",
+            self._config.structured_logging,
+            bucket=self._config.vector_bucket,
+            index=self._config.index,
+            count=len(keys),
+            duration_ms=round((time.perf_counter() - t0) * 1000, 2),
+        )

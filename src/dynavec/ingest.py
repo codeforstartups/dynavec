@@ -22,8 +22,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import requests
-
 from .client import Dynavec
 from .exceptions import MissingDependencyError
 from .models import Document
@@ -106,42 +104,222 @@ class PDFSource:
                 },
             )
 
+
+class DocxSource:
+    """Yield one Record containing readable paragraph text from a Word document (.docx)."""
+
+    def __init__(self, path: str | Path) -> None:
+        try:
+            import docx
+        except ImportError as exc:
+            raise MissingDependencyError(
+                "DocxSource",
+                "python-docx",
+                "ingest",
+            ) from exc
+
+        self._path = Path(path)
+        self._document_cls = docx.Document
+
+    def __iter__(self) -> Iterator[Record]:
+        doc = self._document_cls(self._path)
+        paragraphs = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
+        if not paragraphs:
+            return
+
+        text = "\n\n".join(paragraphs)
+        path_str = self._path.as_posix()
+        yield Record(
+            id=path_str,
+            text=text,
+            metadata={
+                "source": "docx",
+                "path": path_str,
+            },
+        )
+
+
+class PptxSource:
+    """Yield one Record per slide in a PowerPoint presentation (.pptx)."""
+
+    def __init__(self, path: str | Path) -> None:
+        try:
+            from pptx import Presentation
+        except ImportError as exc:
+            raise MissingDependencyError(
+                "PptxSource",
+                "python-pptx",
+                "ingest",
+            ) from exc
+
+        self._path = Path(path)
+        self._presentation_cls = Presentation
+
+    def __iter__(self) -> Iterator[Record]:
+        prs = self._presentation_cls(self._path)
+        path_str = self._path.as_posix()
+
+        for slide_num, slide in enumerate(prs.slides, start=1):
+            text_runs = []
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text and shape.text.strip():
+                    text_runs.append(shape.text.strip())
+
+            if not text_runs:
+                continue
+
+            slide_text = "\n".join(text_runs)
+            yield Record(
+                id=f"{path_str}#slide{slide_num}",
+                text=slide_text,
+                metadata={
+                    "source": "pptx",
+                    "path": path_str,
+                    "slide": slide_num,
+                },
+            )
+
+
+class XlsxSource:
+    """Yield one Record per data row in each worksheet of an Excel workbook (.xlsx).
+
+    The first row of each sheet is treated as the header; each subsequent
+    row is rendered as ``"column: value"`` pairs (skipping blank cells) so
+    a chunk still stands on its own once split off from the rest.
+    """
+
+    def __init__(self, path: str | Path) -> None:
+        try:
+            import openpyxl
+        except ImportError as exc:
+            raise MissingDependencyError(
+                "XlsxSource",
+                "openpyxl",
+                "ingest",
+            ) from exc
+
+        self._path = Path(path)
+        self._load_workbook = openpyxl.load_workbook
+
+    def __iter__(self) -> Iterator[Record]:
+        wb = self._load_workbook(self._path, data_only=True)
+        path_str = self._path.as_posix()
+
+        for sheet_name in wb.sheetnames:
+            sheet = wb[sheet_name]
+            row_iter = iter(sheet.iter_rows(values_only=True))
+
+            try:
+                header = next(row_iter)
+            except StopIteration:
+                continue
+            header = [str(cell).strip() if cell is not None else "" for cell in header]
+
+            for row_number, row in enumerate(row_iter, start=1):
+                pairs = [
+                    f"{col}: {val}"
+                    for col, val in zip(header, row)
+                    if val is not None and str(val).strip()
+                ]
+                text = ", ".join(pairs)
+
+                if not text:
+                    continue
+
+                yield Record(
+                    id=f"{path_str}#{sheet_name}#row{row_number}",
+                    text=text,
+                    metadata={
+                        "source": "xlsx",
+                        "path": path_str,
+                        "sheet": sheet_name,
+                        "row": row_number,
+                    },
+                )
+
+
+class CsvSource:
+    """Yield one Record per data row in a CSV file (first row = header).
+
+    Each row is rendered as ``"column: value"`` pairs (skipping blank
+    cells), mirroring XlsxSource's row format.
+    """
+
+    def __init__(self, path: str | Path, *, delimiter: str = ",") -> None:
+        self._path = Path(path)
+        self._delimiter = delimiter
+
+    def __iter__(self) -> Iterator[Record]:
+        import csv
+
+        path_str = self._path.as_posix()
+
+        with self._path.open(newline="", encoding="utf-8-sig") as fh:
+            reader = csv.reader(fh, delimiter=self._delimiter)
+
+            try:
+                header = next(reader)
+            except StopIteration:
+                return
+
+            for row_number, row in enumerate(reader, start=1):
+                pairs = [f"{col}: {val}" for col, val in zip(header, row) if val and val.strip()]
+                text = ", ".join(pairs)
+
+                if not text:
+                    continue
+
+                yield Record(
+                    id=f"{path_str}#row{row_number}",
+                    text=text,
+                    metadata={
+                        "source": "csv",
+                        "path": path_str,
+                        "row": row_number,
+                    },
+                )
+
+
 class URLSource:
     """Yield one Record containing readable text extracted from a URL."""
-    def __init__(self, url: str, timeout: float=10)->None:
+
+    def __init__(self, url: str, timeout: float = 10) -> None:
         try:
+            import requests
             from bs4 import BeautifulSoup
         except ImportError as exc:
             raise MissingDependencyError(
                 "URLSource",
-                "beautifulsoup4",
-                "ingest"
+                "requests",
+                "ingest",
             ) from exc
-        self._url= url
-        self._timeout= timeout
-        self._parser_cls= BeautifulSoup
-    
-    def __iter__(self)-> Iterator[Record]:
-        response=requests.get(
+        self._url = url
+        self._timeout = timeout
+        self._requests = requests
+        self._parser_cls = BeautifulSoup
+
+    def __iter__(self) -> Iterator[Record]:
+        response = self._requests.get(
             self._url,
             timeout=self._timeout,
             headers={"User-Agent": "dynavec/1.0"},
         )
         response.raise_for_status()
-        soup=self._parser_cls(response.text,"html.parser")  
-        for tag in soup(["script","style"]):
+        soup = self._parser_cls(response.text, "html.parser")
+        for tag in soup(["script", "style"]):
             tag.decompose()
-        page_text=soup.get_text(separator=" ",strip=True)
+        page_text = soup.get_text(separator=" ", strip=True)
         if not page_text:
             return
         yield Record(
-            id= self._url,
-            text= page_text,
+            id=self._url,
+            text=page_text,
             metadata={
                 "source": "url",
-                "url": self._url
-                },
-            )
+                "url": self._url,
+            },
+        )
+
 
 class MarkdownSource:
     """Read UTF-8 Markdown and text files from a directory.
@@ -172,9 +350,7 @@ class MarkdownSource:
         try:
             import yaml
         except ImportError as exc:
-            raise MissingDependencyError(
-                "Markdown front matter", "PyYAML", "ingest"
-            ) from exc
+            raise MissingDependencyError("Markdown front matter", "PyYAML", "ingest") from exc
 
         try:
             metadata = yaml.safe_load("".join(lines[1:end]))
@@ -243,7 +419,9 @@ class MCPResourceSource:
                 continue
             if self._uri_filter and not self._uri_filter(str(uri)):
                 continue
-            name = getattr(res, "name", None) or (res.get("name") if isinstance(res, dict) else None)
+            name = getattr(res, "name", None) or (
+                res.get("name") if isinstance(res, dict) else None
+            )
             contents = self._session.read_resource(uri)
             text = self._extract_text(contents)
             if not text:
@@ -296,3 +474,18 @@ def ingest(
         )
         total += res.count
     return total
+
+
+__all__ = [
+    "Record",
+    "chunk_text",
+    "ingest",
+    "IterableSource",
+    "PDFSource",
+    "DocxSource",
+    "PptxSource",
+    "XlsxSource",
+    "URLSource",
+    "MarkdownSource",
+    "MCPResourceSource",
+]

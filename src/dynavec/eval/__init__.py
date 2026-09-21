@@ -37,8 +37,11 @@ from .runner import (
     EvalRunner,
     EvalSummary,
 )
+from .trend import EvalRun, EvalRunStore
 
 __all__ = [
+    "EvalRun",
+    "EvalRunStore",
     # LLM Judge & Data Models
     "BaseJudge",
     "OpenAIJudge",

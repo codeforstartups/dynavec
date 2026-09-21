@@ -221,7 +221,69 @@ dynavec mcp
 }
 ```
 
-LlamaIndex, CrewAI, and Strands adapters are on the roadmap; the core client works in any of them today.
+### Strands Agents
+
+Use the framework-agnostic `make_retriever_fn` as a native Strands tool:
+
+```bash
+pip install "dynavec[sentence-transformers]" strands-agents
+```
+
+```python
+from strands import Agent, tool
+
+from dynavec.integrations.tools import make_retriever_fn
+
+retrieve = make_retriever_fn(db, namespace="kb", top_k=2)
+
+@tool
+def search_knowledge_base(query: str) -> str:
+    """Search the dynavec knowledge base for relevant passages."""
+    return retrieve(query)
+
+agent = Agent(tools=[search_knowledge_base])
+agent("Where is dynavec vector data stored?")
+```
+
+See [`examples/strands_retriever.py`](examples/strands_retriever.py) for a complete example that provisions a database and indexes sample documents. LlamaIndex integration remains on the roadmap; the core client works in any agent framework today.
+
+---
+
+## Query expansion: Multi-Query and HyDE
+
+Single-query vector search frequently misses relevant documents when queries are short, colloquial, or use different terminology than the corpus. Dynavec provides two first-class query expansion adapters:
+
+### MultiQueryRetriever
+Expands a user query into diverse reformulations using an LLM, fans out searches concurrently, and merges results via Reciprocal Rank Fusion (RRF):
+
+```python
+from dynavec import MultiQueryRetriever
+
+retriever = MultiQueryRetriever(
+    db.namespace("docs"),
+    generate_queries=lambda q: my_llm.generate_variations(q, n=3),
+    top_k=4,
+)
+hits = retriever.search("car won't start")
+```
+
+### HyDERetriever
+Hypothetical Document Embeddings (HyDE) asks an LLM to generate an answer passage, embeds it as a document (via `embed_documents`), and retrieves nearest neighbours. Supports single-passage or multi-passage Centroid averaging (`strategy="average"`) and multi-search fusion (`strategy="fuse"`):
+
+```python
+from dynavec import HyDERetriever
+
+hyde = HyDERetriever(
+    db.namespace("docs"),
+    generate_hypothetical=lambda q: my_llm.generate_answer(q),
+    top_k=4,
+    strategy="average",
+    include_original=True,
+)
+hits = hyde.search("explain dynamo db storage pricing breakdown")
+```
+
+You can also instantiate retrievers directly via `db.as_multiquery_retriever(...)` or `db.namespace("docs").as_hyde_retriever(...)`.
 
 ---
 
@@ -240,6 +302,18 @@ Every write/read takes a `namespace`. dynavec tags each vector with its namespac
 ## Provisioning & IAM
 
 `auto_provision=True` (or `db.provision()`) creates the S3 vector bucket, the vector index, and the DynamoDB table idempotently. The caller needs `s3vectors:*` on the bucket/index and `dynamodb:*` on the table (scope these down in production — see [ARCHITECTURE.md](ARCHITECTURE.md)). For supported AWS regions and regional configuration, see [REGIONS.md](docs/REGIONS.md).
+
+### Inspecting what's provisioned
+
+`db.describe()` returns an `IndexInfo` dataclass with the live bucket/index/table
+config — dimension, distance metric, non-filterable metadata keys, and the
+DynamoDB table's status and item count. Useful for a quick sanity check after
+`provision()`, or for debugging a dimension-mismatch in production.
+
+```python
+info = db.describe()
+print(info.dimension, info.distance_metric, info.table_status)
+```
 
 ---
 
@@ -376,13 +450,37 @@ result object graph, and inspect `size_bytes` for the current accounted size:
 cache = SemanticCache(max_size=2_048, max_bytes=64 * 1024 * 1024)
 ```
 
+Pre-populate the cache from a list of common queries at startup with `warm_cache()` —
+it runs each query once (through `search`, so results land in the cache) and
+returns the number of queries processed:
+
+```python
+from dynavec import Dynavec, DynavecConfig, SemanticCache, warm_cache
+
+db = Dynavec(DynavecConfig(...), embedder=..., cache=SemanticCache())
+warm_cache(db, ["what is vector search", "how do i upsert documents"], top_k=10)
+```
+
+Pass the same `filter` / `rescore` / `rerank` options you use at runtime so the
+warmed entries share cache keys with real queries.
+
+Remove graph entities and relations with `graph_delete_node()` and
+`graph_delete_edge()`. Both are idempotent and return the number of edges removed.
+Deleting a node also strips every edge pointing at it (a namespace scan) but
+leaves its linked documents and their embeddings untouched:
+
+```python
+db.graph_delete_edge("acme", "competes_with", "globex", namespace="kb", bidirectional=True)
+db.graph_delete_node("globex", namespace="kb")
+```
+
 ## Status
 
-**v0.4.0 (current)** — adds the **in-memory hot tier** (`hot_tier=True` + `warm()`: serve a namespace entirely from RAM for in-memory-engine latency without a paid cluster), a retrieval-quality runner (recall@k / MRR / nDCG), async LangChain retrieval, graph export (Mermaid / Graphviz), an Ollama embedder, and URL/Markdown ingestion — on top of the v0.3 feature set and the v0.1 hybrid core.
+**v0.5.0 (current)** — adds **office-document ingestion** (Docx/Pptx/Xlsx), a **Hugging Face Inference embedder**, a **DSPy retrieval integration**, opt-in **structured JSON logging** (with secret redaction), **ProductQuantizer save/load**, dashboard **dark mode**, and **vectorized MMR** reranking — on top of the v0.4 in-memory hot tier and the v0.1 hybrid core.
 
 See the full history in **[CHANGELOG.md](CHANGELOG.md)**, the browsable **[Release notes](https://codeforstartups.github.io/dynavec/docs/release-notes.html)** page, or the **[GitHub Releases](https://github.com/codeforstartups/dynavec/releases)** tab.
 
-**Roadmap (v0.5):** optional `hnswlib`/`faiss` hot-tier backend for very large hot sets, sparse/BM25 hybrid computed from DynamoDB, and more turnkey file parsers (DOCX/PPTX/XLSX) as ingestion sources.
+**Roadmap (v0.6):** optional `hnswlib`/`faiss` hot-tier backend for very large hot sets, sparse/BM25 hybrid computed from DynamoDB, and OPQ (rotated product quantization).
 
 ## Publishing (maintainers)
 

@@ -41,8 +41,9 @@ NAV = [
         ("credentials", "Credentials & IAM"),
     ]),
     ("Ecosystem", [
-        ("integrations", "Framework integrations"),
-        ("benchmarking", "Benchmarking"),
+    ("integrations", "Framework integrations"),
+    ("dashboard", "Telemetry dashboard"),
+    ("benchmarking", "Benchmarking"),
     ]),
     ("About", [
         ("release-notes", "Release notes"),
@@ -206,6 +207,7 @@ cfg = DynavecConfig(
     over_fetch=4,                 # candidate multiplier when reranking
     top_k_page_size=50,           # optional client-side stream batch size
     max_workers=8,                # thread pool for parallel I/O
+    structured_logging=True,      # opt-in structured JSON logging across stores
     auto_provision=True,
 )
 """) + """
@@ -218,6 +220,8 @@ cfg = DynavecConfig(
 <tr><td><code>over_fetch</code></td><td>How many extra candidates to pull before reranking/rescoring.</td></tr>
 <tr><td><code>top_k_page_size</code></td><td>Client-side stream hydration batch. <code>None</code> (default) uses native S3 Vectors pages (at most 100). Does not change the service page size.</td></tr>
 <tr><td><code>max_workers</code>, <code>parallel_writes</code></td><td>Thread-pool <a href="concurrency.html">concurrency</a> controls.</td></tr>
+<tr><td><code>structured_logging</code></td><td>Opt-in structured JSON logging across DynamoDB and S3 Vectors store operations with automatic secret redaction. Defaults to <code>False</code>.</td></tr>
+<tr><td><code>log_level</code></td><td>Minimum log level (<code>"DEBUG"</code>, <code>"INFO"</code>, etc.). Defaults to <code>"INFO"</code>.</td></tr>
 </table>
 """)
 
@@ -244,7 +248,7 @@ PAGES["faq"] = ("Frequently Asked Questions",
 <p>dynavec uses a two-store hybrid model for metadata:</p>
 <ul>
   <li><strong>Filterable metadata:</strong> Indexed directly in S3 Vectors for fast pre-filtering. Pass only the keys you need to filter on via <code>DynavecConfig(filterable_keys=[...])</code> (e.g. <code>["topic", "tenant_id", "year"]</code>).</li>
-  <li><strong>Document metadata &amp; text:</strong> The complete payload is stored in DynamoDB, subject to DynamoDB's standard <strong>400 KB per item</strong> limit.</li>
+  <li><strong>Document metadata &amp; text:</strong> The complete payload is stored in DynamoDB, subject to DynamoDB's standard <strong>400 KB per item</strong> limit. Oversized documents raise <code>ItemTooLargeError</code> before anything is written (see <a href="upsert.html">Upsert</a>).</li>
 </ul>
 
 <h3>What is the maximum <code>top_k</code> query limit?</h3>
@@ -344,7 +348,25 @@ db.upsert([
 <p>Re-upserting the same <code>id</code> overwrites it. Writes to the two stores run in parallel; see
 <a href="concurrency.html">Concurrency</a>. To change part of a document, use
 <a href="update-and-lambda.html">update</a>.</p>
-""")
+<h2>Document size limit</h2>
+<p>Each document's text and metadata are stored as one DynamoDB item, which DynamoDB caps at 400 KB.
+<code>upsert()</code> and <code>update()</code> check every document's size before writing anything, and
+raise <code>ItemTooLargeError</code> (with <code>doc_id</code>, <code>namespace</code>,
+<code>size_bytes</code>, and <code>limit_bytes</code>) if one is too big. The whole call fails, so S3 Vectors
+and DynamoDB never end up with half a batch.</p>
+""" + code("""from dynavec import ItemTooLargeError
+from dynavec.ingest import chunk_text
+
+try:
+    db.upsert([Document(id="manual", text=long_text)], namespace="kb")
+except ItemTooLargeError as err:
+    print(err.doc_id, err.size_bytes, err.limit_bytes)
+    db.upsert(
+        [Document(id=f"manual#chunk{i}", text=chunk)
+         for i, chunk in enumerate(chunk_text(long_text, chunk_size=2000))],
+        namespace="kb",
+    )
+"""))
 
 PAGES["update-and-lambda"] = ("Update &amp; Lambda transforms",
     "Change text, vector, or metadata — and transform data in-account.",
@@ -555,6 +577,19 @@ hits = db.graph_search(
 """) + """
 <p>Traversal helpers: <code>graph_add_node</code>, <code>graph_add_edge</code>, <code>graph_link</code>,
 <code>graph_neighbors</code>.</p>
+<h2>Removing nodes and edges</h2>
+<p>Both deletes are idempotent — removing something that is already gone returns <code>0</code> — and both
+return the number of edges removed.</p>
+""" + code("""# drop one relation (pass bidirectional=True to remove the reverse edge too)
+db.graph_delete_edge("acme", "competes_with", "globex", namespace="kb")
+
+# drop an entity, its outbound edges, and every edge pointing at it
+db.graph_delete_node("globex", namespace="kb")
+""") + """
+<p><code>graph_delete_node</code> leaves linked documents and their embeddings in place; delete those with
+<code>db.delete(...)</code> if you want them gone. Nothing indexes inbound edges, so finding them scans the
+namespace (<code>dynamodb:Scan</code>) — fine for occasional cleanup, not for a hot path. Edge removal is a
+conditional write that retries if another writer changes the adjacency list concurrently.</p>
 <div class="callout">The graph uses embedded adjacency lists (one item per node). Very high fan-out entities
 want a sort-key adjacency design — on the roadmap.</div>
 """)
@@ -617,6 +652,10 @@ pq = ProductQuantizer(m=96, nbits=8).fit(training_vectors)   # 768-d -> 96 bytes
 codes = pq.encode(vectors)          # uint8 codes
 dists = pq.asymmetric_distances(query, codes)   # ADC, fast at scale
 print(pq.reconstruction_error(vectors))
+
+# Persist and reload codebooks across restarts
+pq.save("pq_model.npz")
+loaded_pq = ProductQuantizer.load("pq_model.npz")
 """) + """
 <table class="doc__params">
 <tr><th>Param</th><th>Meaning</th></tr>
@@ -779,6 +818,28 @@ uv pip install --upgrade dynavec""") + """
 and every version is a
 <a href="https://github.com/codeforstartups/dynavec/releases">GitHub Release</a>.</p>
 
+<h2 id="v0-5-0">0.5.0 <span class="doc__sub" style="font-weight:400">&mdash; 2026-09-16</span></h2>
+<p>More ingestion formats, more integrations, and observability.</p>
+<h3>Added</h3>
+<ul>
+  <li><strong>Office document ingestion</strong> &mdash; <code>DocxSource</code>, <code>PptxSource</code>,
+      and <code>XlsxSource</code> for Word, PowerPoint, and Excel files.</li>
+  <li><strong>Hugging Face Inference embedder</strong> &mdash; <code>HFInferenceEmbedder</code>
+      backed by the HF Serverless Inference API.</li>
+  <li><strong>DSPy retrieval integration</strong> &mdash; <code>DynavecRM(dspy.Retrieve)</code> to
+      back a DSPy pipeline with a dynavec client.</li>
+  <li><strong>Structured logging</strong> &mdash; opt-in JSON store-event logs with secret
+      redaction (<code>structured_logging=True</code>).</li>
+  <li><strong>ProductQuantizer persistence</strong> &mdash; <code>save()</code> / <code>load()</code>
+      via safe <code>np.savez</code> (no pickle).</li>
+  <li><strong>Dashboard dark mode</strong> with theme parity to the landing page.</li>
+</ul>
+<h3>Performance</h3>
+<ul>
+  <li><strong>Vectorized MMR</strong> reranking &mdash; O(k·N) instead of O(k·N·k) on large
+      candidate sets.</li>
+</ul>
+
 <h2 id="v0-4-0">0.4.0 <span class="doc__sub" style="font-weight:400">&mdash; 2026-09-12</span></h2>
 <p>Headlined by the in-memory hot tier for in-memory-engine latency without a paid cluster.</p>
 <h3>Added</h3>
@@ -834,6 +895,42 @@ caching backends, framework adapters, and one-shot provisioning.</p>
 """)
 
 
+PAGES["dashboard"] = ("Telemetry dashboard",
+    "A native, in-your-brand observability dashboard — a Langfuse-style view of real query telemetry.",
+    """
+<p>Attach a recorder to your client and every search is captured with latency, cache outcome,
+result count, and score stats. No simulated data.</p>
+<div class="callout">Live interactive preview: <a href="https://codeforstartups.github.io/dynavec/dashboard/" target="_blank" rel="noopener">codeforstartups.github.io/dynavec/dashboard</a> (landing-page theme).</div>
+<h2>1. Expose real telemetry</h2>
+<p>Attach a recorder to your client and serve the API:</p>
+""" + code("""from dynavec import Dynavec, DynavecConfig, SemanticCache
+from dynavec.telemetry import TelemetryRecorder
+from dynavec.dashboard import serve
+
+rec = TelemetryRecorder()
+db = Dynavec(cfg, embedder=emb, cache=SemanticCache(), telemetry=rec)
+# ... your app runs searches; the recorder fills automatically ...
+serve(rec, port=8779)          # JSON API at http://127.0.0.1:8779""") + """
+<h2>2. Run the dashboard</h2>
+<p>Points at that API; falls back to sample data if unset:</p>
+""" + code("""cd dashboard
+npm install
+NEXT_PUBLIC_DYNAVEC_API=http://127.0.0.1:8779 npm run dev   # http://localhost:3000""") + """
+<p>No AWS? <code>python examples/dashboard_demo.py</code> runs real searches against in-memory
+stand-ins and serves the API on <code>:8779</code> for the dashboard to read.</p>
+<h2>Tracing view</h2>
+<p>Shows a query-volume histogram, latency percentiles (p50/p95/p99), cache hit-rate, and a
+filterable traces table with per-trace drill-down:</p>
+<table class="doc__params">
+<tr><th>Panel</th><th>Shows</th></tr>
+<tr><td>KPI cards</td><td>Queries/min, p95 latency, cache hit rate, average results, error rate</td></tr>
+<tr><td>Query volume</td><td>Histogram of trace counts per time bucket</td></tr>
+<tr><td>Latency percentiles</td><td>p50 / p95 / p99 latency in ms</td></tr>
+<tr><td>Traces table</td><td>Every recorded <code>search</code>, <code>graph_search</code>, and <code>upsert</code> call — namespace, latency, results, cache hit/miss, rank strategy — filterable by op, status, and namespace</td></tr>
+</table>
+<img src="../images/dashboard_tracing.png" alt="Tracing view" class="doc__img" />
+<p>Click any row to open a detail drawer with per-call similarity scores, filter state, and error details.</p>
+""")
 def render(slug: str) -> str:
     title, sub, body = PAGES[slug]
     # sidebar

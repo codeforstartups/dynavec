@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install (with dev extras)
-        run: uv pip install -e ".[dev,ingest,langchain]"
+        run: uv pip install -e ".[dev,ingest,langchain,dspy,llamaindex]"
       - name: Lint
         run: uv run --no-sync ruff check src benchmarks
       - name: Test

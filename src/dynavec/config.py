@@ -74,6 +74,7 @@ class DynavecConfig:
     # retrieval tuning
     over_fetch: int = 4
     top_k_page_size: int | None = None
+    cross_encoder_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     # concurrency (I/O-bound: threads give real parallelism as boto3 releases
     # the GIL during network calls). See client._executor.
@@ -87,10 +88,15 @@ class DynavecConfig:
     hot_tier: bool = False
     hot_tier_max_vectors: int = 200_000  # global RAM safety cap across namespaces
     hot_tier_n_probe: int = 8            # partitions probed per query (recall vs latency)
+    hot_tier_eviction: Literal["lru", "fifo", "none"] = "lru"
 
     # provisioning
     auto_provision: bool = False
     dynamodb_billing_mode: Literal["PAY_PER_REQUEST", "PROVISIONED"] = "PAY_PER_REQUEST"
+
+    # observability
+    structured_logging: bool = False
+    log_level: str = "INFO"
 
     def botocore_config(self):  # type: ignore[no-untyped-def]
         """Return a botocore Config with pool tuning, or None for defaults.
@@ -119,3 +125,8 @@ class DynavecConfig:
             raise ValueError("hot_tier_max_vectors must be a positive integer")
         if self.hot_tier_n_probe < 1:
             raise ValueError("hot_tier_n_probe must be >= 1")
+        if self.hot_tier_eviction not in ("lru", "fifo", "none"):
+            raise ValueError("hot_tier_eviction must be 'lru', 'fifo', or 'none'")
+        valid_log_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        if self.log_level.upper() not in valid_log_levels:
+            raise ValueError(f"log_level must be one of {valid_log_levels}")

@@ -10,10 +10,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .base import Embedder, Vector
+from .cache import EmbeddingCache, InMemoryCache
+from .cached import CachedEmbedder
 
 if TYPE_CHECKING:  # for type checkers / IDEs only
     from .bedrock import BedrockEmbedder, BedrockTitanMultimodalEmbedder
     from .gemini import GeminiEmbedder
+    from .huggingface import HFInferenceEmbedder
     from .mistral import MistralEmbedder
     from .ollama import OllamaEmbedder
     from .openai import OpenAIEmbedder
@@ -31,6 +34,10 @@ __all__ = [
     "VoyageEmbedder",
     "MistralEmbedder",
     "OllamaEmbedder",
+    "HFInferenceEmbedder",
+    "EmbeddingCache",
+    "InMemoryCache",
+    "CachedEmbedder",
 ]
 
 _LAZY = {
@@ -48,6 +55,7 @@ _LAZY = {
     "VoyageEmbedder": ("dynavec.embeddings.voyage", "VoyageEmbedder"),
     "MistralEmbedder": ("dynavec.embeddings.mistral", "MistralEmbedder"),
     "OllamaEmbedder": ("dynavec.embeddings.ollama", "OllamaEmbedder"),
+    "HFInferenceEmbedder": ("dynavec.embeddings.huggingface", "HFInferenceEmbedder"),
 }
 
 

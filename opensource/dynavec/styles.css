@@ -2,6 +2,69 @@
    dynavec · modern minimal
    ================================================ */
 
+/* ---- Full-page node network canvas ---- */
+#bg-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  width: 100%;
+  height: 100%;
+  opacity: 0.85;
+}
+
+/* ---- Ambient background blobs ---- */
+.bg-blobs {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.bg-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.38;
+  animation: blob-drift 18s ease-in-out infinite alternate;
+}
+.bg-blob--1 {
+  width: 600px; height: 600px;
+  top: -120px; left: -160px;
+  background: radial-gradient(circle, #f9c4b0 0%, #f5a88a 60%, transparent 100%);
+  animation-duration: 20s;
+}
+.bg-blob--2 {
+  width: 520px; height: 520px;
+  top: 30%; right: -140px;
+  background: radial-gradient(circle, #fde8c8 0%, #f5c97a 60%, transparent 100%);
+  animation-duration: 25s;
+  animation-delay: -8s;
+}
+.bg-blob--3 {
+  width: 480px; height: 480px;
+  bottom: 20%; left: 20%;
+  background: radial-gradient(circle, #c9e8f5 0%, #90cde8 60%, transparent 100%);
+  animation-duration: 22s;
+  animation-delay: -4s;
+}
+.bg-blob--4 {
+  width: 400px; height: 400px;
+  bottom: -80px; right: 10%;
+  background: radial-gradient(circle, #e0d4f7 0%, #c3aef0 60%, transparent 100%);
+  animation-duration: 28s;
+  animation-delay: -12s;
+}
+@keyframes blob-drift {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(40px, -30px) scale(1.05); }
+  66%  { transform: translate(-20px, 40px) scale(0.97); }
+  100% { transform: translate(30px, 20px) scale(1.03); }
+}
+
+/* Ensure all content sits above blobs */
+.nav, main, footer { position: relative; z-index: 1; }
+
 :root {
   --bg:        #ffffff;
   --surface:   #fafafa;
@@ -167,6 +230,7 @@ body {
   align-items: center;
 }
 .hero__col { min-width: 0; }
+.hero__media { min-width: 0; }
 
 .eyebrow {
   display: inline-flex;
@@ -665,6 +729,49 @@ body {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* YouTube facade — canvas bg + thumbnail + play button, iframe loads on click */
+.yt-facade {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  cursor: pointer;
+  border: 1.5px solid var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-bg), var(--sh-lg);
+  transition: box-shadow var(--t);
+  animation: fadeUp 0.9s var(--ease) 0.2s both;
+  background: #000;
+}
+.yt-facade:hover { box-shadow: 0 0 0 6px var(--accent-bg), 0 20px 60px rgba(232,98,59,.2); }
+.yt-facade__thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 0.2s;
+}
+.yt-facade:hover .yt-facade__thumb { opacity: 0.9; }
+.yt-facade__play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.yt-facade:hover .yt-facade__play { transform: scale(1.1); }
+.yt-facade iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
 }
 
 .canvas-label {

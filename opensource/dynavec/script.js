@@ -90,6 +90,68 @@
   });
 
   /* ================================================================
+     FULL-PAGE BACKGROUND NODE NETWORK
+     ================================================================ */
+  (function () {
+    var canvas = document.getElementById("bg-canvas");
+    if (!canvas) return;
+    var ctx = canvas.getContext("2d");
+    var W, H, nodes;
+    var NODE_COUNT = 55;
+    var MAX_DIST = 180;
+
+    function resize() {
+      var dpr = window.devicePixelRatio || 1;
+      W = window.innerWidth;
+      H = window.innerHeight;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + "px";
+      canvas.style.height = H + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function makeNodes() {
+      nodes = [];
+      for (var i = 0; i < NODE_COUNT; i++) {
+        nodes.push({
+          x: Math.random() * W,
+          y: Math.random() * H,
+          vx: (Math.random() - 0.5) * 0.5,
+          vy: (Math.random() - 0.5) * 0.5,
+          r: 2 + Math.random() * 2.5,
+        });
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      for (var i = 0; i < nodes.length; i++) {
+        var a = nodes[i];
+        a.x += a.vx; a.y += a.vy;
+        if (a.x < 0 || a.x > W) a.vx *= -1;
+        if (a.y < 0 || a.y > H) a.vy *= -1;
+        for (var j = i + 1; j < nodes.length; j++) {
+          var b = nodes[j];
+          var dx = a.x - b.x, dy = a.y - b.y;
+          var dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < MAX_DIST) {
+            ctx.strokeStyle = "rgba(180,60,20," + (0.45 * (1 - dist / MAX_DIST)) + ")";
+            ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+          }
+        }
+        ctx.fillStyle = "rgba(200,70,30,0.85)";
+        ctx.beginPath(); ctx.arc(a.x, a.y, a.r, 0, Math.PI * 2); ctx.fill();
+      }
+      requestAnimationFrame(draw);
+    }
+
+    resize(); makeNodes(); draw();
+    window.addEventListener("resize", function () { resize(); makeNodes(); });
+  })();
+
+  /* ================================================================
      3D VECTOR SPACE CANVAS
      ================================================================ */
   function initCanvas() {
@@ -312,6 +374,28 @@
   }
 
   initInstallTyper();
+
+  /* YouTube facade — load iframe on click */
+  (function () {
+    var facade = document.getElementById("yt-facade");
+    if (!facade) return;
+    function activate() {
+      var iframe = document.createElement("iframe");
+      iframe.src = "https://www.youtube.com/embed/UJ9MBALD380?autoplay=1&rel=0";
+      iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+      iframe.allowFullscreen = true;
+      var thumb = facade.querySelector(".yt-facade__thumb");
+      var playBtn = facade.querySelector(".yt-facade__play");
+      if (thumb) thumb.style.display = "none";
+      if (playBtn) playBtn.style.display = "none";
+      facade.appendChild(iframe);
+      facade.removeEventListener("click", activate);
+      facade.removeEventListener("keydown", onKey);
+    }
+    function onKey(e) { if (e.key === "Enter" || e.key === " ") activate(); }
+    facade.addEventListener("click", activate);
+    facade.addEventListener("keydown", onKey);
+  })();
 
   initCanvas();
 

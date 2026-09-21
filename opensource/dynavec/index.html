@@ -11,6 +11,15 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- Ambient background: node network + blobs -->
+  <canvas id="bg-canvas" aria-hidden="true"></canvas>
+  <div class="bg-blobs" aria-hidden="true">
+    <div class="bg-blob bg-blob--1"></div>
+    <div class="bg-blob bg-blob--2"></div>
+    <div class="bg-blob bg-blob--3"></div>
+    <div class="bg-blob bg-blob--4"></div>
+  </div>
+
   <a class="skip" href="#main">Skip to content</a>
 
   <!-- ============ NAV ============ -->
@@ -70,18 +79,16 @@
 
         <div class="hero__cta">
           <a class="btn btn--solid" href="docs/index.html">Read the docs</a>
-          <a class="btn btn--ghost" href="https://www.youtube.com/watch?v=UJ9MBALD380" target="_blank" rel="noopener">&#9654; Watch on YouTube</a>
           <a class="btn btn--ghost" href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">View on GitHub</a>
         </div>
         </div><!-- /hero__col -->
 
         <div class="hero__media">
-          <div class="hero__canvas-wrap" aria-hidden="true">
-            <canvas id="hero-canvas"></canvas>
-            <div class="canvas-label">
-              <span class="canvas-label__dot"></span>
-              Vector Space &middot; Live
-            </div>
+          <div class="yt-facade" id="yt-facade" role="button" tabindex="0" aria-label="Play dynavec demo video">
+            <img class="yt-facade__thumb" src="https://img.youtube.com/vi/UJ9MBALD380/maxresdefault.jpg" alt="dynavec demo video thumbnail" loading="lazy" />
+            <button class="yt-facade__play" aria-hidden="true">
+              <svg viewBox="0 0 68 48" width="68" height="48"><path d="M66.5 7.7a8.5 8.5 0 0 0-6-6C56 0 34 0 34 0S12 0 7.5 1.7a8.5 8.5 0 0 0-6 6C0 12.1 0 24 0 24s0 11.9 1.5 16.3a8.5 8.5 0 0 0 6 6C12 48 34 48 34 48s22 0 26.5-1.7a8.5 8.5 0 0 0 6-6C68 35.9 68 24 68 24s0-11.9-1.5-16.3z" fill="#ff0000"/><path d="M27 34l18-10-18-10v20z" fill="#fff"/></svg>
+            </button>
           </div>
         </div>
         </div><!-- /hero__grid -->

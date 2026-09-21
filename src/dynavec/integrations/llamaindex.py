@@ -24,13 +24,70 @@ try:
     from llama_index.core.schema import BaseNode, TextNode
     from llama_index.core.vector_stores.types import (
         BasePydanticVectorStore,
+        FilterCondition,
+        FilterOperator,
+        MetadataFilter,
+        MetadataFilters,
         VectorStoreQuery,
         VectorStoreQueryResult,
     )
 except ImportError as exc:  # pragma: no cover - import guard
-    raise MissingDependencyError(
-        "DynavecLlamaStore", "llama-index-core", "all"
-    ) from exc
+    raise MissingDependencyError("DynavecLlamaStore", "llama-index-core", "all") from exc
+
+
+_LLAMA_OPERATOR_MAP = {
+    FilterOperator.EQ: "$eq",
+    FilterOperator.NE: "$ne",
+    FilterOperator.GT: "$gt",
+    FilterOperator.GTE: "$gte",
+    FilterOperator.LT: "$lt",
+    FilterOperator.LTE: "$lte",
+    FilterOperator.IN: "$in",
+    FilterOperator.NIN: "$nin",
+}
+
+
+def _translate_filter(metadata_filter: MetadataFilter) -> dict[str, Any]:
+    operator = _LLAMA_OPERATOR_MAP.get(metadata_filter.operator)
+    if operator is None:
+        raise ValueError(
+            "Unsupported LlamaIndex metadata filter operator for S3 Vectors: "
+            f"{metadata_filter.operator.value}"
+        )
+
+    return {
+        metadata_filter.key: {
+            operator: metadata_filter.value,
+        }
+    }
+
+
+def _translate_filters(metadata_filters: MetadataFilters) -> dict[str, Any]:
+    translated = []
+
+    for filter_ in metadata_filters.filters:
+        if isinstance(filter_, MetadataFilters):
+            nested = _translate_filters(filter_)
+            if nested:
+                translated.append(nested)
+        else:
+            translated.append(_translate_filter(filter_))
+
+    if not translated:
+        return {}
+
+    condition = metadata_filters.condition or FilterCondition.AND
+
+    if condition == FilterCondition.AND:
+        return {"$and": translated}
+
+    if condition == FilterCondition.OR:
+        return {"$or": translated}
+
+    raise ValueError(
+        "Unsupported LlamaIndex metadata filter condition for S3 Vectors: "
+        f"{condition.value}"
+    )
 
 
 class DynavecLlamaStore(BasePydanticVectorStore):
@@ -73,7 +130,7 @@ class DynavecLlamaStore(BasePydanticVectorStore):
     def query(self, query: VectorStoreQuery, **kwargs: Any) -> VectorStoreQueryResult:
         flt = None
         if query.filters is not None:
-            flt = {f.key: f.value for f in query.filters.filters}
+            flt = _translate_filters(query.filters)
 
         results = self._client.search(
             vector=query.query_embedding,

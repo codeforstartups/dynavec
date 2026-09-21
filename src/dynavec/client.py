@@ -52,7 +52,14 @@ from .metadata import build_s3_filter, generate_auto_metadata, split_metadata
 from .metrics import normalize_scores as normalize_metric_scores
 from .metrics import rescore as metric_rescore
 from .metrics import score as metric_score
-from .models import Document, IndexInfo, SearchResult, UpsertResult
+from .models import (
+    Document,
+    ExplainedSearchResult,
+    IndexInfo,
+    SearchExplanation,
+    SearchResult,
+    UpsertResult,
+)
 from .namespace import NamespaceView
 from .provisioning import provision_all
 from .retrieval import distance_to_score, maximal_marginal_relevance, reciprocal_rank_fusion
@@ -344,7 +351,8 @@ class Dynavec:
         include_vectors: bool = False,
         use_cache: bool | None = None,
         normalize_scores: bool = False,
-    ) -> list[SearchResult]:
+        explain: bool = False,
+    ) -> list[SearchResult] | ExplainedSearchResult:
         """Semantic search. Provide ``query`` (embedded) or a raw ``vector``.
 
         ``rescore`` re-orders the ANN candidates with a client-side metric
@@ -355,11 +363,20 @@ class Dynavec:
 
         If a cache is configured, repeated/similar queries are served from it
         (set ``use_cache=False`` to force a fresh search).
+        Set ``explain=True`` to return results together with per-stage timings
+        and candidate counts for debugging.
         """
         t0 = time.perf_counter()
         tel = self._telemetry
+        explanation = SearchExplanation() if explain else None
+
         try:
+            stage_t0 = time.perf_counter()
             query_vector = self._resolve_query_vector(query, vector)
+            if explanation is not None:
+                explanation.timings_ms["query_vector"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
 
             # cache key includes ranking options so different ranking != same entry
             cache_on = self._cache is not None if use_cache is None else use_cache
@@ -374,10 +391,43 @@ class Dynavec:
                         "normalize_scores": normalize_scores,
                     },
                 }
+                stage_t0 = time.perf_counter()
                 cached = self._cache.get(namespace, query_vector, top_k, cache_filter)
+
+                if explanation is not None:
+                    explanation.timings_ms["cache_lookup"] = round(
+                        (time.perf_counter() - stage_t0) * 1000, 3
+                    )
+                    explanation.candidate_counts["cached"] = (
+                        len(cached) if cached is not None else 0
+                    )
+
                 if cached is not None:
-                    self._record_search(tel, t0, namespace, top_k, cached, True,
-                                        filter, rescore, rerank, query)
+                    if explanation is not None:
+                        explanation.candidate_counts["final"] = len(cached)
+                        explanation.timings_ms["total"] = round(
+                            (time.perf_counter() - t0) * 1000, 3
+                        )
+
+                    self._record_search(
+                        tel,
+                        t0,
+                        namespace,
+                        top_k,
+                        cached,
+                        True,
+                        filter,
+                        rescore,
+                        rerank,
+                        query,
+                    )
+
+                    if explanation is not None:
+                        return ExplainedSearchResult(
+                            results=cached,
+                            explanation=explanation,
+                        )
+
                     return cached
 
             results = self._search_core(
@@ -391,13 +441,43 @@ class Dynavec:
                 mmr_lambda=mmr_lambda,
                 include_vectors=include_vectors,
                 normalize_scores=normalize_scores,
+                explanation=explanation,
             )
 
             if cache_on and self._cache is not None and results:
+                stage_t0 = time.perf_counter()
                 self._cache.put(namespace, query_vector, top_k, cache_filter, results)
-            self._record_search(tel, t0, namespace, top_k, results,
-                                (False if cache_on else None),
-                                filter, rescore, rerank, query)
+
+                if explanation is not None:
+                    explanation.timings_ms["cache_write"] = round(
+                        (time.perf_counter() - stage_t0) * 1000, 3
+                    )
+
+            if explanation is not None:
+                explanation.candidate_counts["final"] = len(results)
+                explanation.timings_ms["total"] = round(
+                    (time.perf_counter() - t0) * 1000, 3
+                )
+
+            self._record_search(
+                tel,
+                t0,
+                namespace,
+                top_k,
+                results,
+                (False if cache_on else None),
+                filter,
+                rescore,
+                rerank,
+                query,
+            )
+
+            if explanation is not None:
+                return ExplainedSearchResult(
+                    results=results,
+                    explanation=explanation,
+                )
+
             return results
         except Exception as exc:  # noqa: BLE001 - record then re-raise
             if tel is not None:
@@ -422,6 +502,7 @@ class Dynavec:
         mmr_lambda,
         include_vectors,
         normalize_scores,
+        explanation: SearchExplanation | None = None,
     ) -> list[SearchResult]:
         needs_vectors = rerank == "mmr" or rescore is not None or include_vectors
         fetch_k = top_k * self.config.over_fetch if (rerank or rescore) else top_k
@@ -432,9 +513,18 @@ class Dynavec:
         # transparently fall back to S3 (hot tier can only speed up, never break).
         results: list[SearchResult] | None = None
         if self._hot is not None:
+            stage_t0 = time.perf_counter()
             results = self._hot.search(namespace, query_vector, fetch_k, filter)
 
+            if explanation is not None:
+                explanation.timings_ms["hot_lookup"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
+                if results is not None:
+                    explanation.candidate_counts["retrieved"] = len(results)
+
         if results is None:
+            stage_t0 = time.perf_counter()
             raw = self._vectors.query(
                 query_vector=query_vector,
                 top_k=fetch_k,
@@ -442,18 +532,37 @@ class Dynavec:
                 return_metadata=True,
                 return_distance=True,
             )
+            if explanation is not None:
+                explanation.timings_ms["vector_search"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
+                explanation.candidate_counts["retrieved"] = len(raw)
             if not raw:
                 return []
 
             hits = [(self._split_key(v["key"])[1], v.get("distance")) for v in raw]
             ids = [h[0] for h in hits]
+            stage_t0 = time.perf_counter()
             hydrated = self._docs.get_many(namespace, ids)
+
+            if explanation is not None:
+                explanation.timings_ms["hydration"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
+                explanation.candidate_counts["hydrated"] = len(hydrated)
 
             vec_by_key = {}
             if needs_vectors:
+                stage_t0 = time.perf_counter()
                 vec_by_key = self._vectors.get_vectors(
                     [self._s3_key(namespace, doc_id) for doc_id in ids]
                 )
+
+                if explanation is not None:
+                    explanation.timings_ms["vector_fetch"] = round(
+                        (time.perf_counter() - stage_t0) * 1000, 3
+                    )
+                    explanation.candidate_counts["vectors_fetched"] = len(vec_by_key)
 
             results = []
             for doc_id, distance in hits:
@@ -475,27 +584,56 @@ class Dynavec:
                 )
 
         if rescore is not None:
+            stage_t0 = time.perf_counter()
             results = self._apply_rescore(query_vector, results, rescore)
+
+            if explanation is not None:
+                explanation.timings_ms["rescore"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
+                explanation.candidate_counts["rescored"] = len(results)
         if rerank == "mmr":
+            stage_t0 = time.perf_counter()
             results = maximal_marginal_relevance(
                 results,
                 query_vector,
                 top_k=top_k,
                 lambda_mult=mmr_lambda,
             )
+
+            if explanation is not None:
+                explanation.timings_ms["rerank"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
+                explanation.candidate_counts["reranked"] = len(results)
+
         elif rerank == "cross-encoder":
+            stage_t0 = time.perf_counter()
             results = self._cross_encoder_rerank(
                 query,
                 results,
                 top_k=top_k,
             )
+
+            if explanation is not None:
+                explanation.timings_ms["rerank"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
+                explanation.candidate_counts["reranked"] = len(results)
+
         else:
             results = results[:top_k]
 
         if normalize_scores and results:
+            stage_t0 = time.perf_counter()
             normalized = normalize_metric_scores(np.asarray([r.score for r in results]))
             for result, normalized_score in zip(results, normalized):
                 result.score = float(normalized_score)
+
+            if explanation is not None:
+                explanation.timings_ms["normalize_scores"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
 
         if not include_vectors:
             for r in results:

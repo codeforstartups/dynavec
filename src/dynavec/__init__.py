@@ -50,7 +50,14 @@ from .ingest import (
     XlsxSource,
     ingest,
 )
-from .models import Document, IndexInfo, SearchResult, UpsertResult
+from .models import (
+    Document,
+    ExplainedSearchResult,
+    IndexInfo,
+    SearchExplanation,
+    SearchResult,
+    UpsertResult,
+)
 from .namespace import NamespaceView
 from .quantization import (
     OPQRotation,
@@ -84,6 +91,8 @@ __all__ = [
     "Document",
     "IndexInfo",
     "SearchResult",
+    "SearchExplanation",
+    "ExplainedSearchResult",
     "UpsertResult",
     "NamespaceView",
     "ProductQuantizer",
@@ -133,4 +142,3 @@ __all__ = [
     "ItemTooLargeError",
     "MissingDependencyError",
 ]
-

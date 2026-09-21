@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .models import SearchResult
+from .models import ExplainedSearchResult, SearchResult
 
 if TYPE_CHECKING:
     from .client import Dynavec
@@ -35,7 +35,9 @@ class NamespaceView:
     def update(self, *args, **kw) -> Any:
         return self._db.update(*args, namespace=self._ns, **kw)
 
-    def search(self, query: str | None = None, **kw) -> list[SearchResult]:
+    def search(
+        self, query: str | None = None, **kw
+    ) -> list[SearchResult] | ExplainedSearchResult:
         return self._db.search(query, namespace=self._ns, **kw)
 
     def search_stream(self, query: str | None = None, **kw):

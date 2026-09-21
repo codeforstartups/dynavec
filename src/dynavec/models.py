@@ -52,6 +52,24 @@ class SearchResult:
             "text": self.text,
             "metadata": self.metadata,
         }
+
+
+@dataclass
+class SearchExplanation:
+    """Debug information collected for an explained search."""
+
+    timings_ms: dict[str, float] = field(default_factory=dict)
+    candidate_counts: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
+class ExplainedSearchResult:
+    """Search results together with per-stage debug information."""
+
+    results: list[SearchResult] = field(default_factory=list)
+    explanation: SearchExplanation = field(default_factory=SearchExplanation)
+
+
 @dataclass
 class IndexInfo:
     """Snapshot of the provisioned S3 Vectors index + DynamoDB table."""

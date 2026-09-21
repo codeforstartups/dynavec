@@ -1,6 +1,5 @@
-# implement the constructor + count
-
 """Haystack integration for Dynavec."""
+from __future__ import annotations
 
 from dataclasses import asdict
 from typing import Any
@@ -130,7 +129,7 @@ class DynavecDocumentStore:
 
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "DynavecDocumentStore":
+    def from_dict(cls, data: dict[str, Any]) -> DynavecDocumentStore:
         """Recreate a document store from serialized configuration."""
         parameters = data["init_parameters"]
 

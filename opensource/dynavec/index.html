@@ -70,19 +70,18 @@
 
         <div class="hero__cta">
           <a class="btn btn--solid" href="docs/index.html">Read the docs</a>
-          <a class="btn btn--ghost" href="explainer.html">▶ Watch the 90-sec explainer</a>
+          <a class="btn btn--ghost" href="https://www.youtube.com/watch?v=UJ9MBALD380" target="_blank" rel="noopener">&#9654; Watch on YouTube</a>
           <a class="btn btn--ghost" href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">View on GitHub</a>
         </div>
         </div><!-- /hero__col -->
 
         <div class="hero__media">
-          <div class="video-frame">
-            <iframe
-              src="https://www.youtube-nocookie.com/embed/UJ9MBALD380?rel=0"
-              title="dynavec — watch the intro"
-              loading="lazy"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowfullscreen></iframe>
+          <div class="hero__canvas-wrap" aria-hidden="true">
+            <canvas id="hero-canvas"></canvas>
+            <div class="canvas-label">
+              <span class="canvas-label__dot"></span>
+              Vector Space &middot; Live
+            </div>
           </div>
         </div>
         </div><!-- /hero__grid -->
@@ -202,39 +201,210 @@
         <p class="section__lede">Two AWS primitives, each doing the one job it is best at, joined by a shared key.</p>
 
         <div class="arch">
-          <svg viewBox="0 0 900 300" class="arch__svg" role="img" aria-label="dynavec architecture diagram">
-            <!-- query in -->
-            <text x="10" y="40" class="d-label">query</text>
-            <line x1="60" y1="35" x2="150" y2="35" class="d-line" marker-end="url(#arrow)"/>
-            <!-- embedder -->
-            <rect x="150" y="12" width="150" height="46" class="d-box"/>
-            <text x="225" y="40" class="d-text" text-anchor="middle">Embedder (BYO key)</text>
-            <line x1="300" y1="35" x2="390" y2="35" class="d-line" marker-end="url(#arrow)"/>
-            <!-- s3 vectors -->
-            <rect x="390" y="12" width="200" height="66" class="d-box d-box--em"/>
-            <text x="490" y="38" class="d-text" text-anchor="middle">S3 Vectors</text>
-            <text x="490" y="58" class="d-sub" text-anchor="middle">ANN · nearest keys</text>
-            <!-- keys down to dynamo -->
-            <line x1="490" y1="78" x2="490" y2="150" class="d-line" marker-end="url(#arrow)"/>
-            <text x="500" y="120" class="d-sub">keys + distance</text>
-            <!-- dynamodb -->
-            <rect x="390" y="150" width="200" height="66" class="d-box"/>
-            <text x="490" y="176" class="d-text" text-anchor="middle">DynamoDB</text>
-            <text x="490" y="196" class="d-sub" text-anchor="middle">BatchGetItem · documents</text>
-            <!-- rank out -->
-            <line x1="590" y1="183" x2="690" y2="183" class="d-line" marker-end="url(#arrow)"/>
-            <rect x="690" y="160" width="200" height="46" class="d-box"/>
-            <text x="790" y="188" class="d-text" text-anchor="middle">rerank · results</text>
-            <!-- graph note -->
-            <rect x="150" y="150" width="150" height="66" class="d-box d-box--dash"/>
-            <text x="225" y="176" class="d-text" text-anchor="middle">Graph / ER</text>
-            <text x="225" y="196" class="d-sub" text-anchor="middle">traverse → scope</text>
-            <line x1="300" y1="183" x2="390" y2="183" class="d-line" marker-end="url(#arrow)"/>
+          <svg viewBox="0 0 920 378" class="arch__svg" role="img" aria-label="dynavec architecture: query → Embedder → S3 Vectors ANN → DynamoDB hydration → reranked results">
             <defs>
-              <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
-                <path d="M0,0 L9,4.5 L0,9 z" fill="currentColor"/>
+              <!-- Background gradient -->
+              <linearGradient id="arch-bg" x1="0" y1="0" x2="0.25" y2="1">
+                <stop offset="0%" stop-color="#1c1c1c"/>
+                <stop offset="100%" stop-color="#0d0d0d"/>
+              </linearGradient>
+              <!-- S3 Vectors coral gradient -->
+              <linearGradient id="s3-grad" x1="0" y1="0" x2="0.2" y2="1">
+                <stop offset="0%" stop-color="#f06b40"/>
+                <stop offset="100%" stop-color="#c74d1e"/>
+              </linearGradient>
+              <!-- DynamoDB dark gradient -->
+              <linearGradient id="dyn-grad" x1="0" y1="0" x2="0.15" y2="1">
+                <stop offset="0%" stop-color="#222233"/>
+                <stop offset="100%" stop-color="#14141e"/>
+              </linearGradient>
+              <!-- Glass top-to-bottom highlight -->
+              <linearGradient id="glass-hi" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="rgba(255,255,255,0.13)"/>
+                <stop offset="100%" stop-color="rgba(255,255,255,0.01)"/>
+              </linearGradient>
+              <!-- Dot-grid pattern -->
+              <pattern id="dots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+                <circle cx="12" cy="12" r="0.85" fill="rgba(255,255,255,0.07)"/>
+              </pattern>
+              <!-- Arrow markers -->
+              <marker id="aw" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+                <path d="M0,0.5 L0,6.5 L6,3.5 Z" fill="rgba(255,255,255,0.55)"/>
               </marker>
+              <marker id="ac" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+                <path d="M0,0.5 L0,6.5 L6,3.5 Z" fill="#e8623b"/>
+              </marker>
+              <!-- Shadow filters -->
+              <filter id="fsh-coral" x="-30%" y="-30%" width="160%" height="160%">
+                <feDropShadow dx="0" dy="8" stdDeviation="20" flood-color="rgba(232,98,59,0.42)"/>
+              </filter>
+              <filter id="fsh-card" x="-22%" y="-22%" width="144%" height="144%">
+                <feDropShadow dx="0" dy="5" stdDeviation="12" flood-color="rgba(0,0,0,0.6)"/>
+              </filter>
+              <filter id="fsh-sm" x="-30%" y="-30%" width="160%" height="160%">
+                <feDropShadow dx="0" dy="2" stdDeviation="5" flood-color="rgba(0,0,0,0.45)"/>
+              </filter>
+              <!-- Clip paths for inner glass highlights -->
+              <clipPath id="cp-emb"><rect x="135" y="98" width="158" height="140" rx="13"/></clipPath>
+              <clipPath id="cp-s3"><rect x="348" y="42" width="258" height="200" rx="14"/></clipPath>
+              <clipPath id="cp-dyn"><rect x="348" y="268" width="258" height="92" rx="13"/></clipPath>
+              <clipPath id="cp-res"><rect x="658" y="258" width="252" height="110" rx="13"/></clipPath>
             </defs>
+
+            <!-- ══ BACKGROUND ════════════════════════════════════ -->
+            <rect width="920" height="378" rx="20" fill="url(#arch-bg)"/>
+            <rect width="920" height="378" rx="20" fill="url(#dots)"/>
+            <rect x="1" y="1" width="918" height="376" rx="19" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+
+            <!-- ══ CONNECTOR ARROWS ══════════════════════════════ -->
+            <!-- query → Embedder -->
+            <line class="d-line" x1="106" y1="177" x2="133" y2="177" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" marker-end="url(#aw)"/>
+            <!-- Embedder → S3 Vectors (curved) -->
+            <path class="d-line" d="M 293,158 C 318,158 332,142 348,142" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" marker-end="url(#aw)"/>
+            <!-- S3 → DynamoDB (vertical) -->
+            <line class="d-line" x1="477" y1="242" x2="477" y2="266" stroke="rgba(255,255,255,0.6)" stroke-width="1.5" marker-end="url(#aw)"/>
+            <!-- "keys + distance" pill -->
+            <rect x="491" y="246" width="114" height="16" rx="5" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+            <text x="548" y="258" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(255,255,255,0.5)" text-anchor="middle">keys + distance</text>
+            <!-- Graph/ER → DynamoDB (coral dashed) -->
+            <line x1="210" y1="315" x2="346" y2="315" stroke="#e8623b" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#ac)"/>
+            <!-- "traverse → scope" pill -->
+            <rect x="212" y="292" width="120" height="16" rx="5" fill="rgba(232,98,59,0.1)" stroke="rgba(232,98,59,0.22)" stroke-width="1"/>
+            <text x="272" y="304" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(232,98,59,0.75)" text-anchor="middle">traverse → scope</text>
+            <!-- DynamoDB → Results -->
+            <line class="d-line" x1="606" y1="315" x2="656" y2="315" stroke="rgba(255,255,255,0.45)" stroke-width="1.5" marker-end="url(#aw)"/>
+
+            <!-- ══ NODE: query pill ══════════════════════════════ -->
+            <rect x="14" y="158" width="92" height="38" rx="19" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"/>
+            <!-- magnifier icon -->
+            <circle cx="37" cy="177" r="7.5" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+            <line x1="42" y1="182" x2="48" y2="188" stroke="rgba(255,255,255,0.5)" stroke-width="2.2" stroke-linecap="round"/>
+            <text x="83" y="181" font-family="JetBrains Mono,monospace" font-size="10.5" font-weight="600" fill="rgba(255,255,255,0.65)" text-anchor="middle">query</text>
+
+            <!-- ══ NODE: Embedder ════════════════════════════════ -->
+            <rect x="135" y="98" width="158" height="140" rx="13" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.11)" stroke-width="1.5" filter="url(#fsh-card)"/>
+            <!-- glass highlight -->
+            <rect x="135" y="98" width="158" height="54" rx="13" fill="url(#glass-hi)" clip-path="url(#cp-emb)"/>
+            <!-- neural-net icon (input × 3 → hidden × 2 → output) -->
+            <g transform="translate(214,138)">
+              <circle cx="-22" cy="-10" r="3.2" fill="rgba(255,255,255,0.6)"/>
+              <circle cx="-22" cy="0"   r="3.2" fill="rgba(255,255,255,0.7)"/>
+              <circle cx="-22" cy="10"  r="3.2" fill="rgba(255,255,255,0.5)"/>
+              <line x1="-18.8" y1="-10" x2="-5.5" y2="-5"  stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+              <line x1="-18.8" y1="-10" x2="-5.5" y2="5"   stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+              <line x1="-18.8" y1="0"   x2="-5.5" y2="-5"  stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+              <line x1="-18.8" y1="0"   x2="-5.5" y2="5"   stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+              <line x1="-18.8" y1="10"  x2="-5.5" y2="-5"  stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+              <line x1="-18.8" y1="10"  x2="-5.5" y2="5"   stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+              <circle cx="-2" cy="-5" r="4" fill="#e8623b" opacity="0.75"/>
+              <circle cx="-2" cy="5"  r="4" fill="#e8623b" opacity="0.75"/>
+              <line x1="2" y1="-5" x2="19" y2="0" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+              <line x1="2" y1="5"  x2="19" y2="0" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+              <circle cx="23" cy="0" r="5.5" fill="#e8623b"/>
+            </g>
+            <text x="214" y="168" font-family="Inter,sans-serif" font-size="13" font-weight="700" fill="rgba(255,255,255,0.92)" text-anchor="middle">Embedder</text>
+            <text x="214" y="185" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(255,255,255,0.38)" text-anchor="middle">BYO key</text>
+            <rect x="160" y="197" width="108" height="20" rx="6" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.09)" stroke-width="1"/>
+            <text x="214" y="211" font-family="JetBrains Mono,monospace" font-size="8.5" fill="rgba(255,255,255,0.32)" text-anchor="middle">OpenAI · Cohere · BYO</text>
+            <!-- step badge -->
+            <circle cx="135" cy="98" r="12" fill="#e8623b" filter="url(#fsh-sm)"/>
+            <text x="135" y="102" font-family="Inter,sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">1</text>
+
+            <!-- ══ NODE: S3 Vectors (hero) ═══════════════════════ -->
+            <rect x="348" y="42" width="258" height="200" rx="14" fill="url(#s3-grad)" filter="url(#fsh-coral)"/>
+            <!-- glass highlight top band -->
+            <rect x="348" y="42" width="258" height="80" rx="14" fill="rgba(255,255,255,0.11)" clip-path="url(#cp-s3)"/>
+            <!-- inner ring -->
+            <rect x="350" y="44" width="254" height="196" rx="12" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+            <!-- storage cylinder icon -->
+            <g transform="translate(477,107)">
+              <!-- cylinder body -->
+              <rect x="-22" y="0" width="44" height="20" fill="rgba(255,255,255,0.13)"/>
+              <!-- top ellipse (brightest) -->
+              <ellipse cy="0" rx="22" ry="7" fill="rgba(255,255,255,0.38)"/>
+              <!-- side edges -->
+              <line x1="-22" y1="0" x2="-22" y2="20" stroke="rgba(255,255,255,0.22)" stroke-width="1.2"/>
+              <line x1="22"  y1="0" x2="22"  y2="20" stroke="rgba(255,255,255,0.22)" stroke-width="1.2"/>
+              <!-- bottom ellipse -->
+              <ellipse cy="20" rx="22" ry="7" fill="rgba(255,255,255,0.18)"/>
+              <!-- floating vector dots above cylinder -->
+              <circle cx="-14" cy="-20" r="3"   fill="rgba(255,255,255,0.92)"/>
+              <circle cx="0"   cy="-25" r="2.5" fill="rgba(255,255,255,0.78)"/>
+              <circle cx="14"  cy="-19" r="3"   fill="rgba(255,255,255,0.88)"/>
+              <circle cx="-23" cy="-13" r="2"   fill="rgba(255,255,255,0.55)"/>
+              <circle cx="23"  cy="-14" r="2"   fill="rgba(255,255,255,0.55)"/>
+              <!-- dashed lines from dots to cylinder top -->
+              <line x1="-14" y1="-17" x2="-11" y2="-7" stroke="rgba(255,255,255,0.28)" stroke-width="1" stroke-dasharray="2 2"/>
+              <line x1="0"   y1="-22.5" x2="0" y2="-7" stroke="rgba(255,255,255,0.28)" stroke-width="1" stroke-dasharray="2 2"/>
+              <line x1="14"  y1="-16" x2="11"  y2="-7" stroke="rgba(255,255,255,0.28)" stroke-width="1" stroke-dasharray="2 2"/>
+            </g>
+            <text x="477" y="150" font-family="Inter,sans-serif" font-size="16" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="-0.4">S3 Vectors</text>
+            <text x="477" y="170" font-family="JetBrains Mono,monospace" font-size="10.5" fill="rgba(255,255,255,0.78)" text-anchor="middle">ANN · nearest keys</text>
+            <!-- stat pills -->
+            <rect x="357" y="182" width="106" height="20" rx="6" fill="rgba(0,0,0,0.2)"/>
+            <text x="410" y="196" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(255,255,255,0.78)" text-anchor="middle">90%+ recall</text>
+            <rect x="475" y="182" width="122" height="20" rx="6" fill="rgba(0,0,0,0.2)"/>
+            <text x="536" y="196" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(255,255,255,0.78)" text-anchor="middle">billions of vectors</text>
+            <!-- AWS stamp -->
+            <rect x="414" y="212" width="126" height="18" rx="5" fill="rgba(0,0,0,0.26)"/>
+            <text x="477" y="225" font-family="JetBrains Mono,monospace" font-size="8.5" fill="rgba(255,255,255,0.5)" text-anchor="middle" letter-spacing="0.04em">AMAZON AWS MANAGED</text>
+            <!-- step badge -->
+            <circle cx="348" cy="42" r="12" fill="rgba(255,255,255,0.92)" filter="url(#fsh-sm)"/>
+            <text x="348" y="46" font-family="Inter,sans-serif" font-size="11" font-weight="700" fill="#e8623b" text-anchor="middle">2</text>
+
+            <!-- ══ NODE: DynamoDB (dark glass) ═══════════════════ -->
+            <rect x="348" y="268" width="258" height="92" rx="13" fill="url(#dyn-grad)" stroke="rgba(255,255,255,0.09)" stroke-width="1" filter="url(#fsh-card)"/>
+            <!-- glass highlight -->
+            <rect x="348" y="268" width="258" height="38" rx="13" fill="rgba(255,255,255,0.05)" clip-path="url(#cp-dyn)"/>
+            <!-- lightning bolt icon -->
+            <g transform="translate(389,314)">
+              <path d="M5,-15 L-5,2 L1,2 L-5,15 L12,-2 L5,-2 Z" fill="rgba(255,255,255,0.75)"/>
+            </g>
+            <text x="477" y="302" font-family="Inter,sans-serif" font-size="14" font-weight="800" fill="rgba(255,255,255,0.95)" text-anchor="middle" letter-spacing="-0.3">DynamoDB</text>
+            <text x="477" y="321" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(255,255,255,0.4)" text-anchor="middle">BatchGetItem · documents</text>
+            <rect x="412" y="330" width="130" height="18" rx="5" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+            <text x="477" y="343" font-family="JetBrains Mono,monospace" font-size="8.5" fill="rgba(255,255,255,0.3)" text-anchor="middle">single-digit ms hydration</text>
+            <!-- step badge -->
+            <circle cx="348" cy="268" r="12" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>
+            <text x="348" y="272" font-family="Inter,sans-serif" font-size="11" font-weight="700" fill="rgba(255,255,255,0.9)" text-anchor="middle">3</text>
+
+            <!-- ══ NODE: Graph / ER (optional, dashed) ═══════════ -->
+            <rect x="18" y="268" width="192" height="92" rx="12" fill="rgba(232,98,59,0.07)" stroke="#e8623b" stroke-width="1.5" stroke-dasharray="6 3"/>
+            <!-- graph / network icon -->
+            <g transform="translate(60,314)">
+              <line x1="-10" y1="-6" x2="7"   y2="-11" stroke="rgba(232,98,59,0.5)" stroke-width="1.5"/>
+              <line x1="9"   y1="-9" x2="13"  y2="5"   stroke="rgba(232,98,59,0.4)" stroke-width="1.5"/>
+              <line x1="-10" y1="-2" x2="-7"  y2="9"   stroke="rgba(232,98,59,0.4)" stroke-width="1.5"/>
+              <line x1="-5"  y1="11" x2="11"  y2="9"   stroke="rgba(232,98,59,0.35)" stroke-width="1.5"/>
+              <circle cx="-12" cy="-5" r="5.5" fill="rgba(232,98,59,0.25)" stroke="rgba(232,98,59,0.72)" stroke-width="1.5"/>
+              <circle cx="9"   cy="-11" r="4.5" fill="rgba(232,98,59,0.18)" stroke="rgba(232,98,59,0.55)" stroke-width="1.5"/>
+              <circle cx="14"  cy="7"   r="4.5" fill="rgba(232,98,59,0.18)" stroke="rgba(232,98,59,0.55)" stroke-width="1.5"/>
+              <circle cx="-7"  cy="11"  r="4.5" fill="rgba(232,98,59,0.18)" stroke="rgba(232,98,59,0.55)" stroke-width="1.5"/>
+            </g>
+            <text x="130" y="305" font-family="Inter,sans-serif" font-size="12" font-weight="700" fill="rgba(232,98,59,0.9)" text-anchor="middle">Graph / ER</text>
+            <text x="130" y="323" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(232,98,59,0.6)" text-anchor="middle">optional layer</text>
+            <rect x="72" y="332" width="116" height="18" rx="5" fill="rgba(232,98,59,0.08)"/>
+            <text x="130" y="345" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(232,98,59,0.5)" text-anchor="middle">KG · adjacency lists</text>
+
+            <!-- ══ NODE: Results ═════════════════════════════════ -->
+            <rect x="658" y="258" width="252" height="110" rx="13" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.13)" stroke-width="1.5" filter="url(#fsh-card)"/>
+            <!-- glass highlight -->
+            <rect x="658" y="258" width="252" height="46" rx="13" fill="url(#glass-hi)" clip-path="url(#cp-res)"/>
+            <!-- ranked-list icon with medal -->
+            <g transform="translate(694,308)">
+              <circle cx="0" cy="-14" r="9" fill="rgba(232,98,59,0.2)" stroke="rgba(232,98,59,0.65)" stroke-width="1.5"/>
+              <text x="0" y="-10" font-family="Inter,sans-serif" font-size="10" font-weight="700" fill="rgba(232,98,59,1)" text-anchor="middle">&#10003;</text>
+              <rect x="-13" y="-1" width="26" height="4.5" rx="2.2" fill="rgba(255,255,255,0.55)"/>
+              <rect x="-13" y="8"  width="19" height="4.5" rx="2.2" fill="rgba(255,255,255,0.35)"/>
+              <rect x="-13" y="17" width="11" height="4.5" rx="2.2" fill="rgba(255,255,255,0.2)"/>
+            </g>
+            <text x="784" y="292" font-family="Inter,sans-serif" font-size="13" font-weight="700" fill="rgba(255,255,255,0.92)" text-anchor="middle">rerank · results</text>
+            <text x="784" y="311" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(255,255,255,0.38)" text-anchor="middle">scored documents</text>
+            <rect x="736" y="323" width="96" height="20" rx="6" fill="rgba(232,98,59,0.15)" stroke="rgba(232,98,59,0.3)" stroke-width="1"/>
+            <text x="784" y="337" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(232,98,59,0.85)" text-anchor="middle">MMR · RRF · BM25</text>
+            <!-- step badge -->
+            <circle cx="658" cy="258" r="12" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+            <text x="658" y="262" font-family="Inter,sans-serif" font-size="11" font-weight="700" fill="rgba(255,255,255,0.88)" text-anchor="middle">4</text>
           </svg>
         </div>
 
@@ -260,19 +430,23 @@
           dynavec stays lowest at every point because its storage is priced like S3, not RAM.
         </p>
 
-        <figure class="fig">
-          <img src="images/cost_matrix_by_dim.png" alt="Estimated monthly cost by scale and embedding dimension across vector databases" loading="lazy" />
-          <figcaption>Monthly cost by scale &amp; dimension. dynavec (red) is the lowest line in every panel.</figcaption>
+        <figure class="fig fig--chart">
+          <canvas id="bench-matrix" style="width:100%;height:320px;display:block"></canvas>
+          <figcaption>Monthly cost by scale &amp; dimension · 1536-dim · 1M queries/mo. dynavec (coral) is the lowest at every scale.</figcaption>
         </figure>
 
-        <div class="grid grid--2">
-          <figure class="fig">
-            <img src="images/cost_by_scale.png" alt="Monthly cost by number of vectors, log-log" loading="lazy" />
-            <figcaption>Cost by scale (768-d, 1M queries/mo).</figcaption>
+        <div class="grid grid--3-bench">
+          <figure class="fig fig--chart">
+            <canvas id="bench-scale" style="width:100%;height:260px;display:block"></canvas>
+            <figcaption>Cost by scale (768-d, 1M queries/mo) — log-log scale.</figcaption>
           </figure>
-          <figure class="fig">
-            <img src="images/storage_footprint.png" alt="Raw float32 storage footprint by scale and dimension" loading="lazy" />
-            <figcaption>Raw float32 footprint — up to ~5.7&nbsp;TB at 1B × 1536-d.</figcaption>
+          <figure class="fig fig--chart">
+            <canvas id="bench-storage" style="width:100%;height:260px;display:block"></canvas>
+            <figcaption>Raw float32 footprint — up to ~5.7&nbsp;TiB at 1B × 1536-d.</figcaption>
+          </figure>
+          <figure class="fig fig--donut">
+            <canvas id="quality-chart"></canvas>
+            <figcaption>Recall ÷ Latency score — higher recall at lower query latency. Representative estimates; run <code>python -m benchmarks.report</code> to reproduce.</figcaption>
           </figure>
         </div>
 
@@ -292,7 +466,35 @@
             </tbody>
           </table>
         </div>
-        <p class="note">
+
+
+        <div class="calc" id="cost-calculator">
+          <h3 class="table__title">Estimate your own cost</h3>
+          <div class="calc__grid">
+            <label class="calc__field">
+              Vectors
+              <input type="number" id="calc-vectors" value="1000000" min="0" step="1000" />
+            </label>
+            <label class="calc__field">
+              Dimension
+              <input type="number" id="calc-dim" value="768" min="1" step="1" />
+            </label>
+            <label class="calc__field">
+              Queries / month
+              <input type="number" id="calc-qpm" value="1000000" min="0" step="1000" />
+            </label>
+            <label class="calc__field">
+              Writes / month
+              <input type="number" id="calc-wpm" value="100000" min="0" step="1000" />
+            </label>
+          </div>
+          <div class="calc__result">
+            <span class="calc__total">Estimated: <strong id="calc-total">$0.00 / mo</strong></span>
+            <div class="calc__breakdown" id="calc-breakdown"></div>
+          </div>
+        </div>
+
+       <p class="note">
           Cost is computed by the repository's transparent cost model from public list prices —
           order-of-magnitude, verify before quoting. Recall and latency figures in the repo are
           representative until a live AWS run replaces them. Reproduce everything with
@@ -337,7 +539,7 @@ db.search("how do cells make energy?")</code></pre>
           </div>
         </div>
 
-        <p class="section__lede" style="margin-top:32px;">Full runnable snippet ↓ or read the <a href="docs/quickstart.html">Quickstart guide</a>.</p>
+        <p class="section__lede">Full runnable snippet ↓ or read the <a href="docs/quickstart.html">Quickstart guide</a>.</p>
       </div>
     </section>
 

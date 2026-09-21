@@ -11,7 +11,13 @@ from types import SimpleNamespace
 import pytest
 
 import dynavec.client as client_mod
-from dynavec import Document, Dynavec, DynavecConfig, SemanticCache
+from dynavec import (
+    Document,
+    Dynavec,
+    DynavecConfig,
+    ExplainedSearchResult,
+    SemanticCache,
+)
 from dynavec.config import NS_METADATA_KEY
 from dynavec.embeddings.base import Embedder
 from dynavec.exceptions import ConfigurationError
@@ -216,6 +222,103 @@ def test_upsert_and_search_roundtrip(db):
     assert hits[0].text is not None
     # scores descending, higher = more similar
     assert hits[0].score >= hits[1].score
+
+
+def test_search_without_explain_returns_results_list(db):
+    db.upsert([Document(id="1", text="apple pie")])
+
+    result = db.search("apple")
+
+    assert isinstance(result, list)
+    assert len(result) == 1
+
+
+def test_search_explain_handles_empty_results(db):
+    result = db.search("missing", explain=True)
+
+    assert isinstance(result, ExplainedSearchResult)
+    assert result.results == []
+
+    explanation = result.explanation
+
+    assert explanation.candidate_counts["retrieved"] == 0
+    assert explanation.candidate_counts["final"] == 0
+    assert explanation.timings_ms["vector_search"] >= 0
+    assert explanation.timings_ms["total"] >= 0
+
+
+def test_search_explain_reports_cache_hit(db):
+    db._cache = SemanticCache(threshold=0.99)
+    db.upsert([Document(id="1", text="apple pie")])
+
+    db.search("apple pie", top_k=3)
+
+    result = db.search("apple pie", top_k=3, explain=True)
+
+    assert isinstance(result, ExplainedSearchResult)
+    assert len(result.results) == 1
+
+    explanation = result.explanation
+
+    assert explanation.candidate_counts["cached"] == 1
+    assert explanation.candidate_counts["final"] == 1
+    assert explanation.timings_ms["cache_lookup"] >= 0
+    assert explanation.timings_ms["total"] >= 0
+
+    assert "vector_search" not in explanation.timings_ms
+    assert "hydration" not in explanation.timings_ms
+
+
+def test_search_explain_records_rescore_stage(db):
+    db.upsert(
+        [
+            Document(id="1", text="apple pie recipe"),
+            Document(id="2", text="apple orchard tour"),
+            Document(id="3", text="rocket launch"),
+        ]
+    )
+
+    result = db.search(
+        "apple",
+        top_k=2,
+        rescore="cosine",
+        explain=True,
+    )
+
+    assert isinstance(result, ExplainedSearchResult)
+    assert len(result.results) == 2
+
+    explanation = result.explanation
+
+    assert explanation.timings_ms["rescore"] >= 0
+    assert explanation.candidate_counts["rescored"] >= 2
+    assert explanation.candidate_counts["final"] == 2
+
+
+def test_search_explain_returns_structured_debug_result(db):
+    db.upsert(
+        [
+            Document(id="1", text="apple pie recipe"),
+            Document(id="2", text="rocket launch schedule"),
+            Document(id="3", text="apple orchard tour"),
+        ]
+    )
+
+    result = db.search("apple", top_k=2, explain=True)
+
+    assert isinstance(result, ExplainedSearchResult)
+    assert len(result.results) == 2
+
+    explanation = result.explanation
+
+    assert explanation.timings_ms["query_vector"] >= 0
+    assert explanation.timings_ms["vector_search"] >= 0
+    assert explanation.timings_ms["hydration"] >= 0
+    assert explanation.timings_ms["total"] >= 0
+
+    assert explanation.candidate_counts["retrieved"] >= 2
+    assert explanation.candidate_counts["hydrated"] >= 2
+    assert explanation.candidate_counts["final"] == 2
 
 
 def test_metadata_filter_scopes_results(db):
@@ -609,6 +712,56 @@ def test_cross_encoder_rerank_on_toy_data(monkeypatch, cross_encoder_db):
     assert results[0].id == "d2"
     assert results[0].score == 0.95
     assert FakeCrossEncoder.instance.model_name == "toy-cross-encoder"
+
+
+def test_search_explain_records_cross_encoder_rerank_stage(
+    monkeypatch, cross_encoder_db
+):
+    class FakeCrossEncoder:
+        def __init__(self, model_name):
+            self.model_name = model_name
+
+        def predict(self, pairs):
+            return [
+                0.95 if "target document" in document else 0.10
+                for _, document in pairs
+            ]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "sentence_transformers",
+        SimpleNamespace(CrossEncoder=FakeCrossEncoder),
+    )
+
+    cross_encoder_db.upsert([
+        Document(
+            id="d1",
+            text="ordinary document",
+            vector=[0.1] * 8,
+        ),
+        Document(
+            id="d2",
+            text="target document",
+            vector=[0.1] * 8,
+        ),
+    ])
+
+    result = cross_encoder_db.search(
+        "find the target",
+        top_k=1,
+        rerank="cross-encoder",
+        explain=True,
+    )
+
+    assert isinstance(result, ExplainedSearchResult)
+    assert result.results[0].id == "d2"
+
+    explanation = result.explanation
+
+    assert explanation.timings_ms["rerank"] >= 0
+    assert explanation.candidate_counts["reranked"] == 1
+    assert explanation.candidate_counts["final"] == 1
+
 
 def test_cross_encoder_rerank_requires_text_query(cross_encoder_db):
     cross_encoder_db.upsert([

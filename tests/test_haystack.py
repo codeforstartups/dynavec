@@ -1,5 +1,8 @@
 """Tests for the Haystack integration."""
+# ruff: noqa: E402
+import pytest
 
+pytest.importorskip("haystack", reason="haystack-ai not installed; pip install 'dynavec[haystack]'")
 
 from haystack import Document
 from haystack.document_stores.types import DuplicatePolicy

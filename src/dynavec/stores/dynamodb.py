@@ -12,6 +12,7 @@ can filter on metadata fields directly in DynamoDB.
 
 from __future__ import annotations
 
+import gzip
 import logging
 import time
 from decimal import Decimal
@@ -57,15 +58,25 @@ def _pk(namespace: str, doc_id: str) -> str:
     return f"{encode_key_component(namespace)}{KEY_SEPARATOR}{encode_key_component(doc_id)}"
 
 
-def _build_item(namespace: str, doc_id: str, text: str | None, metadata: Metadata) -> dict:
-    item = {
+def _build_item(
+    namespace: str,
+    doc_id: str,
+    text: str | None,
+    metadata: Metadata,
+    gzip_threshold_bytes: int | None = None,
+) -> dict:
+    item: dict[str, Any] = {
         "pk": _pk(namespace, doc_id),
         "ns": namespace,
         "id": doc_id,
         "metadata": _to_dynamo(metadata or {}),
     }
     if text is not None:
-        item["text"] = text
+        text_bytes = text.encode("utf-8")
+        if gzip_threshold_bytes is not None and len(text_bytes) >= gzip_threshold_bytes:
+            item["text_gzip"] = gzip.compress(text_bytes)
+        else:
+            item["text"] = text
     return item
 
 
@@ -96,13 +107,19 @@ def item_size_bytes(item: dict) -> int:
     return sum(len(name.encode("utf-8")) + _value_size(value) for name, value in item.items())
 
 
-def check_item_size(namespace: str, doc_id: str, text: str | None, metadata: Metadata) -> None:
+def check_item_size(
+    namespace: str,
+    doc_id: str,
+    text: str | None,
+    metadata: Metadata,
+    gzip_threshold_bytes: int | None = None,
+) -> None:
     """Raise :class:`ItemTooLargeError` if the document would exceed the item limit.
 
     Called before any write so an oversized document fails the whole upsert up
     front, instead of DynamoDB rejecting it partway through a batch.
     """
-    _check_built_item(_build_item(namespace, doc_id, text, metadata))
+    _check_built_item(_build_item(namespace, doc_id, text, metadata, gzip_threshold_bytes))
 
 
 def _check_built_item(item: dict) -> None:
@@ -144,7 +161,11 @@ class DynamoDBStore:
         over DynamoDB's 400 KB limit.
         """
         t0 = time.perf_counter()
-        built = [_build_item(namespace, doc_id, text, metadata) for doc_id, text, metadata in items]
+        threshold = self._config.gzip_threshold_bytes
+        built = [
+            _build_item(namespace, doc_id, text, metadata, threshold)
+            for doc_id, text, metadata in items
+        ]
         for item in built:
             _check_built_item(item)
         with self._table.batch_writer(overwrite_by_pkeys=["pk"]) as batch:
@@ -186,8 +207,16 @@ class DynamoDBStore:
             while request:
                 resp = self._ddb.batch_get_item(RequestItems=request)
                 for item in resp["Responses"].get(self._config.table, []):
+                    raw_text = item.get("text")
+                    gzip_blob = item.get("text_gzip")
+                    if gzip_blob is not None:
+                        decompressed_text = gzip.decompress(bytes(gzip_blob)).decode("utf-8")
+                    elif isinstance(raw_text, (bytes, bytearray)):
+                        decompressed_text = gzip.decompress(bytes(raw_text)).decode("utf-8")
+                    else:
+                        decompressed_text = raw_text
                     out[item["id"]] = {
-                        "text": item.get("text"),
+                        "text": decompressed_text,
                         "metadata": _from_dynamo(item.get("metadata", {})),
                     }
                 unprocessed = resp.get("UnprocessedKeys") or {}

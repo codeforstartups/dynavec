@@ -87,12 +87,15 @@ class DynavecConfig:
     # DynamoDB hydration — for Pinecone-class latency without a paid cluster.
     hot_tier: bool = False
     hot_tier_max_vectors: int = 200_000  # global RAM safety cap across namespaces
-    hot_tier_n_probe: int = 8            # partitions probed per query (recall vs latency)
+    hot_tier_n_probe: int = 8  # partitions probed per query (recall vs latency)
     hot_tier_eviction: Literal["lru", "fifo", "none"] = "lru"
 
     # provisioning
     auto_provision: bool = False
     dynamodb_billing_mode: Literal["PAY_PER_REQUEST", "PROVISIONED"] = "PAY_PER_REQUEST"
+
+    # document storage tuning
+    gzip_threshold_bytes: int | None = None
 
     # observability
     structured_logging: bool = False
@@ -127,6 +130,8 @@ class DynavecConfig:
             raise ValueError("hot_tier_n_probe must be >= 1")
         if self.hot_tier_eviction not in ("lru", "fifo", "none"):
             raise ValueError("hot_tier_eviction must be 'lru', 'fifo', or 'none'")
+        if self.gzip_threshold_bytes is not None and self.gzip_threshold_bytes <= 0:
+            raise ValueError("gzip_threshold_bytes must be a positive integer")
         valid_log_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
         if self.log_level.upper() not in valid_log_levels:
             raise ValueError(f"log_level must be one of {valid_log_levels}")

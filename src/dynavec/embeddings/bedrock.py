@@ -39,7 +39,7 @@ class BedrockEmbedder(Embedder):
         model_id: str = "amazon.titan-embed-text-v2:0",
         region: str | None = None,
         dimension: int | None = None,
-        boto_session=None,
+        boto_session= any | None = None,
     ) -> None:
         import boto3  # local import keeps base import cheap
 

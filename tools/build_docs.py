@@ -502,16 +502,43 @@ fused = reciprocal_rank_fusion([dense_hits, keyword_hits])
 PAGES["namespaces"] = ("Namespaces",
     "Multi-tenant / multi-collection isolation on a single index.",
     """
-<p>Every operation takes a <code>namespace</code>. dynavec tags each vector with it and scopes queries
-automatically, so one index can host many tenants. DynamoDB keys are <code>"{namespace}#{id}"</code> for even
-partition distribution.</p>
-""" + code("""kb = db.namespace("tenant-42")     # a view bound to one namespace
-kb.upsert([Document(id="1", text="private doc")])
-kb.search("scoped to this tenant only", top_k=4)
-kb.delete(["1"])
+<p>A namespace gives each tenant an isolated view of the same dynavec index. Every vector is tagged with its
+namespace, and searches are automatically scoped to that namespace. This lets multiple customers share the
+same infrastructure while keeping their retrieval results separated.</p>
+
+<h2>Namespace-per-tenant</h2>
+<p>Use <code>db.namespace("tenant-id")</code> to create a lightweight handle bound to one tenant. The same
+document ID can exist in multiple namespaces because the namespace is part of the storage key.</p>
+""" + code("""acme = db.namespace("acme")
+globex = db.namespace("globex")
+
+acme.upsert([Document(id="refund-policy", text="Acme refunds are available within 30 days.")])
+globex.upsert([Document(id="refund-policy", text="Globex refunds are available within 14 days.")])
+
+acme.search("What is the refund period?", top_k=2)
+globex.search("What is the refund period?", top_k=2)
 """) + """
-<div class="callout">Namespaces are the recommended way to do per-customer RAG: same infrastructure, clean
-data isolation, no cross-tenant leakage.</div>
+<h2>End-to-end multi-tenant RAG</h2>
+<p>A typical RAG application maps the authenticated tenant to a namespace, retrieves context from that namespace,
+and passes only that context to the LLM.</p>
+""" + code("""tenant = db.namespace(tenant_id)
+
+hits = tenant.search(user_query, top_k=5)
+context = "\\n\\n".join(hit.text for hit in hits)
+
+answer = llm.generate(
+    f"Answer using only the following context:\\n{context}\\n\\nQuestion: {user_query}"
+)
+""") + """
+<p>The complete runnable recipe is available in
+<code>examples/multi_tenant_rag.py</code>. It demonstrates two tenants using the same index, including identical
+document IDs with tenant-specific content.</p>
+<h2>Runnable example</h2>
+""" + code("""pip install "dynavec[sentence-transformers]"
+python examples/multi_tenant_rag.py
+""") + """
+<div class="callout">For multi-tenant RAG, keep the namespace derived from your authenticated tenant identity.
+Do not accept an arbitrary tenant ID from an untrusted request and use it directly for retrieval.</div>
 """)
 
 PAGES["streaming"] = ("Streaming",

@@ -260,6 +260,10 @@ class Dynavec:
             tasks.append(lambda c=chunk: self._docs.put_many(namespace, c))
         self._run_parallel(tasks)
 
+    def _invalidate_cache(self, namespace: str) -> None:
+        if self._cache is not None and self.config.cache_invalidate_on_write:
+            self._cache.invalidate(namespace)
+
     def upsert(
         self,
         documents: list[Document | dict] | None = None,
@@ -278,6 +282,7 @@ class Dynavec:
         self._write(namespace, s3_payload, ddb_payload)
         if self._hot is not None:
             self._hot.insert_many(namespace, hot_payload)
+        self._invalidate_cache(namespace)
         return UpsertResult(count=len(ids), ids=ids)
 
     def update(
@@ -337,6 +342,7 @@ class Dynavec:
         self._write(namespace, s3_payload, ddb_payload)
         if self._hot is not None:
             self._hot.insert_many(namespace, hot_payload)
+        self._invalidate_cache(namespace)
         return UpsertResult(count=1, ids=ids)
 
     # ---------------------------------------------------------------- read path
@@ -1096,6 +1102,7 @@ class Dynavec:
         )
         if self._hot is not None:
             self._hot.delete(namespace, ids)
+        self._invalidate_cache(namespace)
 
     # ------------------------------------------------------------- hot tier
     def warm(self, namespace: str = "default") -> int:

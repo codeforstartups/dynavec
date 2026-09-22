@@ -435,7 +435,7 @@ hit-rate, and a filterable **traces** table with per-trace drill-down.
 | **Namespace RAG** | Per-tenant/collection handles; isolation + even partitioning | `kb = db.namespace("kb"); kb.search(...)` |
 | **Product quantization** | Compress cached/hot-tier vectors up to 32× (ADC distance) | `ProductQuantizer(m=96).fit(X)` |
 | **Knowledge graph / ER** | Entities + relations in DynamoDB linked to embeddings; traverse to scope/guide vector search (GraphRAG) | `db.graph_add_edge(...)`, `db.graph_search(q, seed_entities=[...])` |
-| **Query cache** | DynamoDB-TTL exact cache, in-process **semantic** cache (serves near-duplicate queries), or Redis/**ElastiCache** | `Dynavec(..., cache=SemanticCache())` |
+| **Query cache** | DynamoDB-TTL exact cache, in-process **semantic** cache (serves near-duplicate queries), or Redis/**ElastiCache**; writes evict the affected namespace's entries | `Dynavec(..., cache=SemanticCache())` |
 | **Ingestion / MCP** | Pull + chunk + embed from any source; **any MCP server's resources** (Notion, Confluence, Drive, …) become a corpus | `ingest(db, MCPResourceSource(session))` |
 | **Updates + Lambda** | Update text/vector/metadata (merge or replace); transform pipeline incl. **in-account AWS Lambda** | `db.update(id, ...)`, `Dynavec(..., transform=LambdaTransform(...))` |
 | **IAM / credentials** | Access keys, session tokens, named profiles, cross-account **assume-role** | `Dynavec(..., credentials=AWSCredentials(...))` |
@@ -449,6 +449,10 @@ result object graph, and inspect `size_bytes` for the current accounted size:
 ```python
 cache = SemanticCache(max_size=2_048, max_bytes=64 * 1024 * 1024)
 ```
+
+`upsert`/`update`/`delete` evict the written namespace's cached queries, so
+writes are never hidden behind stale entries. Set
+`DynavecConfig(cache_invalidate_on_write=False)` to opt out.
 
 Pre-populate the cache from a list of common queries at startup with `warm_cache()` —
 it runs each query once (through `search`, so results land in the cache) and

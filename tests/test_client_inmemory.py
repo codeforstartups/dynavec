@@ -804,3 +804,45 @@ def test_cross_encoder_rerank_requires_document_text(monkeypatch, cross_encoder_
             top_k=1,
             rerank="cross-encoder",
         )
+
+
+def test_writes_invalidate_query_cache(db):
+    db._cache = SemanticCache(threshold=0.99)
+    db.upsert([Document(id="1", text="apple pie")], namespace="ns")
+    db.upsert([Document(id="o1", text="apple pie")], namespace="other")
+    db.search("apple pie", top_k=3, namespace="ns")          # miss -> cached
+    db.search("apple pie", top_k=3, namespace="other")       # miss -> cached
+    assert db._cache.misses == 2
+
+    # a write to "ns" evicts only that namespace's entries
+    db.upsert([Document(id="2", text="apple pie tart")], namespace="ns")
+    db.search("apple pie", top_k=3, namespace="other")       # still cached -> hit
+    assert db._cache.hits == 1
+    res = db.search("apple pie", top_k=3, namespace="ns")    # evicted -> fresh
+    assert db._cache.misses == 3
+    assert "2" in {r.id for r in res}
+
+    db.update("1", text="apple pie updated", namespace="ns")
+    db.search("apple pie", top_k=3, namespace="ns")
+    assert db._cache.misses == 4
+
+    db.delete(["1"], namespace="ns")
+    db.search("apple pie", top_k=3, namespace="ns")
+    assert db._cache.misses == 5
+
+
+def test_writes_keep_cache_when_invalidation_disabled(monkeypatch):
+    monkeypatch.setattr(client_mod, "S3VectorsStore", FakeS3)
+    monkeypatch.setattr(client_mod, "DynamoDBStore", FakeDDB)
+    cfg = DynavecConfig(
+        vector_bucket="b", index="i", table="t", dimension=8,
+        cache_invalidate_on_write=False,
+    )
+    db = Dynavec(cfg, embedder=HashEmbedder(8))
+    db._cache = SemanticCache(threshold=0.99)
+
+    db.upsert([Document(id="1", text="apple pie")], namespace="ns")
+    db.search("apple pie", top_k=3, namespace="ns")          # cached
+    db.upsert([Document(id="2", text="apple pie tart")], namespace="ns")
+    db.search("apple pie", top_k=3, namespace="ns")          # stale hit
+    assert db._cache.hits == 1

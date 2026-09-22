@@ -56,6 +56,12 @@ class DynavecConfig:
         Optional botocore ``max_pool_connections`` tuning for DynamoDB and
         S3 Vectors clients. ``None`` (default) keeps boto3/botocore defaults
         (currently 10 connections per client).
+    cache_invalidate_on_write:
+        When a query ``cache`` is configured, evict the affected namespace's
+        cached results after ``upsert``/``update``/``delete`` so writes are
+        never hidden behind stale entries (default True). Disable only if
+        write-side invalidation is expensive for your backend and brief
+        staleness is acceptable.
     """
 
     vector_bucket: str
@@ -96,6 +102,9 @@ class DynavecConfig:
 
     # document storage tuning
     gzip_threshold_bytes: int | None = None
+
+    # query cache
+    cache_invalidate_on_write: bool = True
 
     # observability
     structured_logging: bool = False

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from . import __version__
 from .client import Dynavec
 from .config import DynavecConfig
 
@@ -12,6 +13,7 @@ from .config import DynavecConfig
 def _parser() -> argparse.ArgumentParser:
 	parser = argparse.ArgumentParser(prog="dynavec")
 	subparsers = parser.add_subparsers(dest="command")
+	subparsers.add_parser("version", help="show the installed dynavec version")
 	doctor = subparsers.add_parser("doctor", help="check AWS credentials and resource access")
 	doctor.add_argument("--bucket", help="S3 Vectors bucket name")
 	doctor.add_argument("--index", help="S3 Vectors index name")
@@ -278,6 +280,9 @@ def _check_dynamodb(session, table: str, region: str | None) -> str:
 
 def main(argv: list[str] | None = None) -> int:
 	args = _parser().parse_args(argv)
+	if args.command == "version":
+		print(__version__)
+		return 0
 	if args.command == "doctor":
 		return _doctor(args)
 	if args.command == "export":

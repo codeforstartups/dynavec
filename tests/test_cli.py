@@ -1,4 +1,4 @@
-from dynavec import cli
+from dynavec import __version__, cli
 
 
 class _FakeClient:
@@ -78,7 +78,14 @@ def test_doctor_requires_bucket_and_index_together(monkeypatch, capsys):
 
 def test_main_without_command_prints_help(capsys):
     assert cli.main([]) == 0
-    assert "doctor" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "doctor" in output
+    assert "version" in output
+
+
+def test_version_prints_installed_package_version(capsys):
+    assert cli.main(["version"]) == 0
+    assert capsys.readouterr().out == f"{__version__}\n"
 
 
 def test_export_missing_resources_fails(capsys):

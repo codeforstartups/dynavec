@@ -46,6 +46,7 @@ from .ingest import (
     PDFSource,
     PptxSource,
     Record,
+    S3Source,
     URLSource,
     XlsxSource,
     ingest,
@@ -132,6 +133,7 @@ __all__ = [
     "URLSource",
     "MarkdownSource",
     "MCPResourceSource",
+    "S3Source",
     # exceptions
     "DynavecError",
     "ConfigurationError",

@@ -1,9 +1,7 @@
 """Tests for the OpenAI embedder retry behavior."""
 from types import SimpleNamespace
 
-import httpx
 import pytest
-from openai import RateLimitError
 
 from dynavec.embeddings.openai import OpenAIEmbedder
 
@@ -32,22 +30,15 @@ class _FakeClient:
 
 
 def test_openai_embedder_retries_rate_limit_and_respects_retry_after(monkeypatch):
-    request = httpx.Request(
-        "POST",
-        "https://api.openai.com/v1/embeddings",
-    )
+    class RateLimitError(Exception):
+        status_code = 429
 
-    response = httpx.Response(
-        429,
-        headers={"Retry-After": "5"},
-        request=request,
-    )
+        def __init__(self):
+            self.response = SimpleNamespace(
+                headers={"Retry-After": "5"},
+            )
 
-    error = RateLimitError(
-        "rate limited",
-        response=response,
-        body=None,
-    )
+    error = RateLimitError()
 
     embedder = OpenAIEmbedder(api_key="test-key")
     fake_client = _FakeClient(error)

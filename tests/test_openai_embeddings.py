@@ -35,14 +35,18 @@ def test_openai_embedder_retries_rate_limit_and_respects_retry_after(monkeypatch
 
         def __init__(self):
             self.response = SimpleNamespace(
-                headers={"Retry-After": "5"},
+                headers={"retry-after": "5"},
             )
 
     error = RateLimitError()
 
-    embedder = OpenAIEmbedder(api_key="test-key")
     fake_client = _FakeClient(error)
+    embedder = OpenAIEmbedder.__new__(OpenAIEmbedder)
     embedder._client = fake_client
+    embedder.model = "text-embedding-3-small"
+    embedder._requested_dim = None
+    embedder.dimension = 1536
+    embedder.batch_size = 256
 
     delays = []
     monkeypatch.setattr("dynavec.utils.time.sleep", delays.append)

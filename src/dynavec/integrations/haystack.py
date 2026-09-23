@@ -4,9 +4,18 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
-from haystack import Document, component
-from haystack.document_stores.errors import DuplicateDocumentError
-from haystack.document_stores.types import DuplicatePolicy
+from dynavec.exceptions import MissingDependencyError
+
+try:
+    from haystack import Document, component
+    from haystack.document_stores.errors import DuplicateDocumentError
+    from haystack.document_stores.types import DuplicatePolicy
+except ImportError as exc:
+    raise MissingDependencyError(
+        "DynavecDocumentStore",
+        "haystack-ai",
+        "haystack",
+    ) from exc
 
 from dynavec.client import Dynavec
 from dynavec.config import DynavecConfig

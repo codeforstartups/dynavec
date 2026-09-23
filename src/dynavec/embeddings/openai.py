@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..exceptions import MissingDependencyError
+from ..utils import retry
 from .base import Embedder, Vector
 
 # Known output dimensions for common models (used when dimension is not given).
@@ -11,6 +12,32 @@ _MODEL_DIMS = {
     "text-embedding-3-large": 3072,
     "text-embedding-ada-002": 1536,
 }
+
+def _is_openai_retryable(exc: Exception) -> bool:
+    """Return True for OpenAI rate-limit and server errors."""
+    status_code = getattr(exc, "status_code", None)
+
+    return status_code == 429 or (
+        isinstance(status_code, int) and 500 <= status_code < 600
+    )
+
+def _openai_retry_after(exc: Exception) -> float | None:
+    """Return the server-provided Retry-After delay, if available."""
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+
+    if not headers:
+        return None
+
+    value = headers.get("retry-after")
+
+    if value is None:
+        return None
+
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        return None
 
 
 class OpenAIEmbedder(Embedder):
@@ -53,6 +80,14 @@ class OpenAIEmbedder(Embedder):
             kwargs = {"model": self.model, "input": chunk}
             if self._requested_dim is not None:
                 kwargs["dimensions"] = self._requested_dim
-            resp = self._client.embeddings.create(**kwargs)
+            resp = self._create_embeddings(**kwargs)
             out.extend(d.embedding for d in resp.data)
         return out
+
+
+    @retry(
+        retry_on=_is_openai_retryable,
+        retry_delay=_openai_retry_after,
+    )
+    def _create_embeddings(self, **kwargs: object):
+        return self._client.embeddings.create(**kwargs)

@@ -74,7 +74,6 @@ def test_openai_embedder_does_not_retry_client_error(monkeypatch):
 
     error = ClientError("bad request")
 
-    embedder = OpenAIEmbedder(api_key="test-key")
     embedder, fake_client = _make_embedder(error)
     embedder._client = fake_client
 

@@ -40,13 +40,7 @@ def test_openai_embedder_retries_rate_limit_and_respects_retry_after(monkeypatch
 
     error = RateLimitError()
 
-    fake_client = _FakeClient(error)
-    embedder = OpenAIEmbedder.__new__(OpenAIEmbedder)
-    embedder._client = fake_client
-    embedder.model = "text-embedding-3-small"
-    embedder._requested_dim = None
-    embedder.dimension = 1536
-    embedder.batch_size = 256
+    embedder, fake_client = _make_embedder(error)
 
     delays = []
     monkeypatch.setattr("dynavec.utils.time.sleep", delays.append)
@@ -63,9 +57,7 @@ def test_openai_embedder_retries_server_error(monkeypatch):
 
     error = ServerError("internal server error")
 
-    embedder = OpenAIEmbedder(api_key="test-key")
-    fake_client = _FakeClient(error)
-    embedder._client = fake_client
+    embedder, fake_client = _make_embedder(error)
 
     delays = []
     monkeypatch.setattr("dynavec.utils.time.sleep", delays.append)
@@ -83,7 +75,7 @@ def test_openai_embedder_does_not_retry_client_error(monkeypatch):
     error = ClientError("bad request")
 
     embedder = OpenAIEmbedder(api_key="test-key")
-    fake_client = _FakeClient(error)
+    embedder, fake_client = _make_embedder(error)
     embedder._client = fake_client
 
     delays = []
@@ -94,3 +86,15 @@ def test_openai_embedder_does_not_retry_client_error(monkeypatch):
 
     assert fake_client.embeddings.calls == 1
     assert delays == []
+
+def _make_embedder(error):
+    fake_client = _FakeClient(error)
+
+    embedder = OpenAIEmbedder.__new__(OpenAIEmbedder)
+    embedder._client = fake_client
+    embedder.model = "text-embedding-3-small"
+    embedder._requested_dim = None
+    embedder.dimension = 1536
+    embedder.batch_size = 256
+
+    return embedder, fake_client

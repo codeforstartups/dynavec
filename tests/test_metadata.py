@@ -2,6 +2,7 @@
 
 import pytest
 
+from datetime import datetime
 from dynavec.config import NS_METADATA_KEY, TEXT_METADATA_KEY, DynavecConfig
 from dynavec.metadata import (
     build_s3_filter,
@@ -23,6 +24,35 @@ def test_auto_metadata_fields():
     assert "content_hash" in meta
     assert "created_at" in meta
 
+def test_auto_metadata_hash_deterministic():
+    first = generate_auto_metadata("hello world")
+    second = generate_auto_metadata("hello world")
+
+    assert first["content_hash"] == second["content_hash"]
+
+def test_auto_metadata_hash_different_text():
+    first = generate_auto_metadata("hello world")
+    second = generate_auto_metadata("different text")
+
+    assert first["content_hash"] != second["content_hash"]
+
+def test_auto_metadata_created_at_valid_utc():
+    meta = generate_auto_metadata("hello world")
+    created_at = datetime.fromisoformat(meta["created_at"])
+
+    assert created_at.tzinfo is not None
+
+def test_auto_metadata_unicode_char_count():
+    text = "🎉 hello 世界"
+    meta = generate_auto_metadata(text)
+
+    assert meta["char_count"] == len(text)
+
+def test_auto_metadata_empty_and_none():
+    for text in ("", None):
+        meta = generate_auto_metadata(text)
+
+        assert set(meta.keys()) == {"created_at"}
 
 def test_split_default_pushes_scalars_and_ns():
     cfg = _cfg()

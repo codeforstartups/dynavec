@@ -120,6 +120,12 @@ class DynavecConfig:
             raise ValueError("distance_metric must be 'cosine' or 'euclidean'")
         if self.over_fetch < 1:
             raise ValueError("over_fetch must be >= 1")
+        if (
+            isinstance(self.max_workers, bool)
+            or not isinstance(self.max_workers, int)
+            or self.max_workers <= 0
+        ):
+            raise ValueError("max_workers must be a positive integer")
         if self.top_k_page_size is not None and self.top_k_page_size <= 0:
             raise ValueError("top_k_page_size must be a positive integer")
         if self.max_pool_connections is not None and self.max_pool_connections <= 0:

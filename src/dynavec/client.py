@@ -722,11 +722,13 @@ class Dynavec:
                 "rerank",
             ) from exc
 
-        if self._cross_encoder is None:
-            self._cross_encoder = CrossEncoder(self.config.cross_encoder_model)
+        encoder = self._cross_encoder
+        if encoder is None:
+            encoder = CrossEncoder(self.config.cross_encoder_model)
+            self._cross_encoder = encoder
 
         pairs = [(query, result.text) for result in results]
-        scores = self._cross_encoder.predict(pairs)
+        scores = encoder.predict(pairs)
 
         reranked = sorted(
             zip(results, scores),

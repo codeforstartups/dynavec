@@ -97,6 +97,63 @@ def test_split_respects_filterable_keys_allowlist():
     assert ddb["author"] == "abhi"
 
 
+def test_split_excludes_non_filterable_keys():
+    cfg = _cfg(non_filterable_keys=["secret"])
+    incoming = {"lang": "en", "secret": "token", "score": 1}
+    s3, ddb = split_metadata(incoming, cfg, "ns")
+
+    assert s3["lang"] == "en"
+    assert s3["score"] == 1
+    assert "secret" not in s3
+    assert ddb["secret"] == "token"
+    assert ddb["lang"] == "en"
+
+
+def test_split_non_filterable_keys_take_precedence_over_allowlist():
+    cfg = _cfg(filterable_keys=["lang", "secret"], non_filterable_keys=["secret"])
+    s3, ddb = split_metadata(
+        {"lang": "en", "secret": "token", "author": "abhi"},
+        cfg,
+        "ns",
+    )
+
+    assert "lang" in s3
+    assert "secret" not in s3
+    assert "author" not in s3
+    assert ddb["secret"] == "token"
+    assert ddb["author"] == "abhi"
+
+
+def test_split_non_filterable_keys_cannot_strip_namespace_tag():
+    cfg = _cfg(non_filterable_keys=[NS_METADATA_KEY, "lang"])
+    s3, ddb = split_metadata(
+        {"lang": "en", NS_METADATA_KEY: "caller-ns"},
+        cfg,
+        "real-ns",
+    )
+
+    assert s3[NS_METADATA_KEY] == "real-ns"
+    assert "lang" not in s3
+    assert ddb[NS_METADATA_KEY] == "caller-ns"
+    assert ddb["lang"] == "en"
+
+
+def test_split_does_not_mutate_input_metadata():
+    cfg = _cfg(non_filterable_keys=["secret"])
+    incoming = {"lang": "en", "secret": "token", "nested": {"x": 1}}
+    snapshot = {"lang": "en", "secret": "token", "nested": {"x": 1}}
+
+    s3, ddb = split_metadata(incoming, cfg, "ns")
+
+    assert incoming == snapshot
+    incoming["lang"] = "mutated"
+    incoming["extra"] = True
+    assert ddb["lang"] == "en"
+    assert "extra" not in ddb
+    assert s3["lang"] == "en"
+    assert "extra" not in s3
+
+
 def test_split_text_mirror_optional():
     cfg = _cfg(store_text_in_s3vectors=True, text_mirror_max_chars=5)
     s3, _ = split_metadata({}, cfg, "ns", text="abcdefgh")

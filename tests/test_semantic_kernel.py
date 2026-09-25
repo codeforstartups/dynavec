@@ -1,17 +1,20 @@
 """Tests for the Semantic Kernel vector store integration."""
 
 import pytest
-from semantic_kernel.data.vector import (
+
+pytest.importorskip("semantic_kernel")
+
+from semantic_kernel.data.vector import (  # noqa: E402
     FieldTypes,
     VectorStoreCollectionDefinition,
     VectorStoreField,
 )
 
-from dynavec.integrations.semantic_kernel import (
+from dynavec.integrations.semantic_kernel import (  # noqa: E402
     DynavecCollection,
     DynavecStore,
 )
-from dynavec.models import SearchResult
+from dynavec.models import SearchResult  # noqa: E402
 
 
 class _FakeResult:
@@ -28,7 +31,6 @@ class _FakeClient:
 
     def search(self, **kwargs):
         self.calls.append(("search", kwargs))
-
         return [
             SearchResult(
                 id="doc-1",
@@ -48,7 +50,6 @@ class _FakeClient:
 
     def get(self, ids, **kwargs):
         self.calls.append(("get", ids, kwargs))
-
         return [
             SearchResult(
                 id="doc-1",
@@ -87,9 +88,9 @@ def _definition():
     )
 
 
+@pytest.mark.asyncio
 async def test_upsert():
     client = _FakeClient()
-
     collection = DynavecCollection(
         client=client,
         record_type=dict,
@@ -110,20 +111,16 @@ async def test_upsert():
     assert ids == ["doc-1"]
 
     _, documents, kwargs = client.calls[0]
-
     assert len(documents) == 1
     assert documents[0].id == "doc-1"
     assert documents[0].text == "Banking knowledge"
     assert documents[0].vector == [0.1, 0.2, 0.3]
-
-    assert kwargs == {
-        "namespace": "kb",
-    }
+    assert kwargs == {"namespace": "kb"}
 
 
+@pytest.mark.asyncio
 async def test_search():
     client = _FakeClient()
-
     collection = DynavecCollection(
         client=client,
         record_type=dict,
@@ -147,9 +144,9 @@ async def test_search():
     assert first.score == 0.95
 
 
+@pytest.mark.asyncio
 async def test_search_with_filter():
     client = _FakeClient()
-
     collection = DynavecCollection(
         client=client,
         record_type=dict,
@@ -166,7 +163,6 @@ async def test_search_with_filter():
     search_results = [result async for result in results.results]
 
     assert len(search_results) == 2
-
     assert client.calls[-1] == (
         "search",
         {
@@ -179,9 +175,9 @@ async def test_search_with_filter():
     )
 
 
+@pytest.mark.asyncio
 async def test_get():
     client = _FakeClient()
-
     collection = DynavecCollection(
         client=client,
         record_type=dict,
@@ -195,7 +191,6 @@ async def test_get():
     assert results[0]["id"] == "doc-1"
     assert results[0]["text"] == "Banking knowledge"
     assert results[0]["category"] == "banking"
-
     assert client.calls[-1] == (
         "get",
         ["doc-1"],
@@ -203,9 +198,9 @@ async def test_get():
     )
 
 
+@pytest.mark.asyncio
 async def test_delete():
     client = _FakeClient()
-
     collection = DynavecCollection(
         client=client,
         record_type=dict,
@@ -222,9 +217,9 @@ async def test_delete():
     )
 
 
+@pytest.mark.asyncio
 async def test_search_with_gte_filter():
     client = _FakeClient()
-
     collection = DynavecCollection(
         client=client,
         record_type=dict,
@@ -254,7 +249,6 @@ async def test_search_with_gte_filter():
 
 def test_store_get_collection():
     client = _FakeClient()
-
     store = DynavecStore(client=client)
 
     collection = store.get_collection(

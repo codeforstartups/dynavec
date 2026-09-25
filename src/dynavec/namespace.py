@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .models import SearchResult
+from .models import ExplainedSearchResult, SearchResult
 
 if TYPE_CHECKING:
     from .client import Dynavec
@@ -35,7 +35,9 @@ class NamespaceView:
     def update(self, *args, **kw) -> Any:
         return self._db.update(*args, namespace=self._ns, **kw)
 
-    def search(self, query: str | None = None, **kw) -> list[SearchResult]:
+    def search(
+        self, query: str | None = None, **kw
+    ) -> list[SearchResult] | ExplainedSearchResult:
         return self._db.search(query, namespace=self._ns, **kw)
 
     def search_stream(self, query: str | None = None, **kw):
@@ -46,6 +48,40 @@ class NamespaceView:
 
     def delete(self, ids, **kw) -> None:
         return self._db.delete(ids, namespace=self._ns, **kw)
+
+    def as_multiquery_retriever(
+        self, generate_queries=None, *, llm_generate_queries=None, **kw
+    ):
+        """Create a :class:`~dynavec.retrievers.MultiQueryRetriever` pinned to this namespace."""
+        from .retrievers import MultiQueryRetriever
+
+        return MultiQueryRetriever(
+            self,
+            generate_queries=generate_queries,
+            llm_generate_queries=llm_generate_queries,
+            **kw,
+        )
+
+    def as_hyde_retriever(
+        self, generate_hypothetical=None, *, llm_generate_hypothetical=None, **kw
+    ):
+        """Create a :class:`~dynavec.retrievers.HyDERetriever` pinned to this namespace."""
+        from .retrievers import HyDERetriever
+
+        return HyDERetriever(
+            self,
+            generate_hypothetical=generate_hypothetical,
+            llm_generate_hypothetical=llm_generate_hypothetical,
+            **kw,
+        )
+    def export_namespace(self, output, **kw) -> int:
+        return self._db.export_namespace(output, namespace=self._ns, **kw)
+
+    def import_namespace(self, input, **kw) -> int:
+        return self._db.import_namespace(input, namespace=self._ns, **kw)
+
+    def __iter__(self):
+        return self._db.iter_namespace(namespace=self._ns)
 
     def __repr__(self) -> str:
         return f"NamespaceView(namespace={self._ns!r})"

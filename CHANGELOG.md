@@ -3,7 +3,79 @@
 All notable changes to dynavec are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Optimistic concurrency on `update()`** (#24) — each update stores a `version` on the
+  DynamoDB item and writes with a `ConditionExpression`, so a concurrent change raises
+  `ConflictError` (nothing written) instead of being silently overwritten. Pass
+  `expected_version=` to guard across your own read/update cycle; `UpsertResult.version`
+  returns the new version. Plain `upsert()` stays last-writer-wins and resets the version.
+
+### Changed
+- `update()` now writes DynamoDB before S3 Vectors (previously in parallel) so a conflict
+  leaves both stores untouched, and reads the document with a strongly consistent `GetItem`.
+
+## [0.6.0] - 2026-09-25
+
+A large release: new retrieval strategies, quantization methods, graph and cache
+capabilities, more integrations, and quality-of-life tooling.
+
+### Added
+- **Query-expansion retrievers** (#215) — `MultiQueryRetriever` (concurrent reformulation
+  search + RRF) and `HyDERetriever` (hypothetical-document embeddings; average / fuse strategies).
+- **Learned RRF fusion weights** (#204, #223) — `RRFWeightFitter` fits per-retriever RRF
+  weights by maximizing nDCG (grid / random / optional Bayesian), with `FitResult` save/load.
+- **Optimized Product Quantization** (#198) — `OPQRotation` + `OptimizedProductQuantizer`
+  (rotate-then-PQ with Procrustes refinement); **ScalarQuantizer** INT8 (#201).
+- **Cross-encoder reranking** (#208).
+- **Hybrid graph + ANN search** (#206) — `hybrid_graph_search` fuses ANN and graph-scoped
+  results with weighted RRF; **graph shortest path** (#237); **graph node/edge deletion** (#209).
+- **`search().explain()`** debug output — per-stage timing and candidate counts (#228).
+- **Query-cache invalidation on write** (#236) — `invalidate(namespace)` across backends,
+  `cache_invalidate_on_write` config; **`warm_cache()`** to pre-populate the cache (#194);
+  **optional embedding cache** (`CachedEmbedder`, #213).
+- **Client `describe()`** returning `IndexInfo` diagnostics (#218); **`dynavec --version`** (#238).
+- **CLI namespace export/import** to/from JSONL (#217).
+- **Ingestion**: `CsvSource` + row-wise spreadsheets (#205); **`S3Source`** bucket ingestion (#61).
+- **Hot-tier LRU/FIFO eviction** policy (#216).
+- **DynamoDB**: gzip-compress large text before storing (#231); item-size validation (#211).
+- **Integrations**: OpenAI Assistants file-search tool (#73), LlamaIndex metadata-filter
+  translation (#219), Strands retriever example, multi-tenant RAG example/docs.
+- **Embeddings**: OpenAI retry with `Retry-After` handling (#242); dimension > 4096 warning (#241).
+- **Eval**: retrieval-quality run trend tracking (#212).
+- **Site**: landing-page revamp + interactive cost calculator (#104).
+
+### Changed
+- **`XlsxSource` now yields one record per row** (header → `"column: value"`), not per
+  worksheet (#205). Behavior change vs 0.5.0.
+- `max_workers` is validated eagerly in config (#250).
+
+## [0.5.0] - 2026-09-16
+
+### Added
+- **Office document ingestion** (#188) — `DocxSource`, `PptxSource`, and `XlsxSource`
+  for Word, PowerPoint, and Excel files, each lazy-importing its parser.
+- **Hugging Face Inference embedder** (#191) — `HFInferenceEmbedder` backed by the
+  HF Serverless Inference API.
+- **DSPy retrieval integration** (#195) — `DynavecRM(dspy.Retrieve)` so a dynavec
+  client can back a DSPy pipeline (closes #68).
+- **Structured logging** (#200) — opt-in `structured_logging=True` emits JSON store
+  events with secret redaction; `log_level` config.
+- **ProductQuantizer persistence** (#199) — `save()` / `load()` via `np.savez` with
+  `allow_pickle=False` (safe serialization).
+- **Dashboard dark mode** (#187) — theme toggle + parity with the landing page.
+
+### Changed / Performance
+- **Vectorized MMR** (#197) — reranking over large candidate sets is now
+  O(k·N) instead of O(k·N·k).
+
+### Tests
+- Property-based tests for the metric layer via Hypothesis (#192), plus rescore
+  metric-override coverage (#196).
+
 ## [0.4.0] - 2026-09-12
+
 
 ### Added
 - **In-memory hot tier** (#186) — opt-in `hot_tier=True` keeps the hot working

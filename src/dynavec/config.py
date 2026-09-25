@@ -7,6 +7,7 @@ and dynavec only ever calls them with the caller's credentials.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -56,6 +57,12 @@ class DynavecConfig:
         Optional botocore ``max_pool_connections`` tuning for DynamoDB and
         S3 Vectors clients. ``None`` (default) keeps boto3/botocore defaults
         (currently 10 connections per client).
+    cache_invalidate_on_write:
+        When a query ``cache`` is configured, evict the affected namespace's
+        cached results after ``upsert``/``update``/``delete`` so writes are
+        never hidden behind stale entries (default True). Disable only if
+        write-side invalidation is expensive for your backend and brief
+        staleness is acceptable.
     """
 
     vector_bucket: str
@@ -74,6 +81,7 @@ class DynavecConfig:
     # retrieval tuning
     over_fetch: int = 4
     top_k_page_size: int | None = None
+    cross_encoder_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     # concurrency (I/O-bound: threads give real parallelism as boto3 releases
     # the GIL during network calls). See client._executor.
@@ -86,11 +94,22 @@ class DynavecConfig:
     # DynamoDB hydration — for Pinecone-class latency without a paid cluster.
     hot_tier: bool = False
     hot_tier_max_vectors: int = 200_000  # global RAM safety cap across namespaces
-    hot_tier_n_probe: int = 8            # partitions probed per query (recall vs latency)
+    hot_tier_n_probe: int = 8  # partitions probed per query (recall vs latency)
+    hot_tier_eviction: Literal["lru", "fifo", "none"] = "lru"
 
     # provisioning
     auto_provision: bool = False
     dynamodb_billing_mode: Literal["PAY_PER_REQUEST", "PROVISIONED"] = "PAY_PER_REQUEST"
+
+    # document storage tuning
+    gzip_threshold_bytes: int | None = None
+
+    # query cache
+    cache_invalidate_on_write: bool = True
+
+    # observability
+    structured_logging: bool = False
+    log_level: str = "INFO"
 
     def botocore_config(self):  # type: ignore[no-untyped-def]
         """Return a botocore Config with pool tuning, or None for defaults.
@@ -111,6 +130,12 @@ class DynavecConfig:
             raise ValueError("distance_metric must be 'cosine' or 'euclidean'")
         if self.over_fetch < 1:
             raise ValueError("over_fetch must be >= 1")
+        if (
+            isinstance(self.max_workers, bool)
+            or not isinstance(self.max_workers, int)
+            or self.max_workers <= 0
+        ):
+            raise ValueError("max_workers must be a positive integer")
         if self.top_k_page_size is not None and self.top_k_page_size <= 0:
             raise ValueError("top_k_page_size must be a positive integer")
         if self.max_pool_connections is not None and self.max_pool_connections <= 0:
@@ -119,3 +144,14 @@ class DynavecConfig:
             raise ValueError("hot_tier_max_vectors must be a positive integer")
         if self.hot_tier_n_probe < 1:
             raise ValueError("hot_tier_n_probe must be >= 1")
+        if self.hot_tier_eviction not in ("lru", "fifo", "none"):
+            raise ValueError("hot_tier_eviction must be 'lru', 'fifo', or 'none'")
+        if self.gzip_threshold_bytes is not None and self.gzip_threshold_bytes <= 0:
+            raise ValueError("gzip_threshold_bytes must be a positive integer")
+        valid_log_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        if self.log_level.upper() not in valid_log_levels:
+            raise ValueError(f"log_level must be one of {valid_log_levels}")
+        
+        if self.dimension > 4096:
+            logger = logging.getLogger(__name__)
+            logger.warning("Amazon S3 Vectors currently supports a maximum embedding dimension of 4096. You have configured a dimension of %d. This may result in an API error during provisioning or writing data.", self.dimension)

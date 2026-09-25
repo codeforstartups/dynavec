@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Telemetry dashboard · dynavec docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="../index.html">
+        <svg class="brand__mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+          <rect x="1" y="1" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="1" y1="11" x2="21" y2="11" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="11" y1="1" x2="11" y2="21" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="6" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/>
+        </svg>
+        <span class="brand__name">dynavec</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="../index.html#why">Why</a>
+        <a href="../index.html#benchmarks">Benchmarks</a>
+        <a href="index.html">Docs</a>
+      </nav>
+      <a class="btn btn--ghost star" href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">
+        <span aria-hidden="true">&#9733;</span> Star <span class="star__count" data-stars>&mdash;</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docshell">
+    <button class="side__toggle">☰ Menu</button>
+<nav class="side" aria-label="Docs">
+<div class="side__group"><p class="side__title">Getting started</p><ul class="side__list">
+<li><a href="index.html">Overview</a></li>
+<li><a href="installation.html">Installation</a></li>
+<li><a href="quickstart.html">Quickstart</a></li>
+<li><a href="configuration.html">Configuration</a></li>
+<li><a href="faq.html">FAQ</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Writing data</p><ul class="side__list">
+<li><a href="embeddings.html">Embeddings</a></li>
+<li><a href="upsert.html">Upsert</a></li>
+<li><a href="update-and-lambda.html">Update & Lambda</a></li>
+<li><a href="ingestion.html">Ingestion & MCP</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Searching</p><ul class="side__list">
+<li><a href="search.html">Search</a></li>
+<li><a href="metrics-and-rerank.html">Metrics & rerank</a></li>
+<li><a href="namespaces.html">Namespaces</a></li>
+<li><a href="streaming.html">Streaming</a></li>
+<li><a href="caching.html">Caching</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Advanced</p><ul class="side__list">
+<li><a href="knowledge-graph.html">Knowledge graph</a></li>
+<li><a href="hot-tier.html">In-memory hot tier</a></li>
+<li><a href="quantization.html">Product quantization</a></li>
+<li><a href="concurrency.html">Concurrency</a></li>
+<li><a href="credentials.html">Credentials & IAM</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">Ecosystem</p><ul class="side__list">
+<li><a href="integrations.html">Framework integrations</a></li>
+<li><a href="dashboard.html" class="is-current">Telemetry dashboard</a></li>
+<li><a href="benchmarking.html">Benchmarking</a></li>
+</ul></div>
+<div class="side__group"><p class="side__title">About</p><ul class="side__list">
+<li><a href="release-notes.html">Release notes</a></li>
+</ul></div>
+</nav>
+    <main class="doc">
+      <div class="doc__crumbs"><a href="../index.html">dynavec</a> / <a href="index.html">Docs</a> / Telemetry dashboard</div>
+      <h1>Telemetry dashboard</h1>
+      <p class="doc__sub">A native, in-your-brand observability dashboard — a Langfuse-style view of real query telemetry.</p>
+      
+<p>Attach a recorder to your client and every search is captured with latency, cache outcome,
+result count, and score stats. No simulated data.</p>
+<div class="callout">Live interactive preview: <a href="https://codeforstartups.github.io/dynavec/dashboard/" target="_blank" rel="noopener">codeforstartups.github.io/dynavec/dashboard</a> (landing-page theme).</div>
+<h2>1. Expose real telemetry</h2>
+<p>Attach a recorder to your client and serve the API:</p>
+<pre class="code"><code>from dynavec import Dynavec, DynavecConfig, SemanticCache
+from dynavec.telemetry import TelemetryRecorder
+from dynavec.dashboard import serve
+
+rec = TelemetryRecorder()
+db = Dynavec(cfg, embedder=emb, cache=SemanticCache(), telemetry=rec)
+# ... your app runs searches; the recorder fills automatically ...
+serve(rec, port=8779)          # JSON API at http://127.0.0.1:8779</code></pre>
+<h2>2. Run the dashboard</h2>
+<p>Points at that API; falls back to sample data if unset:</p>
+<pre class="code"><code>cd dashboard
+npm install
+NEXT_PUBLIC_DYNAVEC_API=http://127.0.0.1:8779 npm run dev   # http://localhost:3000</code></pre>
+<p>No AWS? <code>python examples/dashboard_demo.py</code> runs real searches against in-memory
+stand-ins and serves the API on <code>:8779</code> for the dashboard to read.</p>
+<h2>Tracing view</h2>
+<p>Shows a query-volume histogram, latency percentiles (p50/p95/p99), cache hit-rate, and a
+filterable traces table with per-trace drill-down:</p>
+<table class="doc__params">
+<tr><th>Panel</th><th>Shows</th></tr>
+<tr><td>KPI cards</td><td>Queries/min, p95 latency, cache hit rate, average results, error rate</td></tr>
+<tr><td>Query volume</td><td>Histogram of trace counts per time bucket</td></tr>
+<tr><td>Latency percentiles</td><td>p50 / p95 / p99 latency in ms</td></tr>
+<tr><td>Traces table</td><td>Every recorded <code>search</code>, <code>graph_search</code>, and <code>upsert</code> call — namespace, latency, results, cache hit/miss, rank strategy — filterable by op, status, and namespace</td></tr>
+</table>
+<img src="../images/dashboard_tracing.png" alt="Tracing view" class="doc__img" />
+<p>Click any row to open a detail drawer with per-call similarity scores, filter state, and error details.</p>
+
+      <div class="doc__next"><a href="integrations.html"><span>Previous</span>Framework integrations</a><a href="benchmarking.html" style="text-align:right"><span>Next</span>Benchmarking</a></div>
+    </main>
+  </div>
+
+  <script src="docs.js"></script>
+</body>
+</html>

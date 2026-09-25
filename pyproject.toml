@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dynavec"
-version = "0.4.0"
+version = "0.6.0"
 description = "Serverless hybrid vector database for AWS: fuses DynamoDB (single-digit-ms metadata + document store) with Amazon S3 Vectors (billion-scale serverless ANN). A drop-in, in-your-own-account alternative to Pinecone / Qdrant / Milvus / Weaviate / OpenSearch."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -53,6 +53,8 @@ langchain = ["langchain-core>=0.3"]
 llamaindex = ["llama-index-core>=0.11"]
 crewai = ["crewai>=0.70,!=1.14.0; python_version >= '3.10'"]
 semantic-kernel = ["semantic-kernel>=1.44"]
+haystack = ["haystack-ai>=2.0"]
+dspy = ["dspy>=3.3; python_version >= '3.10'"]
 all = [
     "openai>=1.40",
     "google-generativeai>=0.8",
@@ -64,8 +66,10 @@ all = [
     "mcp>=1.0; python_version >= '3.10'",
     "langchain-core>=0.3",
     "llama-index-core>=0.11",
+    "haystack-ai>=2.0",
     "crewai>=0.70,!=1.14.0; python_version >= '3.10'",
     "semantic-kernel>=1.44",
+    "dspy>=3.3; python_version >= '3.10'",
 ]
 
 # --- Dev / test / benchmark ---

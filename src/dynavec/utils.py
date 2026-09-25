@@ -53,6 +53,7 @@ def retry(
     base_delay: float = 0.1,
     max_delay: float = 5.0,
     retry_on: Callable[[Exception], bool] = is_retryable,
+    retry_delay: Callable[[Exception], float | None] | None = None,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Decorator factory: exponential backoff with full jitter.
 
@@ -71,8 +72,12 @@ def retry(
                     attempt += 1
                     if attempt >= max_attempts or not retry_on(exc):
                         raise
-                    delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
-                    time.sleep(random.uniform(0, delay))  # full jitter
+                    server_delay = retry_delay(exc) if retry_delay is not None else None
+                    if server_delay is not None:
+                        time.sleep(server_delay)
+                    else:
+                        delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
+                        time.sleep(random.uniform(0, delay))  # full jitter
 
         return wrapper
 

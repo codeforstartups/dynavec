@@ -55,8 +55,40 @@ class SearchResult:
 
 
 @dataclass
+class SearchExplanation:
+    """Debug information collected for an explained search."""
+
+    timings_ms: dict[str, float] = field(default_factory=dict)
+    candidate_counts: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
+class ExplainedSearchResult:
+    """Search results together with per-stage debug information."""
+
+    results: list[SearchResult] = field(default_factory=list)
+    explanation: SearchExplanation = field(default_factory=SearchExplanation)
+
+
+@dataclass
+class IndexInfo:
+    """Snapshot of the provisioned S3 Vectors index + DynamoDB table."""
+
+    vector_bucket: str
+    index: str
+    dimension: int
+    distance_metric: str
+    table: str
+    table_status: str
+    non_filterable_keys: list[str] = field(default_factory=list)
+    item_count: int | None = None
+
+
+@dataclass
 class UpsertResult:
     """Summary returned from an upsert call."""
 
     count: int
     ids: list[str] = field(default_factory=list)
+    # Stored version after an update(); None for plain upserts.
+    version: int | None = None

@@ -5,16 +5,71 @@ from __future__ import annotations
 import argparse
 import sys
 
+from . import __version__
+from .client import Dynavec
+from .config import DynavecConfig
+
 
 def _parser() -> argparse.ArgumentParser:
 	parser = argparse.ArgumentParser(prog="dynavec")
 	subparsers = parser.add_subparsers(dest="command")
+	subparsers.add_parser("version", help="show the installed dynavec version")
 	doctor = subparsers.add_parser("doctor", help="check AWS credentials and resource access")
 	doctor.add_argument("--bucket", help="S3 Vectors bucket name")
 	doctor.add_argument("--index", help="S3 Vectors index name")
 	doctor.add_argument("--table", help="DynamoDB table name")
 	doctor.add_argument("--region", help="AWS region")
 	doctor.add_argument("--profile", help="AWS profile name")
+
+	export_cmd = subparsers.add_parser(
+		"export", help="dump vectors and documents for a namespace to JSONL"
+	)
+	export_cmd.add_argument(
+		"--namespace",
+		"-n",
+		default="default",
+		help="namespace to export (default: 'default')",
+	)
+	export_cmd.add_argument(
+		"--output",
+		"-o",
+		help="output JSONL file path (default: stdout)",
+	)
+	export_cmd.add_argument("--bucket", help="S3 Vectors bucket name (or DYNAVEC_VECTOR_BUCKET)")
+	export_cmd.add_argument("--index", help="S3 Vectors index name (or DYNAVEC_INDEX)")
+	export_cmd.add_argument("--table", help="DynamoDB table name (or DYNAVEC_TABLE)")
+	export_cmd.add_argument("--dimension", type=int, help="vector dimension (default: 1536)")
+	export_cmd.add_argument("--region", help="AWS region")
+	export_cmd.add_argument("--profile", help="AWS profile name")
+
+	import_cmd = subparsers.add_parser(
+		"import", help="restore vectors and documents for a namespace from JSONL"
+	)
+	import_cmd.add_argument(
+		"--namespace",
+		"-n",
+		default="default",
+		help="target namespace (default: 'default')",
+	)
+	import_cmd.add_argument(
+		"--input",
+		"-i",
+		help="input JSONL file path (default: stdin)",
+	)
+	import_cmd.add_argument(
+		"--batch-size",
+		type=int,
+		default=100,
+		help="batch size for upserting records (default: 100)",
+	)
+	import_cmd.add_argument("--bucket", help="S3 Vectors bucket name (or DYNAVEC_VECTOR_BUCKET)")
+	import_cmd.add_argument("--index", help="S3 Vectors index name (or DYNAVEC_INDEX)")
+	import_cmd.add_argument("--table", help="DynamoDB table name (or DYNAVEC_TABLE)")
+	import_cmd.add_argument(
+		"--dimension", type=int, help="vector dimension (inferred from input if omitted)"
+	)
+	import_cmd.add_argument("--region", help="AWS region")
+	import_cmd.add_argument("--profile", help="AWS profile name")
 
 	mcp = subparsers.add_parser("mcp", help="run the FastMCP server for AI clients")
 	mcp.add_argument(
@@ -41,6 +96,122 @@ def _session(profile: str | None, region: str | None):
 	if region:
 		kwargs["region_name"] = region
 	return boto3.Session(**kwargs)
+
+
+def _resolve_resources(args: argparse.Namespace) -> tuple[str, str, str]:
+	import os
+
+	bucket = args.bucket or os.environ.get("DYNAVEC_VECTOR_BUCKET") or os.environ.get("DYNAVEC_BUCKET")
+	index = args.index or os.environ.get("DYNAVEC_INDEX")
+	table = args.table or os.environ.get("DYNAVEC_TABLE")
+
+	missing = []
+	if not bucket:
+		missing.append("--bucket")
+	if not index:
+		missing.append("--index")
+	if not table:
+		missing.append("--table")
+
+	if missing:
+		raise ValueError(
+			f"Missing required resource configuration: {', '.join(missing)} "
+			"(provide via flags or DYNAVEC_* environment variables)."
+		)
+	return bucket, index, table
+
+
+def _export(args: argparse.Namespace) -> int:
+	try:
+		bucket, index, table = _resolve_resources(args)
+	except ValueError as exc:
+		print(f"[FAIL] {exc}", file=sys.stderr)
+		return 1
+
+	session = _session(args.profile, args.region)
+	dimension = args.dimension or 1536
+	config = DynavecConfig(
+		vector_bucket=bucket,
+		index=index,
+		table=table,
+		dimension=dimension,
+		region=args.region,
+	)
+	db = Dynavec(config, boto_session=session)
+
+	try:
+		if args.output and args.output != "-":
+			count = db.export_namespace(args.output, namespace=args.namespace)
+			print(f"Exported {count} documents from namespace '{args.namespace}' to {args.output}")
+		else:
+			count = db.export_namespace(sys.stdout, namespace=args.namespace)
+			print(f"Exported {count} documents from namespace '{args.namespace}'", file=sys.stderr)
+		return 0
+	except Exception as exc:
+		print(f"[FAIL] Export failed: {exc}", file=sys.stderr)
+		return 1
+
+
+def _import(args: argparse.Namespace) -> int:
+	import json
+
+	try:
+		bucket, index, table = _resolve_resources(args)
+	except ValueError as exc:
+		print(f"[FAIL] {exc}", file=sys.stderr)
+		return 1
+
+	session = _session(args.profile, args.region)
+	dimension = args.dimension
+
+	if dimension is None and args.input and args.input != "-":
+		try:
+			with open(args.input, encoding="utf-8") as f:
+				for line in f:
+					line = line.strip()
+					if line:
+						first_item = json.loads(line)
+						if "vector" in first_item and isinstance(first_item["vector"], list):
+							dimension = len(first_item["vector"])
+							break
+		except Exception:
+			pass
+
+	if dimension is None:
+		try:
+			client = session.client("s3vectors", region_name=args.region)
+			idx = client.get_index(vectorBucketName=bucket, indexName=index)
+			dimension = idx.get("index", {}).get("dimension")
+		except Exception:
+			pass
+
+	if dimension is None:
+		dimension = 1536
+
+	config = DynavecConfig(
+		vector_bucket=bucket,
+		index=index,
+		table=table,
+		dimension=dimension,
+		region=args.region,
+	)
+	db = Dynavec(config, boto_session=session)
+
+	try:
+		if args.input and args.input != "-":
+			count = db.import_namespace(
+				args.input, namespace=args.namespace, batch_size=args.batch_size
+			)
+			print(f"Imported {count} documents into namespace '{args.namespace}' from {args.input}")
+		else:
+			count = db.import_namespace(
+				sys.stdin, namespace=args.namespace, batch_size=args.batch_size
+			)
+			print(f"Imported {count} documents into namespace '{args.namespace}'")
+		return 0
+	except Exception as exc:
+		print(f"[FAIL] Import failed: {exc}", file=sys.stderr)
+		return 1
 
 
 def _check(label: str, callback) -> bool:
@@ -109,8 +280,15 @@ def _check_dynamodb(session, table: str, region: str | None) -> str:
 
 def main(argv: list[str] | None = None) -> int:
 	args = _parser().parse_args(argv)
+	if args.command == "version":
+		print(__version__)
+		return 0
 	if args.command == "doctor":
 		return _doctor(args)
+	if args.command == "export":
+		return _export(args)
+	if args.command == "import":
+		return _import(args)
 	if args.command == "mcp":
 		from .mcp.server import create_mcp_server
 

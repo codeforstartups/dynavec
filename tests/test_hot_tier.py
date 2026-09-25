@@ -254,6 +254,7 @@ def test_hot_stats(monkeypatch):
         "authoritative_namespaces": [],
         "resident_vectors": 0,
         "max_vectors": 200_000,
+        "eviction_policy": "lru",
         "namespaces": {},
     }
     db.upsert([Document(id="1", text="apple")])
@@ -261,3 +262,112 @@ def test_hot_stats(monkeypatch):
     stats = db.hot_stats()
     assert stats["authoritative_namespaces"] == ["default"]
     assert stats["resident_vectors"] == 1
+
+
+def test_hot_tier_lru_eviction(monkeypatch):
+    db = _make(monkeypatch, hot_tier=True, hot_tier_max_vectors=3, hot_tier_eviction="lru")
+    db.upsert([Document(id="a1", text="apple 1"), Document(id="a2", text="apple 2")], namespace="ns_a")
+    db.upsert([Document(id="b1", text="banana 1")], namespace="ns_b")
+    db.upsert([Document(id="c1", text="cherry 1")], namespace="ns_c")
+
+    assert db.warm("ns_a") == 2
+    assert db.warm("ns_b") == 1
+    assert db._hot.is_authoritative("ns_a")
+    assert db._hot.is_authoritative("ns_b")
+
+    # Touch ns_a via search, making ns_b the least recently used
+    db.search("apple", top_k=1, namespace="ns_a")
+
+    # Warming ns_c requires 1 vector; capacity is 3. Total is currently 3 (2 from ns_a + 1 from ns_b).
+    # ns_b is evicted because ns_a was recently used.
+    assert db.warm("ns_c") == 1
+    assert db._hot.is_authoritative("ns_a")
+    assert db._hot.is_authoritative("ns_c")
+    assert not db._hot.is_authoritative("ns_b")
+
+    stats = db.hot_stats()
+    assert stats["authoritative_namespaces"] == ["ns_a", "ns_c"]
+    assert stats["resident_vectors"] == 3
+
+
+def test_hot_tier_fifo_eviction(monkeypatch):
+    db = _make(monkeypatch, hot_tier=True, hot_tier_max_vectors=3, hot_tier_eviction="fifo")
+    db.upsert([Document(id="a1", text="apple 1"), Document(id="a2", text="apple 2")], namespace="ns_a")
+    db.upsert([Document(id="b1", text="banana 1")], namespace="ns_b")
+    db.upsert([Document(id="c1", text="cherry 1")], namespace="ns_c")
+
+    assert db.warm("ns_a") == 2
+    assert db.warm("ns_b") == 1
+
+    # In FIFO, reading ns_a does NOT bump its order; ns_a is still the oldest loaded
+    db.search("apple", top_k=1, namespace="ns_a")
+
+    # Warming ns_c evicts ns_a (first in)
+    assert db.warm("ns_c") == 1
+    assert not db._hot.is_authoritative("ns_a")
+    assert db._hot.is_authoritative("ns_b")
+    assert db._hot.is_authoritative("ns_c")
+
+    stats = db.hot_stats()
+    assert stats["authoritative_namespaces"] == ["ns_b", "ns_c"]
+    assert stats["resident_vectors"] == 2
+
+
+def test_hot_tier_none_eviction(monkeypatch):
+    db = _make(monkeypatch, hot_tier=True, hot_tier_max_vectors=3, hot_tier_eviction="none")
+    db.upsert([Document(id="a1", text="apple 1"), Document(id="a2", text="apple 2")], namespace="ns_a")
+    db.upsert([Document(id="b1", text="banana 1")], namespace="ns_b")
+    db.upsert([Document(id="c1", text="cherry 1")], namespace="ns_c")
+
+    assert db.warm("ns_a") == 2
+    assert db.warm("ns_b") == 1
+
+    # Capacity full (3 vectors). With eviction "none", warming ns_c is rejected without evicting anything.
+    assert db.warm("ns_c") == 0
+    assert db._hot.is_authoritative("ns_a")
+    assert db._hot.is_authoritative("ns_b")
+    assert not db._hot.is_authoritative("ns_c")
+
+
+def test_hot_tier_oversized_namespace_rejected(monkeypatch):
+    db = _make(monkeypatch, hot_tier=True, hot_tier_max_vectors=2, hot_tier_eviction="lru")
+    db.upsert([Document(id="a1", text="apple 1")], namespace="ns_a")
+    db.upsert(
+        [Document(id="b1", text="b1"), Document(id="b2", text="b2"), Document(id="b3", text="b3")],
+        namespace="ns_b",
+    )
+
+    assert db.warm("ns_a") == 1
+    # ns_b has 3 items, which exceeds hot_tier_max_vectors=2.
+    # It must be rejected without evicting ns_a.
+    assert db.warm("ns_b") == 0
+    assert db._hot.is_authoritative("ns_a")
+    assert not db._hot.is_authoritative("ns_b")
+
+
+def test_hot_tier_insert_many_evicts_cold_namespace(monkeypatch):
+    db = _make(monkeypatch, hot_tier=True, hot_tier_max_vectors=3, hot_tier_eviction="lru")
+    db.upsert([Document(id="a1", text="apple 1")], namespace="ns_a")
+    db.upsert([Document(id="b1", text="banana 1")], namespace="ns_b")
+
+    assert db.warm("ns_a") == 1
+    assert db.warm("ns_b") == 1
+
+    # Now upsert 2 new docs into ns_b. Total vectors for ns_b will be 3.
+    # ns_a (1 vector) + ns_b (3 vectors) = 4 > 3.
+    # ns_a should be evicted, and ns_b should remain authoritative with 3 resident vectors.
+    db.upsert([Document(id="b2", text="banana 2"), Document(id="b3", text="banana 3")], namespace="ns_b")
+    assert not db._hot.is_authoritative("ns_a")
+    assert db._hot.is_authoritative("ns_b")
+    assert db.hot_stats()["resident_vectors"] == 3
+
+
+def test_hot_tier_config_validation():
+    with pytest.raises(ValueError, match="hot_tier_eviction must be 'lru', 'fifo', or 'none'"):
+        DynavecConfig(
+            vector_bucket="b",
+            index="i",
+            table="t",
+            dimension=8,
+            hot_tier_eviction="invalid",  # type: ignore[arg-type]
+        )

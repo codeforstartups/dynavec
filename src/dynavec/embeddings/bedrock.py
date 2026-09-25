@@ -9,7 +9,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 from .base import Embedder, Vector
 
@@ -39,7 +39,7 @@ class BedrockEmbedder(Embedder):
         model_id: str = "amazon.titan-embed-text-v2:0",
         region: str | None = None,
         dimension: int | None = None,
-        boto_session=None,
+        boto_session: Any | None = None,
     ) -> None:
         import boto3  # local import keeps base import cheap
 
@@ -99,7 +99,7 @@ class BedrockTitanMultimodalEmbedder(Embedder):
         self,
         dimension: int = 1024,
         region: str | None = None,
-        boto_session=None,
+        boto_session: Any | None = None,
     ) -> None:
         import boto3
 
@@ -140,7 +140,7 @@ class BedrockTitanMultimodalEmbedder(Embedder):
         if text is None and image_base64 is None:
             raise ValueError("At least one of 'text' or 'image' must be provided.")
 
-        body: dict = {
+        body: dict[str , Any] = {
             "embeddingConfig": {
                 "outputEmbeddingLength": self.dimension,
             }

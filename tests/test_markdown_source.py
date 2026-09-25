@@ -115,6 +115,79 @@ def test_root_must_be_an_existing_directory(tmp_path):
 def test_empty_directory_yields_no_records(tmp_path):
     assert list(MarkdownSource(tmp_path)) == []
 
+def test_front_matter_dates_normalize_to_iso_strings(tmp_path):
+    (tmp_path / "notes.md").write_text(
+        "---\ntitle: Research Notes\ndate: 2026-09-24\n---\nBody\n",
+        encoding="utf-8",
+    )
+
+    record = next(iter(MarkdownSource(tmp_path)))
+
+    assert record.metadata["date"] == "2026-09-24"
+    assert isinstance(record.metadata["date"], str)
+
+
+def test_front_matter_timestamps_normalize_to_iso_strings(tmp_path):
+    (tmp_path / "notes.md").write_text(
+        "---\ntitle: Notes\ncreated: 2026-09-24 10:00:00\n---\nBody\n",
+        encoding="utf-8",
+    )
+
+    record = next(iter(MarkdownSource(tmp_path)))
+
+    assert record.metadata["created"] == "2026-09-24T10:00:00"
+    assert isinstance(record.metadata["created"], str)
+
+
+def test_front_matter_nested_dates_normalize(tmp_path):
+    (tmp_path / "notes.md").write_text(
+        "---\ntitle: Notes\n"
+        "schedule:\n  start: 2026-09-24\n  milestones: [2026-09-25, 2026-09-26]\n---\nBody\n",
+        encoding="utf-8",
+    )
+
+    record = next(iter(MarkdownSource(tmp_path)))
+
+    assert record.metadata["schedule"] == {
+        "start": "2026-09-24",
+        "milestones": ["2026-09-25", "2026-09-26"],
+    }
+
+
+def test_front_matter_quoted_dates_and_scalars_untouched(tmp_path):
+    (tmp_path / "notes.md").write_text(
+        "---\ntitle: Notes\ndate: '2026-09-24'\nyear: 2026\npublished: true\n"
+        "score: 4.5\n---\nBody\n",
+        encoding="utf-8",
+    )
+
+    record = next(iter(MarkdownSource(tmp_path)))
+
+    assert record.metadata["date"] == "2026-09-24"
+    assert record.metadata["year"] == 2026
+    assert record.metadata["published"] is True
+    assert record.metadata["score"] == 4.5
+
+
+def test_front_matter_dates_survive_dynamodb_serialization(tmp_path):
+    """End-to-end: ingest a dated Markdown file and prove the stored item
+    passes DynamoDB's TypeSerializer (issue #246)."""
+    from boto3.dynamodb.types import TypeSerializer
+
+    from dynavec.stores.dynamodb import _to_dynamo
+
+    (tmp_path / "notes.md").write_text(
+        "---\ntitle: Research Notes\ndate: 2026-09-24\n---\nBody\n",
+        encoding="utf-8",
+    )
+    record = next(iter(MarkdownSource(tmp_path)))
+
+    serializer = TypeSerializer()
+    serialized = serializer.serialize(_to_dynamo(record.metadata))
+
+    assert serialized["M"]["date"] == {"S": "2026-09-24"}
+
+
 
 def test_markdown_source_flows_through_ingest(tmp_path):
     (tmp_path / "guide.md").write_text("---\ntopic: aws\n---\nabcdefghij", encoding="utf-8")

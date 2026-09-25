@@ -25,10 +25,12 @@ rewrite. (A native asyncio client is on the roadmap.)
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any, Union
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, TextIO, Union
 
 if TYPE_CHECKING:
     from .cache import BaseCache
@@ -38,18 +40,32 @@ import numpy as np
 from .config import NS_METADATA_KEY, TEXT_METADATA_KEY, DynavecConfig
 from .credentials import AWSCredentials, resolve_session
 from .embeddings.base import Embedder
-from .exceptions import ConfigurationError, DimensionMismatchError, NotFoundError
+from .exceptions import (
+    ConfigurationError,
+    ConflictError,
+    DimensionMismatchError,
+    MissingDependencyError,
+    NotFoundError,
+)
 from .graph import GraphStore
 from .hot import HotTier
 from .metadata import build_s3_filter, generate_auto_metadata, split_metadata
 from .metrics import normalize_scores as normalize_metric_scores
 from .metrics import rescore as metric_rescore
 from .metrics import score as metric_score
-from .models import Document, SearchResult, UpsertResult
+from .models import (
+    Document,
+    ExplainedSearchResult,
+    IndexInfo,
+    SearchExplanation,
+    SearchResult,
+    UpsertResult,
+)
 from .namespace import NamespaceView
 from .provisioning import provision_all
-from .retrieval import distance_to_score, maximal_marginal_relevance
+from .retrieval import distance_to_score, maximal_marginal_relevance, reciprocal_rank_fusion
 from .stores import DynamoDBStore, S3VectorsStore
+from .stores.dynamodb import check_item_size
 from .transforms import TransformContext, as_pipeline
 from .utils import KEY_SEPARATOR, chunked, decode_key_component, encode_key_component
 
@@ -85,6 +101,7 @@ class Dynavec:
         self._graph_store: GraphStore | None = None
         self._pool: ThreadPoolExecutor | None = None
         self._hot: HotTier | None = HotTier(config) if config.hot_tier else None
+        self._cross_encoder = None
 
         if embedder is not None and embedder.dimension != config.dimension:
             raise ConfigurationError(
@@ -122,6 +139,25 @@ class Dynavec:
     def provision(self) -> None:
         """Create the S3 vector bucket, index, and DynamoDB table (idempotent)."""
         provision_all(self.config, boto_session=self._session)
+
+    def describe(self) -> IndexInfo:
+        """Return the live bucket/index/table config, as provisioned in AWS."""
+        idx = self._vectors.get_index()["index"]
+        table_desc = self._docs._ddb.meta.client.describe_table(TableName=self.config.table)[
+            "Table"
+        ]
+        return IndexInfo(
+            vector_bucket=self.config.vector_bucket,
+            index=self.config.index,
+            dimension=idx["dimension"],
+            distance_metric=idx["distanceMetric"],
+            table=self.config.table,
+            table_status=table_desc["TableStatus"],
+            non_filterable_keys=idx.get("metadataConfiguration", {}).get(
+                "nonFilterableMetadataKeys", []
+            ),
+            item_count=table_desc.get("ItemCount"),
+        )
 
     def namespace(self, namespace: str) -> NamespaceView:
         """Return a handle with every op bound to ``namespace`` (namespace RAG)."""
@@ -169,8 +205,11 @@ class Dynavec:
             for d in docs:
                 ctx = pipeline(
                     TransformContext(
-                        id=d.id, text=d.text, vector=d.vector,
-                        metadata=dict(d.metadata), namespace=namespace,
+                        id=d.id,
+                        text=d.text,
+                        vector=d.vector,
+                        metadata=dict(d.metadata),
+                        namespace=namespace,
                     )
                 )
                 d.text, d.vector, d.metadata = ctx.text, ctx.vector, ctx.metadata
@@ -204,6 +243,8 @@ class Dynavec:
                 auto.update(meta)
                 meta = auto
             s3_meta, ddb_meta = split_metadata(meta, self.config, namespace, d.text)
+            # fail before either store is written, not partway through a batch
+            check_item_size(namespace, d.id, d.text, ddb_meta, self.config.gzip_threshold_bytes)
             s3_payload.append((self._s3_key(namespace, d.id), d.vector, s3_meta))
             ddb_payload.append((d.id, d.text, ddb_meta))
             ids.append(d.id)
@@ -219,6 +260,10 @@ class Dynavec:
         for chunk in chunked(ddb_payload, _DDB_CHUNK):
             tasks.append(lambda c=chunk: self._docs.put_many(namespace, c))
         self._run_parallel(tasks)
+
+    def _invalidate_cache(self, namespace: str) -> None:
+        if self._cache is not None and self.config.cache_invalidate_on_write:
+            self._cache.invalidate(namespace)
 
     def upsert(
         self,
@@ -238,6 +283,7 @@ class Dynavec:
         self._write(namespace, s3_payload, ddb_payload)
         if self._hot is not None:
             self._hot.insert_many(namespace, hot_payload)
+        self._invalidate_cache(namespace)
         return UpsertResult(count=len(ids), ids=ids)
 
     def update(
@@ -251,17 +297,27 @@ class Dynavec:
         merge_metadata: bool = True,
         transform=None,
         upsert_if_missing: bool = False,
+        expected_version: int | None = None,
     ) -> UpsertResult:
         """Update an existing document's text, vector, and/or metadata.
 
         Read-modify-write: metadata is merged by default; the vector is re-derived
         only when text changes (and an embedder exists) or a new vector is given,
         otherwise the stored vector is preserved.
+
+        The write is conditional on the document's version, so a concurrent
+        update is never silently overwritten: if the document changed since it
+        was read, :class:`ConflictError` is raised and nothing is written. Pass
+        ``expected_version`` (the ``version`` from an earlier update's result)
+        to also detect changes made since *your* last read. The returned
+        :class:`UpsertResult` carries the new ``version``.
         """
-        existing = self._docs.get_many(namespace, [id]).get(id)
+        existing = self._docs.get_versioned(namespace, id)
         if existing is None and not upsert_if_missing:
             raise NotFoundError(f"Document {id!r} not found in namespace {namespace!r}.")
-        existing = existing or {"text": None, "metadata": {}}
+        existing = existing or {"text": None, "metadata": {}, "version": 0}
+        if expected_version is not None and existing["version"] != expected_version:
+            raise ConflictError(id, namespace, expected_version)
 
         new_text = text if text is not None else existing.get("text")
 
@@ -294,10 +350,17 @@ class Dynavec:
         s3_payload, ddb_payload, ids, hot_payload = self._prepare(
             [doc], namespace, auto_metadata=False, transform=transform
         )
-        self._write(namespace, s3_payload, ddb_payload)
+        # The conditional DynamoDB write goes first: on a conflict it raises
+        # before S3 Vectors or the hot tier are touched.
+        (_, ddb_text, ddb_meta), = ddb_payload
+        version = self._docs.put_versioned(
+            namespace, id, ddb_text, ddb_meta, expected_version=existing["version"]
+        )
+        self._vectors.put_vectors(s3_payload)
         if self._hot is not None:
             self._hot.insert_many(namespace, hot_payload)
-        return UpsertResult(count=1, ids=ids)
+        self._invalidate_cache(namespace)
+        return UpsertResult(count=1, ids=ids, version=version)
 
     # ---------------------------------------------------------------- read path
     def search(
@@ -314,7 +377,8 @@ class Dynavec:
         include_vectors: bool = False,
         use_cache: bool | None = None,
         normalize_scores: bool = False,
-    ) -> list[SearchResult]:
+        explain: bool = False,
+    ) -> list[SearchResult] | ExplainedSearchResult:
         """Semantic search. Provide ``query`` (embedded) or a raw ``vector``.
 
         ``rescore`` re-orders the ANN candidates with a client-side metric
@@ -325,11 +389,20 @@ class Dynavec:
 
         If a cache is configured, repeated/similar queries are served from it
         (set ``use_cache=False`` to force a fresh search).
+        Set ``explain=True`` to return results together with per-stage timings
+        and candidate counts for debugging.
         """
         t0 = time.perf_counter()
         tel = self._telemetry
+        explanation = SearchExplanation() if explain else None
+
         try:
+            stage_t0 = time.perf_counter()
             query_vector = self._resolve_query_vector(query, vector)
+            if explanation is not None:
+                explanation.timings_ms["query_vector"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
 
             # cache key includes ranking options so different ranking != same entry
             cache_on = self._cache is not None if use_cache is None else use_cache
@@ -344,36 +417,123 @@ class Dynavec:
                         "normalize_scores": normalize_scores,
                     },
                 }
+                stage_t0 = time.perf_counter()
                 cached = self._cache.get(namespace, query_vector, top_k, cache_filter)
+
+                if explanation is not None:
+                    explanation.timings_ms["cache_lookup"] = round(
+                        (time.perf_counter() - stage_t0) * 1000, 3
+                    )
+                    explanation.candidate_counts["cached"] = (
+                        len(cached) if cached is not None else 0
+                    )
+
                 if cached is not None:
-                    self._record_search(tel, t0, namespace, top_k, cached, True,
-                                        filter, rescore, rerank, query)
+                    if explanation is not None:
+                        explanation.candidate_counts["final"] = len(cached)
+                        explanation.timings_ms["total"] = round(
+                            (time.perf_counter() - t0) * 1000, 3
+                        )
+
+                    self._record_search(
+                        tel,
+                        t0,
+                        namespace,
+                        top_k,
+                        cached,
+                        True,
+                        filter,
+                        rescore,
+                        rerank,
+                        query,
+                    )
+
+                    if explanation is not None:
+                        return ExplainedSearchResult(
+                            results=cached,
+                            explanation=explanation,
+                        )
+
                     return cached
 
             results = self._search_core(
-                query_vector, top_k, namespace, filter, rescore, rerank,
-                mmr_lambda, include_vectors, normalize_scores,
+                query_vector,
+                query=query,
+                top_k=top_k,
+                namespace=namespace,
+                filter=filter,
+                rescore=rescore,
+                rerank=rerank,
+                mmr_lambda=mmr_lambda,
+                include_vectors=include_vectors,
+                normalize_scores=normalize_scores,
+                explanation=explanation,
             )
 
             if cache_on and self._cache is not None and results:
+                stage_t0 = time.perf_counter()
                 self._cache.put(namespace, query_vector, top_k, cache_filter, results)
-            self._record_search(tel, t0, namespace, top_k, results,
-                                (False if cache_on else None),
-                                filter, rescore, rerank, query)
+
+                if explanation is not None:
+                    explanation.timings_ms["cache_write"] = round(
+                        (time.perf_counter() - stage_t0) * 1000, 3
+                    )
+
+            if explanation is not None:
+                explanation.candidate_counts["final"] = len(results)
+                explanation.timings_ms["total"] = round((time.perf_counter() - t0) * 1000, 3)
+
+            self._record_search(
+                tel,
+                t0,
+                namespace,
+                top_k,
+                results,
+                (False if cache_on else None),
+                filter,
+                rescore,
+                rerank,
+                query,
+            )
+
+            if explanation is not None:
+                return ExplainedSearchResult(
+                    results=results,
+                    explanation=explanation,
+                )
+
             return results
         except Exception as exc:  # noqa: BLE001 - record then re-raise
             if tel is not None:
-                tel.record(tel.new_event(
-                    "search", namespace=namespace, top_k=top_k,
-                    latency_ms=round((time.perf_counter() - t0) * 1000, 3),
-                    status="error", error=str(exc)[:200], filtered=bool(filter),
-                    rescore=self._rescore_label(rescore), rerank=rerank,
-                ))
+                tel.record(
+                    tel.new_event(
+                        "search",
+                        namespace=namespace,
+                        top_k=top_k,
+                        latency_ms=round((time.perf_counter() - t0) * 1000, 3),
+                        status="error",
+                        error=str(exc)[:200],
+                        filtered=bool(filter),
+                        rescore=self._rescore_label(rescore),
+                        rerank=rerank,
+                    )
+                )
             raise
 
     def _search_core(
-        self, query_vector, top_k, namespace, filter, rescore, rerank,
-        mmr_lambda, include_vectors, normalize_scores,
+        self,
+        query_vector,
+        *,
+        query: str | None = None,
+        top_k,
+        namespace,
+        filter,
+        rescore,
+        rerank,
+        mmr_lambda,
+        include_vectors,
+        normalize_scores,
+        explanation: SearchExplanation | None = None,
     ) -> list[SearchResult]:
         needs_vectors = rerank == "mmr" or rescore is not None or include_vectors
         fetch_k = top_k * self.config.over_fetch if (rerank or rescore) else top_k
@@ -384,9 +544,18 @@ class Dynavec:
         # transparently fall back to S3 (hot tier can only speed up, never break).
         results: list[SearchResult] | None = None
         if self._hot is not None:
+            stage_t0 = time.perf_counter()
             results = self._hot.search(namespace, query_vector, fetch_k, filter)
 
+            if explanation is not None:
+                explanation.timings_ms["hot_lookup"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
+                if results is not None:
+                    explanation.candidate_counts["retrieved"] = len(results)
+
         if results is None:
+            stage_t0 = time.perf_counter()
             raw = self._vectors.query(
                 query_vector=query_vector,
                 top_k=fetch_k,
@@ -394,31 +563,52 @@ class Dynavec:
                 return_metadata=True,
                 return_distance=True,
             )
+            if explanation is not None:
+                explanation.timings_ms["vector_search"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
+                explanation.candidate_counts["retrieved"] = len(raw)
             if not raw:
                 return []
 
             hits = [(self._split_key(v["key"])[1], v.get("distance")) for v in raw]
             ids = [h[0] for h in hits]
+            stage_t0 = time.perf_counter()
             hydrated = self._docs.get_many(namespace, ids)
+
+            if explanation is not None:
+                explanation.timings_ms["hydration"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
+                explanation.candidate_counts["hydrated"] = len(hydrated)
 
             vec_by_key = {}
             if needs_vectors:
+                stage_t0 = time.perf_counter()
                 vec_by_key = self._vectors.get_vectors(
                     [self._s3_key(namespace, doc_id) for doc_id in ids]
                 )
+
+                if explanation is not None:
+                    explanation.timings_ms["vector_fetch"] = round(
+                        (time.perf_counter() - stage_t0) * 1000, 3
+                    )
+                    explanation.candidate_counts["vectors_fetched"] = len(vec_by_key)
 
             results = []
             for doc_id, distance in hits:
                 doc = hydrated.get(doc_id, {})
                 vec = (
                     vec_by_key.get(self._s3_key(namespace, doc_id), {}).get("vector")
-                    if vec_by_key else None
+                    if vec_by_key
+                    else None
                 )
                 results.append(
                     SearchResult(
                         id=doc_id,
                         score=distance_to_score(distance, self.config.distance_metric)
-                        if distance is not None else 0.0,
+                        if distance is not None
+                        else 0.0,
                         distance=distance,
                         text=doc.get("text"),
                         metadata=doc.get("metadata", {}),
@@ -427,16 +617,52 @@ class Dynavec:
                 )
 
         if rescore is not None:
+            stage_t0 = time.perf_counter()
             results = self._apply_rescore(query_vector, results, rescore)
+
+            if explanation is not None:
+                explanation.timings_ms["rescore"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
+                explanation.candidate_counts["rescored"] = len(results)
         if rerank == "mmr":
-            results = maximal_marginal_relevance(query_vector, results, top_k, mmr_lambda)
+            stage_t0 = time.perf_counter()
+            results = maximal_marginal_relevance(
+                results,
+                query_vector,
+                top_k=top_k,
+                lambda_mult=mmr_lambda,
+            )
+
+            if explanation is not None:
+                explanation.timings_ms["rerank"] = round((time.perf_counter() - stage_t0) * 1000, 3)
+                explanation.candidate_counts["reranked"] = len(results)
+
+        elif rerank == "cross-encoder":
+            stage_t0 = time.perf_counter()
+            results = self._cross_encoder_rerank(
+                query,
+                results,
+                top_k=top_k,
+            )
+
+            if explanation is not None:
+                explanation.timings_ms["rerank"] = round((time.perf_counter() - stage_t0) * 1000, 3)
+                explanation.candidate_counts["reranked"] = len(results)
+
         else:
             results = results[:top_k]
 
         if normalize_scores and results:
+            stage_t0 = time.perf_counter()
             normalized = normalize_metric_scores(np.asarray([r.score for r in results]))
             for result, normalized_score in zip(results, normalized):
                 result.score = float(normalized_score)
+
+            if explanation is not None:
+                explanation.timings_ms["normalize_scores"] = round(
+                    (time.perf_counter() - stage_t0) * 1000, 3
+                )
 
         if not include_vectors:
             for r in results:
@@ -450,25 +676,28 @@ class Dynavec:
             return None
         return rescore if isinstance(rescore, str) else "composite"
 
-    def _record_search(self, tel, t0, namespace, top_k, results, cache_hit,
-                       filter, rescore, rerank, query) -> None:
+    def _record_search(
+        self, tel, t0, namespace, top_k, results, cache_hit, filter, rescore, rerank, query
+    ) -> None:
         if tel is None:
             return
         scores = [r.score for r in results] if results else []
-        tel.record(tel.new_event(
-            "search",
-            namespace=namespace,
-            top_k=top_k,
-            latency_ms=round((time.perf_counter() - t0) * 1000, 3),
-            n_results=len(results),
-            cache_hit=cache_hit,
-            filtered=bool(filter),
-            rescore=self._rescore_label(rescore),
-            rerank=rerank,
-            score_top=round(max(scores), 4) if scores else None,
-            score_mean=round(sum(scores) / len(scores), 4) if scores else None,
-            query_preview=(query[:80] if (query and tel.capture_text) else None),
-        ))
+        tel.record(
+            tel.new_event(
+                "search",
+                namespace=namespace,
+                top_k=top_k,
+                latency_ms=round((time.perf_counter() - t0) * 1000, 3),
+                n_results=len(results),
+                cache_hit=cache_hit,
+                filtered=bool(filter),
+                rescore=self._rescore_label(rescore),
+                rerank=rerank,
+                score_top=round(max(scores), 4) if scores else None,
+                score_mean=round(sum(scores) / len(scores), 4) if scores else None,
+                query_preview=(query[:80] if (query and tel.capture_text) else None),
+            )
+        )
 
     def _apply_rescore(
         self, query_vector: list[float], results: list[SearchResult], spec: RescoreSpec
@@ -484,6 +713,50 @@ class Dynavec:
             r.score = float(scores[int(rank_pos)])
             out.append(r)
         return out
+
+    def _cross_encoder_rerank(
+        self,
+        query: str | None,
+        results: list[SearchResult],
+        *,
+        top_k: int,
+    ) -> list[SearchResult]:
+        if query is None:
+            raise ConfigurationError(
+                "Cross-encoder reranking requires a text query. "
+                "Provide 'query' instead of a raw 'vector'."
+            )
+
+        if any(result.text is None for result in results):
+            raise ConfigurationError("Cross-encoder reranking requires document text.")
+
+        try:
+            from sentence_transformers import CrossEncoder
+        except ImportError as exc:
+            raise MissingDependencyError(
+                "Cross-encoder reranking",
+                "sentence-transformers",
+                "rerank",
+            ) from exc
+
+        encoder = self._cross_encoder
+        if encoder is None:
+            encoder = CrossEncoder(self.config.cross_encoder_model)
+            self._cross_encoder = encoder
+
+        pairs = [(query, result.text) for result in results]
+        scores = encoder.predict(pairs)
+
+        reranked = sorted(
+            zip(results, scores),
+            key=lambda item: float(item[1]),
+            reverse=True,
+        )
+
+        for result, score in reranked:
+            result.score = float(score)
+
+        return [result for result, _ in reranked[:top_k]]
 
     def search_stream(
         self,
@@ -529,7 +802,8 @@ class Dynavec:
                 yield SearchResult(
                     id=doc_id,
                     score=distance_to_score(distance, self.config.distance_metric)
-                    if distance is not None else 0.0,
+                    if distance is not None
+                    else 0.0,
                     distance=distance,
                     text=doc.get("text"),
                     metadata=doc.get("metadata", {}),
@@ -546,9 +820,45 @@ class Dynavec:
         ]
         return [f.result() for f in futures]
 
-    def _resolve_query_vector(
-        self, query: str | None, vector: list[float] | None
-    ) -> list[float]:
+    def as_multiquery_retriever(
+        self,
+        generate_queries=None,
+        *,
+        llm_generate_queries=None,
+        namespace: str = "default",
+        **kw,
+    ):
+        """Create a :class:`~dynavec.retrievers.MultiQueryRetriever` bound to this client."""
+        from .retrievers import MultiQueryRetriever
+
+        return MultiQueryRetriever(
+            self,
+            generate_queries=generate_queries,
+            llm_generate_queries=llm_generate_queries,
+            namespace=namespace,
+            **kw,
+        )
+
+    def as_hyde_retriever(
+        self,
+        generate_hypothetical=None,
+        *,
+        llm_generate_hypothetical=None,
+        namespace: str = "default",
+        **kw,
+    ):
+        """Create a :class:`~dynavec.retrievers.HyDERetriever` bound to this client."""
+        from .retrievers import HyDERetriever
+
+        return HyDERetriever(
+            self,
+            generate_hypothetical=generate_hypothetical,
+            llm_generate_hypothetical=llm_generate_hypothetical,
+            namespace=namespace,
+            **kw,
+        )
+
+    def _resolve_query_vector(self, query: str | None, vector: list[float] | None) -> list[float]:
         if vector is not None:
             if len(vector) != self.config.dimension:
                 raise DimensionMismatchError(
@@ -663,6 +973,21 @@ class Dynavec:
         if bidirectional:
             self.graph.add_edge(namespace, dst, relation, src)
 
+    def graph_delete_node(self, entity_id, *, namespace="default"):
+        """Delete an entity with its outbound and inbound edges (idempotent).
+
+        Linked documents and their embeddings are left untouched. Returns the
+        number of inbound edges removed. Finding those scans the namespace.
+        """
+        return self.graph.delete_node(namespace, entity_id)
+
+    def graph_delete_edge(self, src, relation, dst, *, namespace="default", bidirectional=False):
+        """Remove ``(src) -[relation]-> (dst)`` (idempotent); return edges removed."""
+        removed = self.graph.delete_edge(namespace, src, relation, dst)
+        if bidirectional:
+            removed += self.graph.delete_edge(namespace, dst, relation, src)
+        return removed
+
     def graph_link(self, entity_id, doc_ids, *, namespace="default"):
         """Attach documents (their S3 Vectors embeddings) to an entity."""
         self.graph.link_docs(namespace, entity_id, list(doc_ids))
@@ -682,7 +1007,53 @@ class Dynavec:
             if not frontier:
                 break
         return [e for e in visited if e != entity_id]
+    def graph_shortest_path(
+        self,
+        src_entity_id,
+        dst_entity_id,
+        *,
+        namespace="default",
+        relation=None,
+        hops=10,
+    ):
+        # Use BFS to find the shortest path between two graph entities
+        # within the given hop limit.
+        # Returns the path if the destination is reachable; otherwise returns an empty list.
 
+        if src_entity_id == dst_entity_id:
+            return [src_entity_id]
+
+        visited = {src_entity_id}
+        frontier = [src_entity_id]
+
+        shortest_path_for_node = {
+            src_entity_id: [src_entity_id]
+        }
+
+        for _ in range(hops):
+            nxt = []
+
+            for node in frontier:
+                for nb in self.graph.neighbors(namespace, node, relation):
+                    if nb in visited:
+                        continue
+
+                    visited.add(nb)
+                    nxt.append(nb)
+
+                    shortest_path_for_node[nb] = (
+                        shortest_path_for_node[node] + [nb]
+                    )
+
+                    if nb == dst_entity_id:
+                        return shortest_path_for_node[nb]
+
+            frontier = nxt
+
+            if not frontier:
+                break
+
+        return []
     def graph_search(
         self,
         query: str | None = None,
@@ -715,12 +1086,12 @@ class Dynavec:
         if not doc_ids:
             return []
 
-        vec_by_key = self._vectors.get_vectors(
-            [self._s3_key(namespace, d) for d in doc_ids]
-        )
+        vec_by_key = self._vectors.get_vectors([self._s3_key(namespace, d) for d in doc_ids])
         hydrated = self._docs.get_many(namespace, doc_ids)
 
-        scored = [d for d in doc_ids if vec_by_key.get(self._s3_key(namespace, d), {}).get("vector")]
+        scored = [
+            d for d in doc_ids if vec_by_key.get(self._s3_key(namespace, d), {}).get("vector")
+        ]
         if not scored:
             return []
         mat = np.asarray(
@@ -736,21 +1107,67 @@ class Dynavec:
             doc = hydrated.get(d, {})
             out.append(
                 SearchResult(
-                    id=d, score=float(scores[int(i)]),
-                    text=doc.get("text"), metadata=doc.get("metadata", {}),
+                    id=d,
+                    score=float(scores[int(i)]),
+                    text=doc.get("text"),
+                    metadata=doc.get("metadata", {}),
                 )
             )
         return out
 
+    def hybrid_graph_search(
+        self,
+        query: str | None = None,
+        *,
+        seed_entities: list[str],
+        vector: list[float] | None = None,
+        namespace: str = "default",
+        relation: str | None = None,
+        hops: int = 1,
+        top_k: int = 10,
+        metric: str = "cosine",
+        weight: float = 1.0,
+    ) -> list[SearchResult]:
+        """Fuse plain ANN and graph-scoped search results with RRF.
+
+        ``weight`` controls the contribution of graph search relative to
+        plain ANN search. ANN always has a weight of ``1.0``.
+        """
+        ann_results = self.search(
+            query=query,
+            vector=vector,
+            top_k=top_k,
+            namespace=namespace,
+        )
+
+        graph_results = self.graph_search(
+            query=query,
+            seed_entities=seed_entities,
+            vector=vector,
+            namespace=namespace,
+            relation=relation,
+            hops=hops,
+            top_k=top_k,
+            metric=metric,
+        )
+
+        return reciprocal_rank_fusion(
+            [ann_results, graph_results],
+            weights=[1.0, weight],
+        )
+
     def delete(self, ids: list[str], namespace: str = "default") -> None:
         """Delete documents from both stores (and the hot tier, if enabled)."""
         keys = [self._s3_key(namespace, doc_id) for doc_id in ids]
-        self._run_parallel([
-            lambda: self._vectors.delete_vectors(keys),
-            lambda: self._docs.delete_many(namespace, ids),
-        ])
+        self._run_parallel(
+            [
+                lambda: self._vectors.delete_vectors(keys),
+                lambda: self._docs.delete_many(namespace, ids),
+            ]
+        )
         if self._hot is not None:
             self._hot.delete(namespace, ids)
+        self._invalidate_cache(namespace)
 
     # ------------------------------------------------------------- hot tier
     def warm(self, namespace: str = "default") -> int:
@@ -767,33 +1184,125 @@ class Dynavec:
             raise ConfigurationError(
                 "Hot tier is disabled. Set DynavecConfig(hot_tier=True) to use warm()."
             )
-        items: list[tuple[str, list[float], str | None, dict[str, Any]]] = []
-        ids: list[str] = []
-        raw: list[tuple[str, list[float], dict[str, Any]]] = []
-        for page in self._vectors.list_pages(return_data=True, return_metadata=True):
-            for v in page:
-                ns, doc_id = self._split_key(v["key"])
-                if ns != namespace:
-                    continue
-                vector = v.get("data", {}).get("float32")
-                if vector is None:
-                    continue
-                raw.append((doc_id, vector, v.get("metadata", {}) or {}))
-                ids.append(doc_id)
-
-        # Hydrate canonical text + full metadata from DynamoDB in one batch.
-        hydrated = self._docs.get_many(namespace, ids) if ids else {}
-        for doc_id, vector, s3_meta in raw:
-            doc = hydrated.get(doc_id, {})
-            meta = doc.get("metadata") or {k: val for k, val in s3_meta.items()
-                                            if k not in (NS_METADATA_KEY, TEXT_METADATA_KEY)}
-            text = doc.get("text")
-            if text is None:
-                text = s3_meta.get(TEXT_METADATA_KEY)
-            items.append((doc_id, vector, text, meta))
-
+        items = [
+            (doc["id"], doc["vector"], doc["text"], doc["metadata"])
+            for doc in self.iter_namespace(namespace)
+        ]
         return len(items) if self._hot.load(namespace, items) else 0
 
     def hot_stats(self) -> dict[str, Any] | None:
         """Residency stats for the hot tier, or ``None`` if it's disabled."""
         return self._hot.stats() if self._hot is not None else None
+
+    # ------------------------------------------------------------- export / import
+    def iter_namespace(self, namespace: str = "default") -> Iterator[dict[str, Any]]:
+        """Yield all documents and vectors for ``namespace``.
+
+        Each item is a dictionary with keys:
+        - ``id``: str
+        - ``vector``: list[float]
+        - ``text``: str | None
+        - ``metadata``: dict[str, Any]
+        """
+        for result in self.list_vectors(namespace=namespace, include_vectors=True, hydrate=True):
+            yield {
+                "id": result.id,
+                "vector": result.vector,
+                "text": result.text,
+                "metadata": result.metadata,
+            }
+
+    def export_namespace(
+        self,
+        output: str | Path | TextIO,
+        *,
+        namespace: str = "default",
+    ) -> int:
+        """Export all vectors and documents for a namespace as JSON Lines (JSONL).
+
+        Parameters
+        ----------
+        output:
+            File path (str or Path) or writable text stream (e.g. sys.stdout).
+        namespace:
+            The namespace to dump (default: "default").
+
+        Returns
+        -------
+        int
+            Number of documents exported.
+        """
+        count = 0
+        if isinstance(output, (str, Path)):
+            with open(output, "w", encoding="utf-8") as f:
+                for item in self.iter_namespace(namespace):
+                    f.write(json.dumps(item, default=str) + "\n")
+                    count += 1
+        else:
+            for item in self.iter_namespace(namespace):
+                output.write(json.dumps(item, default=str) + "\n")
+                count += 1
+        return count
+
+    def import_namespace(
+        self,
+        input: str | Path | TextIO,
+        *,
+        namespace: str = "default",
+        batch_size: int = 100,
+    ) -> int:
+        """Import vectors and documents from a JSON Lines (JSONL) source into a namespace.
+
+        Parameters
+        ----------
+        input:
+            File path (str or Path) or readable text stream (e.g. sys.stdin).
+        namespace:
+            Target namespace to restore into (default: "default").
+        batch_size:
+            Batch size for upserting records (default: 100).
+
+        Returns
+        -------
+        int
+            Number of documents imported.
+        """
+        if batch_size <= 0:
+            raise ValueError("batch_size must be a positive integer")
+
+        def _process(stream: TextIO) -> int:
+            count = 0
+            batch: list[Document] = []
+            for line_no, raw_line in enumerate(stream, start=1):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except Exception as exc:
+                    raise ValueError(f"Invalid JSON at line {line_no}: {exc}") from exc
+
+                if "id" not in obj or "vector" not in obj:
+                    raise ValueError(f"Missing required 'id' or 'vector' field at line {line_no}")
+
+                doc = Document(
+                    id=str(obj["id"]),
+                    vector=obj["vector"],
+                    text=obj.get("text"),
+                    metadata=obj.get("metadata") or {},
+                )
+                batch.append(doc)
+                if len(batch) >= batch_size:
+                    self.upsert(batch, namespace=namespace)
+                    count += len(batch)
+                    batch = []
+
+            if batch:
+                self.upsert(batch, namespace=namespace)
+                count += len(batch)
+            return count
+
+        if isinstance(input, (str, Path)):
+            with open(input, encoding="utf-8") as f:
+                return _process(f)
+        return _process(input)

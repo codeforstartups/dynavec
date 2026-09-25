@@ -437,7 +437,7 @@ hit-rate, and a filterable **traces** table with per-trace drill-down.
 | **Knowledge graph / ER** | Entities + relations in DynamoDB linked to embeddings; traverse to scope/guide vector search (GraphRAG) | `db.graph_add_edge(...)`, `db.graph_search(q, seed_entities=[...])` |
 | **Query cache** | DynamoDB-TTL exact cache, in-process **semantic** cache (serves near-duplicate queries), or Redis/**ElastiCache**; writes evict the affected namespace's entries | `Dynavec(..., cache=SemanticCache())` |
 | **Ingestion / MCP** | Pull + chunk + embed from any source; **any MCP server's resources** (Notion, Confluence, Drive, …) become a corpus | `ingest(db, MCPResourceSource(session))` |
-| **Updates + Lambda** | Update text/vector/metadata (merge or replace); transform pipeline incl. **in-account AWS Lambda** | `db.update(id, ...)`, `Dynavec(..., transform=LambdaTransform(...))` |
+| **Updates + Lambda** | Update text/vector/metadata (merge or replace) with **optimistic concurrency** (versioned conditional writes; `ConflictError` instead of lost updates); transform pipeline incl. **in-account AWS Lambda** | `db.update(id, ..., expected_version=v)`, `Dynavec(..., transform=LambdaTransform(...))` |
 | **IAM / credentials** | Access keys, session tokens, named profiles, cross-account **assume-role** | `Dynavec(..., credentials=AWSCredentials(...))` |
 | **Frameworks** | LangChain + LlamaIndex vector stores; a framework-agnostic tool for LangGraph/CrewAI/Strands | `dynavec.integrations.*` |
 | **Benchmark report** | Comparison table + recall/latency + cost-by-scale (log) charts | `python -m benchmarks.report` |

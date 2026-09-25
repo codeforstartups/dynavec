@@ -19,7 +19,7 @@ from decimal import Decimal
 from typing import Any
 
 from ..config import DynavecConfig
-from ..exceptions import ItemTooLargeError
+from ..exceptions import ConflictError, ItemTooLargeError
 from ..logging import log_store_event
 from ..utils import KEY_SEPARATOR, encode_key_component, retry
 
@@ -29,6 +29,10 @@ _BATCH_GET_LIMIT = 100
 
 # DynamoDB's hard per-item limit, attribute names included.
 MAX_ITEM_BYTES = 400 * 1024
+
+# Optimistic-concurrency counter written by ``put_versioned``. Items written by
+# ``put_many`` (plain upserts) carry no version and read back as version 0.
+VERSION_ATTR = "version"
 
 
 def _to_dynamo(obj: Any) -> Any:
@@ -128,6 +132,17 @@ def _check_built_item(item: dict) -> None:
         raise ItemTooLargeError(item["id"], item["ns"], size, MAX_ITEM_BYTES)
 
 
+def _read_text(item: dict) -> str | None:
+    """Return an item's text, decompressing it if it was stored gzipped."""
+    raw_text = item.get("text")
+    gzip_blob = item.get("text_gzip")
+    if gzip_blob is not None:
+        return gzip.decompress(bytes(gzip_blob)).decode("utf-8")
+    if isinstance(raw_text, (bytes, bytearray)):
+        return gzip.decompress(bytes(raw_text)).decode("utf-8")
+    return raw_text
+
+
 class DynamoDBStore:
     """Thin, dependency-light wrapper over a single DynamoDB table."""
 
@@ -182,6 +197,70 @@ class DynamoDBStore:
             duration_ms=round((time.perf_counter() - t0) * 1000, 2),
         )
 
+    def put_versioned(
+        self,
+        namespace: str,
+        doc_id: str,
+        text: str | None,
+        metadata: Metadata,
+        expected_version: int,
+    ) -> int:
+        """Write one document only if its stored version is ``expected_version``.
+
+        The write stores ``expected_version + 1`` and returns it. Version 0 means
+        "no version yet": the document is missing or was last written by
+        :meth:`put_many`. Raises :class:`ConflictError` if another writer changed
+        the document since it was read; nothing is written in that case.
+        """
+        from botocore.exceptions import ClientError
+
+        t0 = time.perf_counter()
+        item = _build_item(namespace, doc_id, text, metadata, self._config.gzip_threshold_bytes)
+        _check_built_item(item)
+        new_version = expected_version + 1
+        item[VERSION_ATTR] = new_version
+
+        condition: dict[str, Any] = {"ExpressionAttributeNames": {"#v": VERSION_ATTR}}
+        if expected_version == 0:
+            condition["ConditionExpression"] = "attribute_not_exists(#v)"
+        else:
+            condition["ConditionExpression"] = "#v = :expected"
+            condition["ExpressionAttributeValues"] = {":expected": expected_version}
+
+        try:
+            self._table.put_item(Item=item, **condition)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                raise ConflictError(doc_id, namespace, expected_version) from exc
+            raise
+
+        log_store_event(
+            self._logger,
+            "dynamodb.put_versioned",
+            self._config.structured_logging,
+            table=self._config.table,
+            namespace=namespace,
+            version=new_version,
+            duration_ms=round((time.perf_counter() - t0) * 1000, 2),
+        )
+        return new_version
+
+    @retry()
+    def get_versioned(self, namespace: str, doc_id: str) -> dict[str, Any] | None:
+        """Strongly consistent read of one document, including its version.
+
+        Returns ``{"text":..., "metadata":..., "version": int}`` or ``None``.
+        """
+        resp = self._table.get_item(Key={"pk": self._pk(namespace, doc_id)}, ConsistentRead=True)
+        item = resp.get("Item")
+        if item is None:
+            return None
+        return {
+            "text": _read_text(item),
+            "metadata": _from_dynamo(item.get("metadata", {})),
+            "version": int(item.get(VERSION_ATTR, 0)),
+        }
+
     @retry()
     def get_many(self, namespace: str, ids: list[str]) -> dict[str, dict[str, Any]]:
         """Hydrate documents by id. Returns ``{id: {"text":..., "metadata":...}}``."""
@@ -207,16 +286,8 @@ class DynamoDBStore:
             while request:
                 resp = self._ddb.batch_get_item(RequestItems=request)
                 for item in resp["Responses"].get(self._config.table, []):
-                    raw_text = item.get("text")
-                    gzip_blob = item.get("text_gzip")
-                    if gzip_blob is not None:
-                        decompressed_text = gzip.decompress(bytes(gzip_blob)).decode("utf-8")
-                    elif isinstance(raw_text, (bytes, bytearray)):
-                        decompressed_text = gzip.decompress(bytes(raw_text)).decode("utf-8")
-                    else:
-                        decompressed_text = raw_text
                     out[item["id"]] = {
-                        "text": decompressed_text,
+                        "text": _read_text(item),
                         "metadata": _from_dynamo(item.get("metadata", {})),
                     }
                 unprocessed = resp.get("UnprocessedKeys") or {}

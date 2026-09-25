@@ -26,6 +26,7 @@ from .config import DynavecConfig
 from .credentials import AWSCredentials
 from .exceptions import (
     ConfigurationError,
+    ConflictError,
     DimensionMismatchError,
     DynavecError,
     EmbeddingError,
@@ -142,5 +143,6 @@ __all__ = [
     "DimensionMismatchError",
     "NotFoundError",
     "ItemTooLargeError",
+    "ConflictError",
     "MissingDependencyError",
 ]

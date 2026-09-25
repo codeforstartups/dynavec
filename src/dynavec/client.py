@@ -42,6 +42,7 @@ from .credentials import AWSCredentials, resolve_session
 from .embeddings.base import Embedder
 from .exceptions import (
     ConfigurationError,
+    ConflictError,
     DimensionMismatchError,
     MissingDependencyError,
     NotFoundError,
@@ -296,17 +297,27 @@ class Dynavec:
         merge_metadata: bool = True,
         transform=None,
         upsert_if_missing: bool = False,
+        expected_version: int | None = None,
     ) -> UpsertResult:
         """Update an existing document's text, vector, and/or metadata.
 
         Read-modify-write: metadata is merged by default; the vector is re-derived
         only when text changes (and an embedder exists) or a new vector is given,
         otherwise the stored vector is preserved.
+
+        The write is conditional on the document's version, so a concurrent
+        update is never silently overwritten: if the document changed since it
+        was read, :class:`ConflictError` is raised and nothing is written. Pass
+        ``expected_version`` (the ``version`` from an earlier update's result)
+        to also detect changes made since *your* last read. The returned
+        :class:`UpsertResult` carries the new ``version``.
         """
-        existing = self._docs.get_many(namespace, [id]).get(id)
+        existing = self._docs.get_versioned(namespace, id)
         if existing is None and not upsert_if_missing:
             raise NotFoundError(f"Document {id!r} not found in namespace {namespace!r}.")
-        existing = existing or {"text": None, "metadata": {}}
+        existing = existing or {"text": None, "metadata": {}, "version": 0}
+        if expected_version is not None and existing["version"] != expected_version:
+            raise ConflictError(id, namespace, expected_version)
 
         new_text = text if text is not None else existing.get("text")
 
@@ -339,11 +350,17 @@ class Dynavec:
         s3_payload, ddb_payload, ids, hot_payload = self._prepare(
             [doc], namespace, auto_metadata=False, transform=transform
         )
-        self._write(namespace, s3_payload, ddb_payload)
+        # The conditional DynamoDB write goes first: on a conflict it raises
+        # before S3 Vectors or the hot tier are touched.
+        (_, ddb_text, ddb_meta), = ddb_payload
+        version = self._docs.put_versioned(
+            namespace, id, ddb_text, ddb_meta, expected_version=existing["version"]
+        )
+        self._vectors.put_vectors(s3_payload)
         if self._hot is not None:
             self._hot.insert_many(namespace, hot_payload)
         self._invalidate_cache(namespace)
-        return UpsertResult(count=1, ids=ids)
+        return UpsertResult(count=1, ids=ids, version=version)
 
     # ---------------------------------------------------------------- read path
     def search(

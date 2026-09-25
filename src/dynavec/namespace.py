@@ -40,6 +40,10 @@ class NamespaceView:
     ) -> list[SearchResult] | ExplainedSearchResult:
         return self._db.search(query, namespace=self._ns, **kw)
 
+    def search_many(self, queries: list[str], *, top_k: int = 10, **kw) -> list[list[SearchResult]]:
+        """Run several queries concurrently, pinned to this namespace."""
+        return self._db.search_many(queries, top_k=top_k, namespace=self._ns, **kw)
+
     def search_stream(self, query: str | None = None, **kw):
         yield from self._db.search_stream(query, namespace=self._ns, **kw)
 
@@ -74,6 +78,7 @@ class NamespaceView:
             llm_generate_hypothetical=llm_generate_hypothetical,
             **kw,
         )
+
     def export_namespace(self, output, **kw) -> int:
         return self._db.export_namespace(output, namespace=self._ns, **kw)
 

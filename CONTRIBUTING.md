@@ -211,13 +211,27 @@ uv run --no-sync pytest tests/test_cache.py -k "jitter" -v
 
 ---
 
+## Finding & Claiming Issues
+
+To maintain an orderly workflow, prevent duplicated effort, and ensure a fair experience for all contributors, dynavec follows a strict **issue assignment model**:
+
+1. **Browse open issues:** Check the issue tracker or filter by [good first issues](https://github.com/codeforstartups/dynavec/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+2. **Comment to get assigned:** Before starting work, leave a comment on the issue asking to be assigned (e.g., *"I'd like to work on this"*).
+3. **Wait for official assignment:** Please wait until a maintainer officially assigns the issue to you on GitHub before starting implementation and submitting a PR.
+4. **One issue at a time:** To give all contributors an equal opportunity, contributors will only be assigned **one issue at a time**. Once your PR is reviewed and merged, you are welcome to claim another!
+5. **No PR Sniping:** Do **not** submit a Pull Request for an issue that is already assigned to another contributor. PRs opened for issues assigned to active contributors will be closed without merge to respect the assignee's time and effort.
+6. **Inactivity & Stale assignments:** If an assigned issue has no progress, updates, or PR opened within **5–7 days**, maintainers may unassign the issue to open it up for others. If you see a stale issue, feel free to ask in the comments if it can be reassigned to you.
+
+---
+
 ## Pull Request Process
 
-1. **Fork** the repository.
-2. **Branch** off `development`: `git checkout -b feat/amazing-feature`.
-3. **Develop** using the workflow above.
-4. **Test** thoroughly: `make run-ci` must pass.
-5. **Open a PR** targeting the `development` branch and reference the issue it closes
+1. **Get assigned** to an open issue (or discuss new ideas with maintainers first).
+2. **Fork** the repository.
+3. **Branch** off `development`: `git checkout -b feat/amazing-feature`.
+4. **Develop** using the workflow above.
+5. **Test** thoroughly: `make run-ci` must pass.
+6. **Open a PR** targeting the `development` branch and reference the issue it closes
    (`Closes #123`).
 
 **Commit messages** follow [Conventional Commits](https://www.conventionalcommits.org/):

@@ -1,5 +1,6 @@
 """Tests for metadata splitting / auto-generation / filter building."""
 
+from copy import deepcopy
 from datetime import datetime, timezone
 
 import pytest
@@ -95,6 +96,61 @@ def test_split_respects_filterable_keys_allowlist():
     assert "lang" in s3
     assert "author" not in s3  # excluded from S3 Vectors, still in DynamoDB
     assert ddb["author"] == "abhi"
+
+
+def test_split_excludes_non_filterable_keys_from_s3():
+    cfg = _cfg(non_filterable_keys=["internal_id"])
+    s3, ddb = split_metadata(
+        {"language": "en", "internal_id": "customer-42"},
+        cfg,
+        "customers",
+    )
+
+    assert s3["language"] == "en"
+    assert "internal_id" not in s3
+    assert ddb["internal_id"] == "customer-42"
+
+
+def test_split_non_filterable_keys_override_filterable_keys():
+    cfg = _cfg(
+        filterable_keys=["language", "author"],
+        non_filterable_keys=["author"],
+    )
+    s3, ddb = split_metadata(
+        {"language": "en", "author": "Tanmay"},
+        cfg,
+        "customers",
+    )
+
+    assert s3["language"] == "en"
+    assert "author" not in s3
+    assert ddb["author"] == "Tanmay"
+
+
+def test_split_keeps_namespace_when_marked_non_filterable():
+    cfg = _cfg(non_filterable_keys=[NS_METADATA_KEY])
+    s3, _ = split_metadata({}, cfg, "customers")
+
+    assert s3[NS_METADATA_KEY] == "customers"
+
+
+def test_split_does_not_mutate_input_metadata():
+    metadata = {
+        "language": "en",
+        "tags": ["python", "aws"],
+        "details": {"customer_id": 42},
+    }
+    original = deepcopy(metadata)
+
+    _, ddb = split_metadata(
+        metadata,
+        _cfg(non_filterable_keys=["language"]),
+        "customers",
+    )
+
+    assert metadata == original
+    assert ddb == original
+    assert ddb is not metadata
 
 
 def test_split_text_mirror_optional():

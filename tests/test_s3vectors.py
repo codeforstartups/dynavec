@@ -1,3 +1,4 @@
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -164,3 +165,52 @@ def test_query_pages_invalid_page_size():
 def test_config_rejects_non_positive_top_k_page_size():
 	with pytest.raises(ValueError, match="top_k_page_size must be a positive integer"):
 		_config(top_k_page_size=0)
+
+
+
+
+
+
+
+def test_put_vectors_parallelization():
+    store, _ = _store_with_pages([])
+    
+    
+    vectors = [
+        (f"key_{i}", [0.1] * 128, {"tag": "test"})
+        for i in range(1500)
+    ]
+
+    def mock_put_batch(payload):
+        time.sleep(0.1)  
+
+    store._put_batch = MagicMock(side_effect=mock_put_batch)
+
+    t0 = time.perf_counter()
+    store.put_vectors(vectors)
+    duration = time.perf_counter() - t0
+
+    
+    assert duration < 0.25
+    assert store._put_batch.call_count == 3
+
+
+def test_put_vectors_error_propagation():
+    store, _ = _store_with_pages([])
+    
+    vectors = [
+        (f"key_{i}", [0.1] * 128, {"tag": "test"})
+        for i in range(1000)
+    ]
+
+    def mock_put_batch_with_error(payload):
+        if payload[0]["key"] == "key_0":
+            raise RuntimeError("S3 API Failure")
+
+    store._put_batch = MagicMock(side_effect=mock_put_batch_with_error)
+
+    with pytest.raises(RuntimeError, match="S3 API Failure"):
+        store.put_vectors(vectors)
+
+
+

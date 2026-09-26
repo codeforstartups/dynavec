@@ -5,7 +5,7 @@ import math
 import pytest
 
 import dynavec.client as client_mod
-from dynavec import Document, Dynavec, DynavecConfig
+from dynavec import Document, Dynavec, DynavecConfig, ExplainedSearchResult
 from dynavec.embeddings.base import Embedder
 
 
@@ -165,13 +165,13 @@ def test_search_many_forwards_multiple_queries_with_namespace_isolation(db):
     kb = db.namespace("kb")
     other = db.namespace("other")
     kb.upsert([Document(id="1", text="apple"), Document(id="2", text="rocket")])
-    other.upsert([Document(id="1", text="apple"), Document(id="2", text="rocket")])
+    other.upsert([Document(id="other-apple", text="apple"), Document(id="other-rocket", text="rocket")])
 
     results = kb.search_many(["apple", "rocket"], top_k=1)
 
     assert len(results) == 2
     assert all(len(r) == 1 for r in results)
-    assert all(r[0].id in ("1", "2") for r in results)
+    assert [r[0].id for r in results] == ["1", "2"]
 
 
 def test_search_many_forwards_kwargs(db):
@@ -193,3 +193,20 @@ def test_search_many_empty_batch(db):
     kb.upsert([Document(id="1", text="apple")])
 
     assert kb.search_many([]) == []
+
+@pytest.mark.parametrize("explain", [False, True])
+def test_search_many_dynamic_explain_preserves_namespace_and_order(db, explain):
+    kb = db.namespace("kb")
+    kb.upsert([Document(id="apple", text="apple"), Document(id="rocket", text="rocket")])
+    db.namespace("other").upsert([Document(id="other", text="apple")])
+
+    results = kb.search_many(["rocket", "apple"], top_k=1, explain=explain)
+
+    if explain:
+        assert all(isinstance(result, ExplainedSearchResult) for result in results)
+        hits = [result.results for result in results]
+    else:
+        assert all(isinstance(result, list) for result in results)
+        hits = results
+    assert [batch[0].id for batch in hits] == ["rocket", "apple"]
+    assert kb.search_many([], explain=explain) == []

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from ..exceptions import MissingDependencyError
 from .base import Embedder, Vector
 
@@ -46,11 +48,11 @@ class GeminiEmbedder(Embedder):
             resp = self._genai.embed_content(
                 model=self.model, content=text, task_type="retrieval_document"
             )
-            out.append(resp["embedding"])
+            out.append(cast(Vector, resp["embedding"]))
         return out
 
     def embed_query(self, text: str) -> Vector:
         resp = self._genai.embed_content(
             model=self.model, content=text, task_type="retrieval_query"
         )
-        return resp["embedding"]
+        return cast(Vector, resp["embedding"])

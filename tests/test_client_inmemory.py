@@ -397,6 +397,11 @@ class WrongOutputEmbedder(HashEmbedder):
         return [[0.1, 0.2] for _ in texts]
 
 
+class MissingOutputEmbedder(HashEmbedder):
+    def embed_documents(self, texts):
+        return []
+
+
 def test_embedder_output_dimension_mismatch_raises(db):
     from dynavec.exceptions import DimensionMismatchError
 
@@ -405,6 +410,18 @@ def test_embedder_output_dimension_mismatch_raises(db):
     with pytest.raises(
         DimensionMismatchError,
         match=r"Document 'x' vector has dimension 2, expected 8",
+    ):
+        db.upsert([Document(id="x", text="hello")])
+
+
+def test_embedder_missing_output_raises_configuration_error(db):
+    from dynavec.exceptions import ConfigurationError
+
+    db.embedder = MissingOutputEmbedder(8)
+
+    with pytest.raises(
+        ConfigurationError,
+        match=r"Embedder did not return a vector for document 'x'",
     ):
         db.upsert([Document(id="x", text="hello")])
 
@@ -591,6 +608,26 @@ def test_search_many_parallel(db):
     results = db.search_many(["apple", "rocket"], top_k=1)
     assert len(results) == 2
     assert all(len(r) == 1 for r in results)
+
+
+@pytest.mark.parametrize("explain", [False, True])
+def test_search_many_explain_preserves_order_and_namespace(db, explain):
+    ns = db.namespace("kb")
+    ns.upsert([Document(id="1", text="apple"), Document(id="2", text="rocket")])
+    batches = db.search_many(
+        ["rocket", "apple"], namespace="kb", top_k=1, explain=explain,
+        normalize_scores=True,
+    )
+    assert len(batches) == 2
+    for result, expected_id in zip(batches, ["2", "1"]):
+        if explain:
+            assert isinstance(result, ExplainedSearchResult)
+            result = result.results
+        assert isinstance(result, list)
+        assert [hit.id for hit in result] == [expected_id]
+    single = ns.search("apple", explain=explain)
+    assert isinstance(single, ExplainedSearchResult if explain else list)
+    assert db.search_many([], explain=explain) == []
 
 
 def test_context_manager_closes_pool(db):

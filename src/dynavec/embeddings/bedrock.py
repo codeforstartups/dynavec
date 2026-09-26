@@ -9,7 +9,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, cast
 
 from .base import Embedder, Vector
 
@@ -52,6 +52,7 @@ class BedrockEmbedder(Embedder):
         self._is_cohere = model_id.startswith("cohere.")
 
     def _invoke(self, text: str, input_type: str) -> Vector:
+        body: dict[str, Any]
         if self._is_titan:
             body = {"inputText": text}
             if self._requested_dim is not None:
@@ -64,8 +65,8 @@ class BedrockEmbedder(Embedder):
         resp = self._client.invoke_model(modelId=self.model_id, body=json.dumps(body))
         payload = json.loads(resp["body"].read())
         if self._is_cohere:
-            return payload["embeddings"][0]
-        return payload["embedding"]
+            return cast(Vector, payload["embeddings"][0])
+        return cast(Vector, payload["embedding"])
 
     def embed_documents(self, texts: list[str]) -> list[Vector]:
         return [self._invoke(t, "search_document") for t in texts]
@@ -140,7 +141,7 @@ class BedrockTitanMultimodalEmbedder(Embedder):
         if text is None and image_base64 is None:
             raise ValueError("At least one of 'text' or 'image' must be provided.")
 
-        body: dict[str , Any] = {
+        body: dict[str, Any] = {
             "embeddingConfig": {
                 "outputEmbeddingLength": self.dimension,
             }
@@ -155,7 +156,7 @@ class BedrockTitanMultimodalEmbedder(Embedder):
             body=json.dumps(body),
         )
         payload = json.loads(resp["body"].read())
-        return payload["embedding"]
+        return cast(Vector, payload["embedding"])
 
     def embed_documents(self, texts: list[str]) -> list[Vector]:
         """Embed a batch of text documents."""

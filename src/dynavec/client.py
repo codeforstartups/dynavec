@@ -27,10 +27,12 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TextIO, Union
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, Literal, Optional, TextIO, Union, overload
 
 if TYPE_CHECKING:
     from .cache import BaseCache
@@ -66,14 +68,19 @@ from .provisioning import provision_all
 from .retrieval import distance_to_score, maximal_marginal_relevance, reciprocal_rank_fusion
 from .stores import DynamoDBStore, S3VectorsStore
 from .stores.dynamodb import check_item_size
-from .transforms import TransformContext, as_pipeline
+from .telemetry import TelemetryRecorder
+from .transforms import Transform, TransformContext, TransformPipeline, as_pipeline
 from .utils import KEY_SEPARATOR, chunked, decode_key_component, encode_key_component
 
 Metadata = dict[str, Any]
 _S3_PUT_CHUNK = 500
 _DDB_CHUNK = 500
 
-RescoreSpec = Union[str, dict]  # "cosine" | "manhattan" | {"cosine":0.7,"dot":0.3}
+RescoreSpec = Union[str, dict[str, float]]
+TransformSpec = Union[TransformPipeline, Transform, Iterable[Transform]]
+S3Payload = tuple[str, list[float], Metadata]
+DDBPayload = tuple[str, Optional[str], Metadata]
+HotPayload = tuple[str, list[float], Optional[str], Metadata]
 
 
 class Dynavec:
@@ -85,10 +92,10 @@ class Dynavec:
         embedder: Embedder | None = None,
         *,
         credentials: AWSCredentials | None = None,
-        boto_session=None,
-        transform=None,
-        cache=None,
-        telemetry=None,
+        boto_session: Any | None = None,
+        transform: TransformSpec | None = None,
+        cache: BaseCache | None = None,
+        telemetry: TelemetryRecorder | None = None,
     ) -> None:
         self.config = config
         self.embedder = embedder
@@ -101,7 +108,7 @@ class Dynavec:
         self._graph_store: GraphStore | None = None
         self._pool: ThreadPoolExecutor | None = None
         self._hot: HotTier | None = HotTier(config) if config.hot_tier else None
-        self._cross_encoder = None
+        self._cross_encoder: Any | None = None
 
         if embedder is not None and embedder.dimension != config.dimension:
             raise ConfigurationError(
@@ -132,7 +139,12 @@ class Dynavec:
     def __enter__(self) -> Dynavec:
         return self
 
-    def __exit__(self, *exc) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     # ------------------------------------------------------------------ setup
@@ -178,7 +190,7 @@ class Dynavec:
         namespace, _, doc_id = key.partition(KEY_SEPARATOR)
         return decode_key_component(namespace), decode_key_component(doc_id)
 
-    def _run_parallel(self, tasks: list) -> None:
+    def _run_parallel(self, tasks: list[Callable[[], None]]) -> None:
         """Run zero-arg callables; parallel if enabled, else sequential."""
         if not tasks:
             return
@@ -196,8 +208,8 @@ class Dynavec:
         docs: list[Document],
         namespace: str,
         auto_metadata: bool,
-        transform,
-    ) -> tuple[list[tuple], list[tuple], list[str], list[tuple]]:
+        transform: TransformSpec | None,
+    ) -> tuple[list[S3Payload], list[DDBPayload], list[str], list[HotPayload]]:
         pipeline = as_pipeline(transform) or self._default_transform
 
         # 1) transforms may set/rewrite text, vector, metadata
@@ -222,19 +234,26 @@ class Dynavec:
                     "Some documents have no vector and no embedder is configured. "
                     "Pass an embedder to Dynavec(...) or provide precomputed vectors."
                 )
-            texts = [t for _, t in to_embed]
-            if any(t is None for t in texts):
+            optional_texts = [t for _, t in to_embed]
+            if any(t is None for t in optional_texts):
                 raise ConfigurationError("A document has neither text nor vector.")
+            texts = [t for t in optional_texts if t is not None]
             vectors = self.embedder.embed_documents(texts)
             for (idx, _), vec in zip(to_embed, vectors):
                 docs[idx].vector = vec
 
         # 3) validate + build payloads
-        s3_payload, ddb_payload, ids, hot_payload = [], [], [], []
+        s3_payload: list[S3Payload] = []
+        ddb_payload: list[DDBPayload] = []
+        ids: list[str] = []
+        hot_payload: list[HotPayload] = []
         for d in docs:
-            if len(d.vector) != self.config.dimension:
+            vector = d.vector
+            if vector is None:
+                raise ConfigurationError(f"Embedder did not return a vector for document {d.id!r}.")
+            if len(vector) != self.config.dimension:
                 raise DimensionMismatchError(
-                    f"Document {d.id!r} vector has dimension {len(d.vector)}, "
+                    f"Document {d.id!r} vector has dimension {len(vector)}, "
                     f"expected {self.config.dimension}."
                 )
             meta = dict(d.metadata)
@@ -245,20 +264,25 @@ class Dynavec:
             s3_meta, ddb_meta = split_metadata(meta, self.config, namespace, d.text)
             # fail before either store is written, not partway through a batch
             check_item_size(namespace, d.id, d.text, ddb_meta, self.config.gzip_threshold_bytes)
-            s3_payload.append((self._s3_key(namespace, d.id), d.vector, s3_meta))
+            s3_payload.append((self._s3_key(namespace, d.id), vector, s3_meta))
             ddb_payload.append((d.id, d.text, ddb_meta))
             ids.append(d.id)
             # Hot tier keeps the full (merged) metadata + text so warmed
             # namespaces need neither an S3 query nor a DynamoDB read.
-            hot_payload.append((d.id, d.vector, d.text, meta))
+            hot_payload.append((d.id, vector, d.text, meta))
         return s3_payload, ddb_payload, ids, hot_payload
 
-    def _write(self, namespace: str, s3_payload: list, ddb_payload: list) -> None:
-        tasks = []
-        for chunk in chunked(s3_payload, _S3_PUT_CHUNK):
-            tasks.append(lambda c=chunk: self._vectors.put_vectors(c))
-        for chunk in chunked(ddb_payload, _DDB_CHUNK):
-            tasks.append(lambda c=chunk: self._docs.put_many(namespace, c))
+    def _write(
+        self,
+        namespace: str,
+        s3_payload: list[S3Payload],
+        ddb_payload: list[DDBPayload],
+    ) -> None:
+        tasks: list[Callable[[], None]] = []
+        for s3_chunk in chunked(s3_payload, _S3_PUT_CHUNK):
+            tasks.append(partial(self._vectors.put_vectors, s3_chunk))
+        for ddb_chunk in chunked(ddb_payload, _DDB_CHUNK):
+            tasks.append(partial(self._docs.put_many, namespace, ddb_chunk))
         self._run_parallel(tasks)
 
     def _invalidate_cache(self, namespace: str) -> None:
@@ -267,11 +291,11 @@ class Dynavec:
 
     def upsert(
         self,
-        documents: list[Document | dict] | None = None,
+        documents: Sequence[Document | dict[str, Any]] | None = None,
         *,
         namespace: str = "default",
         auto_metadata: bool = False,
-        transform=None,
+        transform: TransformSpec | None = None,
     ) -> UpsertResult:
         """Insert or overwrite documents (each a :class:`Document` or dict)."""
         if not documents:
@@ -295,7 +319,7 @@ class Dynavec:
         vector: list[float] | None = None,
         metadata: Metadata | None = None,
         merge_metadata: bool = True,
-        transform=None,
+        transform: TransformSpec | None = None,
         upsert_if_missing: bool = False,
         expected_version: int | None = None,
     ) -> UpsertResult:
@@ -325,7 +349,7 @@ class Dynavec:
         new_vector = vector
         if new_vector is None:
             if text is not None and self.embedder is not None:
-                new_vector = self.embedder.embed_documents([new_text])[0]
+                new_vector = self.embedder.embed_documents([text])[0]
             else:
                 fetched = self._vectors.get_vectors([self._s3_key(namespace, id)])
                 got = fetched.get(self._s3_key(namespace, id))
@@ -352,7 +376,7 @@ class Dynavec:
         )
         # The conditional DynamoDB write goes first: on a conflict it raises
         # before S3 Vectors or the hot tier are touched.
-        (_, ddb_text, ddb_meta), = ddb_payload
+        ((_, ddb_text, ddb_meta),) = ddb_payload
         version = self._docs.put_versioned(
             namespace, id, ddb_text, ddb_meta, expected_version=existing["version"]
         )
@@ -363,6 +387,60 @@ class Dynavec:
         return UpsertResult(count=1, ids=ids, version=version)
 
     # ---------------------------------------------------------------- read path
+    @overload
+    def search(
+        self,
+        query: str | None = None,
+        *,
+        vector: list[float] | None = None,
+        top_k: int = 10,
+        namespace: str = "default",
+        filter: Metadata | None = None,
+        rescore: RescoreSpec | None = None,
+        rerank: str | None = None,
+        mmr_lambda: float = 0.5,
+        include_vectors: bool = False,
+        use_cache: bool | None = None,
+        normalize_scores: bool = False,
+        explain: Literal[False] = False,
+    ) -> list[SearchResult]: ...
+
+    @overload
+    def search(
+        self,
+        query: str | None = None,
+        *,
+        vector: list[float] | None = None,
+        top_k: int = 10,
+        namespace: str = "default",
+        filter: Metadata | None = None,
+        rescore: RescoreSpec | None = None,
+        rerank: str | None = None,
+        mmr_lambda: float = 0.5,
+        include_vectors: bool = False,
+        use_cache: bool | None = None,
+        normalize_scores: bool = False,
+        explain: Literal[True],
+    ) -> ExplainedSearchResult: ...
+
+    @overload
+    def search(
+        self,
+        query: str | None = None,
+        *,
+        vector: list[float] | None = None,
+        top_k: int = 10,
+        namespace: str = "default",
+        filter: Metadata | None = None,
+        rescore: RescoreSpec | None = None,
+        rerank: str | None = None,
+        mmr_lambda: float = 0.5,
+        include_vectors: bool = False,
+        use_cache: bool | None = None,
+        normalize_scores: bool = False,
+        explain: bool,
+    ) -> list[SearchResult] | ExplainedSearchResult: ...
+
     def search(
         self,
         query: str | None = None,
@@ -522,17 +600,17 @@ class Dynavec:
 
     def _search_core(
         self,
-        query_vector,
+        query_vector: list[float],
         *,
         query: str | None = None,
-        top_k,
-        namespace,
-        filter,
-        rescore,
-        rerank,
-        mmr_lambda,
-        include_vectors,
-        normalize_scores,
+        top_k: int,
+        namespace: str,
+        filter: Metadata | None,
+        rescore: RescoreSpec | None,
+        rerank: str | None,
+        mmr_lambda: float,
+        include_vectors: bool,
+        normalize_scores: bool,
         explanation: SearchExplanation | None = None,
     ) -> list[SearchResult]:
         needs_vectors = rerank == "mmr" or rescore is not None or include_vectors
@@ -628,8 +706,8 @@ class Dynavec:
         if rerank == "mmr":
             stage_t0 = time.perf_counter()
             results = maximal_marginal_relevance(
-                results,
                 query_vector,
+                results,
                 top_k=top_k,
                 lambda_mult=mmr_lambda,
             )
@@ -677,7 +755,17 @@ class Dynavec:
         return rescore if isinstance(rescore, str) else "composite"
 
     def _record_search(
-        self, tel, t0, namespace, top_k, results, cache_hit, filter, rescore, rerank, query
+        self,
+        tel: TelemetryRecorder | None,
+        t0: float,
+        namespace: str,
+        top_k: int,
+        results: list[SearchResult],
+        cache_hit: bool | None,
+        filter: Metadata | None,
+        rescore: RescoreSpec | None,
+        rerank: str | None,
+        query: str | None,
     ) -> None:
         if tel is None:
             return
@@ -810,24 +898,128 @@ class Dynavec:
                 )
                 yielded += 1
 
+    @overload
     def search_many(
-        self, queries: list[str], *, top_k: int = 10, namespace: str = "default", **kw
-    ) -> list[list[SearchResult]]:
-        """Run several queries concurrently (thread pool over I/O-bound calls)."""
-        futures = [
-            self._executor.submit(self.search, q, top_k=top_k, namespace=namespace, **kw)
-            for q in queries
-        ]
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        namespace: str = "default",
+        explain: Literal[False] = False,
+        vector: list[float] | None = None,
+        filter: Metadata | None = None,
+        rescore: RescoreSpec | None = None,
+        rerank: str | None = None,
+        mmr_lambda: float = 0.5,
+        include_vectors: bool = False,
+        use_cache: bool | None = None,
+        normalize_scores: bool = False,
+    ) -> list[list[SearchResult]]: ...
+
+    @overload
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        namespace: str = "default",
+        explain: Literal[True],
+        vector: list[float] | None = None,
+        filter: Metadata | None = None,
+        rescore: RescoreSpec | None = None,
+        rerank: str | None = None,
+        mmr_lambda: float = 0.5,
+        include_vectors: bool = False,
+        use_cache: bool | None = None,
+        normalize_scores: bool = False,
+    ) -> list[ExplainedSearchResult]: ...
+
+    @overload
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        namespace: str = "default",
+        explain: bool,
+        vector: list[float] | None = None,
+        filter: Metadata | None = None,
+        rescore: RescoreSpec | None = None,
+        rerank: str | None = None,
+        mmr_lambda: float = 0.5,
+        include_vectors: bool = False,
+        use_cache: bool | None = None,
+        normalize_scores: bool = False,
+    ) -> list[list[SearchResult]] | list[ExplainedSearchResult]: ...
+
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        namespace: str = "default",
+        explain: bool = False,
+        vector: list[float] | None = None,
+        filter: Metadata | None = None,
+        rescore: RescoreSpec | None = None,
+        rerank: str | None = None,
+        mmr_lambda: float = 0.5,
+        include_vectors: bool = False,
+        use_cache: bool | None = None,
+        normalize_scores: bool = False,
+    ) -> list[list[SearchResult]] | list[ExplainedSearchResult]:
+        """Run queries concurrently, returning one search result per input query.
+
+        With ``explain=True``, each item is an ``ExplainedSearchResult``.
+        """
+        if explain:
+
+            def explained_search(query: str) -> ExplainedSearchResult:
+                return self.search(
+                    query,
+                    top_k=top_k,
+                    namespace=namespace,
+                    explain=True,
+                    vector=vector,
+                    filter=filter,
+                    rescore=rescore,
+                    rerank=rerank,
+                    mmr_lambda=mmr_lambda,
+                    include_vectors=include_vectors,
+                    use_cache=use_cache,
+                    normalize_scores=normalize_scores,
+                )
+
+            explained_futures = [self._executor.submit(explained_search, q) for q in queries]
+            return [f.result() for f in explained_futures]
+
+        def plain_search(query: str) -> list[SearchResult]:
+            return self.search(
+                query,
+                top_k=top_k,
+                namespace=namespace,
+                explain=False,
+                vector=vector,
+                filter=filter,
+                rescore=rescore,
+                rerank=rerank,
+                mmr_lambda=mmr_lambda,
+                include_vectors=include_vectors,
+                use_cache=use_cache,
+                normalize_scores=normalize_scores,
+            )
+
+        futures = [self._executor.submit(plain_search, q) for q in queries]
         return [f.result() for f in futures]
 
     def as_multiquery_retriever(
         self,
-        generate_queries=None,
+        generate_queries: Any = None,
         *,
-        llm_generate_queries=None,
+        llm_generate_queries: Any = None,
         namespace: str = "default",
-        **kw,
-    ):
+        **kw: Any,
+    ) -> Any:
         """Create a :class:`~dynavec.retrievers.MultiQueryRetriever` bound to this client."""
         from .retrievers import MultiQueryRetriever
 
@@ -841,12 +1033,12 @@ class Dynavec:
 
     def as_hyde_retriever(
         self,
-        generate_hypothetical=None,
+        generate_hypothetical: Any = None,
         *,
-        llm_generate_hypothetical=None,
+        llm_generate_hypothetical: Any = None,
         namespace: str = "default",
-        **kw,
-    ):
+        **kw: Any,
+    ) -> Any:
         """Create a :class:`~dynavec.retrievers.HyDERetriever` bound to this client."""
         from .retrievers import HyDERetriever
 
@@ -963,17 +1155,37 @@ class Dynavec:
                 )
 
     # -------------------------------------------------------------- graph / ER
-    def graph_add_node(self, entity_id, *, namespace="default", ntype=None, props=None):
+    def graph_add_node(
+        self,
+        entity_id: str,
+        *,
+        namespace: str = "default",
+        ntype: str | None = None,
+        props: Metadata | None = None,
+    ) -> None:
         """Create/update a graph entity (a 'meaning' node)."""
         self.graph.add_node(namespace, entity_id, ntype, props)
 
-    def graph_add_edge(self, src, relation, dst, *, namespace="default", bidirectional=False):
+    def graph_add_edge(
+        self,
+        src: str,
+        relation: str,
+        dst: str,
+        *,
+        namespace: str = "default",
+        bidirectional: bool = False,
+    ) -> None:
         """Relate two entities: ``(src) -[relation]-> (dst)``."""
         self.graph.add_edge(namespace, src, relation, dst)
         if bidirectional:
             self.graph.add_edge(namespace, dst, relation, src)
 
-    def graph_delete_node(self, entity_id, *, namespace="default"):
+    def graph_delete_node(
+        self,
+        entity_id: str,
+        *,
+        namespace: str = "default",
+    ) -> int:
         """Delete an entity with its outbound and inbound edges (idempotent).
 
         Linked documents and their embeddings are left untouched. Returns the
@@ -981,23 +1193,44 @@ class Dynavec:
         """
         return self.graph.delete_node(namespace, entity_id)
 
-    def graph_delete_edge(self, src, relation, dst, *, namespace="default", bidirectional=False):
+    def graph_delete_edge(
+        self,
+        src: str,
+        relation: str,
+        dst: str,
+        *,
+        namespace: str = "default",
+        bidirectional: bool = False,
+    ) -> int:
         """Remove ``(src) -[relation]-> (dst)`` (idempotent); return edges removed."""
         removed = self.graph.delete_edge(namespace, src, relation, dst)
         if bidirectional:
             removed += self.graph.delete_edge(namespace, dst, relation, src)
         return removed
 
-    def graph_link(self, entity_id, doc_ids, *, namespace="default"):
+    def graph_link(
+        self,
+        entity_id: str,
+        doc_ids: Sequence[str],
+        *,
+        namespace: str = "default",
+    ) -> None:
         """Attach documents (their S3 Vectors embeddings) to an entity."""
         self.graph.link_docs(namespace, entity_id, list(doc_ids))
 
-    def graph_neighbors(self, entity_id, *, namespace="default", relation=None, hops=1):
+    def graph_neighbors(
+        self,
+        entity_id: str,
+        *,
+        namespace: str = "default",
+        relation: str | None = None,
+        hops: int = 1,
+    ) -> list[str]:
         """Breadth-first traversal returning reachable entity ids (excl. seed)."""
         visited = {entity_id}
         frontier = [entity_id]
         for _ in range(hops):
-            nxt = []
+            nxt: list[str] = []
             for node in frontier:
                 for nb in self.graph.neighbors(namespace, node, relation):
                     if nb not in visited:
@@ -1007,15 +1240,16 @@ class Dynavec:
             if not frontier:
                 break
         return [e for e in visited if e != entity_id]
+
     def graph_shortest_path(
         self,
-        src_entity_id,
-        dst_entity_id,
+        src_entity_id: str,
+        dst_entity_id: str,
         *,
-        namespace="default",
-        relation=None,
-        hops=10,
-    ):
+        namespace: str = "default",
+        relation: str | None = None,
+        hops: int = 10,
+    ) -> list[str]:
         # Use BFS to find the shortest path between two graph entities
         # within the given hop limit.
         # Returns the path if the destination is reachable; otherwise returns an empty list.
@@ -1026,9 +1260,7 @@ class Dynavec:
         visited = {src_entity_id}
         frontier = [src_entity_id]
 
-        shortest_path_for_node = {
-            src_entity_id: [src_entity_id]
-        }
+        shortest_path_for_node = {src_entity_id: [src_entity_id]}
 
         for _ in range(hops):
             nxt = []
@@ -1041,9 +1273,7 @@ class Dynavec:
                     visited.add(nb)
                     nxt.append(nb)
 
-                    shortest_path_for_node[nb] = (
-                        shortest_path_for_node[node] + [nb]
-                    )
+                    shortest_path_for_node[nb] = shortest_path_for_node[node] + [nb]
 
                     if nb == dst_entity_id:
                         return shortest_path_for_node[nb]
@@ -1054,6 +1284,7 @@ class Dynavec:
                 break
 
         return []
+
     def graph_search(
         self,
         query: str | None = None,

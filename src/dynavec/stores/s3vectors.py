@@ -34,13 +34,13 @@ _LIST_PAGE_MAX = 1000
 
 def _f32(vector: list[float]) -> list[float]:
     """Ensure vector is float32-clean (S3 Vectors stores float32)."""
-    return np.asarray(vector, dtype=np.float32).tolist()
+    return [float(value) for value in np.asarray(vector, dtype=np.float32)]
 
 
 class S3VectorsStore:
     _logger = logging.getLogger("dynavec.stores.s3vectors")
 
-    def __init__(self, config: DynavecConfig, boto_session=None) -> None:
+    def __init__(self, config: DynavecConfig, boto_session: Any | None = None) -> None:
         import boto3  # local import: base import stays cheap
 
         session = boto_session or boto3.Session()
@@ -49,17 +49,18 @@ class S3VectorsStore:
         botocore_config = config.botocore_config()
         if botocore_config is not None:
             client_kwargs["config"] = botocore_config
-        self._client = session.client("s3vectors", **client_kwargs)  # type: ignore[arg-type]
+        self._client = session.client("s3vectors", **client_kwargs)
         self._logger = logging.getLogger("dynavec.stores.s3vectors")
 
-    def get_index(self) -> dict:
-        return self._client.get_index(
+    def get_index(self) -> dict[str, Any]:
+        result: dict[str, Any] = self._client.get_index(
             vectorBucketName=self._config.vector_bucket,
             indexName=self._config.index,
         )
+        return result
 
     @retry()
-    def _put_batch(self, payload: list[dict]) -> None:
+    def _put_batch(self, payload: list[dict[str, Any]]) -> None:
         self._client.put_vectors(
             vectorBucketName=self._config.vector_bucket,
             indexName=self._config.index,
@@ -102,7 +103,12 @@ class S3VectorsStore:
         )
 
     def _query_kwargs(
-        self, query_vector, top_k, filter, return_metadata, return_distance
+        self,
+        query_vector: list[float],
+        top_k: int,
+        filter: Metadata | None,
+        return_metadata: bool,
+        return_distance: bool,
     ) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "vectorBucketName": self._config.vector_bucket,

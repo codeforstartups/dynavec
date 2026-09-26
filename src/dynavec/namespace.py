@@ -8,9 +8,10 @@ separated on the same infrastructure.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from collections.abc import Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
-from .models import ExplainedSearchResult, SearchResult
+from .models import Document, ExplainedSearchResult, SearchResult, UpsertResult
 
 if TYPE_CHECKING:
     from .client import Dynavec
@@ -29,33 +30,94 @@ class NamespaceView:
     def namespace(self) -> str:
         return self._ns
 
-    def upsert(self, documents, **kw) -> Any:
+    def upsert(
+        self,
+        documents: Sequence[Document | dict[str, Any]] | None,
+        **kw: Any,
+    ) -> UpsertResult:
         return self._db.upsert(documents, namespace=self._ns, **kw)
 
-    def update(self, *args, **kw) -> Any:
-        return self._db.update(*args, namespace=self._ns, **kw)
+    def update(self, id: str, **kw: Any) -> UpsertResult:
+        return self._db.update(id, namespace=self._ns, **kw)
+
+    @overload
+    def search(
+        self, query: str | None = None, *, explain: Literal[False] = False, **kw: Any
+    ) -> list[SearchResult]: ...
+
+    @overload
+    def search(
+        self, query: str | None = None, *, explain: Literal[True], **kw: Any
+    ) -> ExplainedSearchResult: ...
+
+    @overload
+    def search(
+        self, query: str | None = None, *, explain: bool, **kw: Any
+    ) -> list[SearchResult] | ExplainedSearchResult: ...
 
     def search(
-        self, query: str | None = None, **kw
+        self, query: str | None = None, *, explain: bool = False, **kw: Any
     ) -> list[SearchResult] | ExplainedSearchResult:
-        return self._db.search(query, namespace=self._ns, **kw)
+        if explain:
+            return cast(
+                ExplainedSearchResult,
+                self._db.search(query, namespace=self._ns, explain=True, **kw),
+            )
+        return cast(list[SearchResult], self._db.search(query, namespace=self._ns, **kw))
 
-    def search_many(self, queries: list[str], *, top_k: int = 10, **kw) -> list[list[SearchResult]]:
+    @overload
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        explain: Literal[False] = False,
+        **kw: Any,
+    ) -> list[list[SearchResult]]: ...
+
+    @overload
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        explain: Literal[True],
+        **kw: Any,
+    ) -> list[ExplainedSearchResult]: ...
+
+    @overload
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        explain: bool,
+        **kw: Any,
+    ) -> list[list[SearchResult]] | list[ExplainedSearchResult]: ...
+
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        explain: bool = False,
+        **kw: Any,
+    ) -> list[list[SearchResult]] | list[ExplainedSearchResult]:
         """Run several queries concurrently, pinned to this namespace."""
-        return self._db.search_many(queries, top_k=top_k, namespace=self._ns, **kw)
+        return self._db.search_many(queries, top_k=top_k, namespace=self._ns, explain=explain, **kw)
 
-    def search_stream(self, query: str | None = None, **kw):
+    def search_stream(self, query: str | None = None, **kw: Any) -> Iterator[SearchResult]:
         yield from self._db.search_stream(query, namespace=self._ns, **kw)
 
-    def get(self, ids, **kw) -> list[SearchResult]:
+    def get(self, ids: list[str], **kw: Any) -> list[SearchResult]:
         return self._db.get(ids, namespace=self._ns, **kw)
 
-    def delete(self, ids, **kw) -> None:
-        return self._db.delete(ids, namespace=self._ns, **kw)
+    def delete(self, ids: list[str], **kw: Any) -> None:
+        self._db.delete(ids, namespace=self._ns, **kw)
 
     def as_multiquery_retriever(
-        self, generate_queries=None, *, llm_generate_queries=None, **kw
-    ):
+        self, generate_queries: Any = None, *, llm_generate_queries: Any = None, **kw: Any
+    ) -> Any:
         """Create a :class:`~dynavec.retrievers.MultiQueryRetriever` pinned to this namespace."""
         from .retrievers import MultiQueryRetriever
 
@@ -67,8 +129,8 @@ class NamespaceView:
         )
 
     def as_hyde_retriever(
-        self, generate_hypothetical=None, *, llm_generate_hypothetical=None, **kw
-    ):
+        self, generate_hypothetical: Any = None, *, llm_generate_hypothetical: Any = None, **kw: Any
+    ) -> Any:
         """Create a :class:`~dynavec.retrievers.HyDERetriever` pinned to this namespace."""
         from .retrievers import HyDERetriever
 
@@ -79,13 +141,13 @@ class NamespaceView:
             **kw,
         )
 
-    def export_namespace(self, output, **kw) -> int:
+    def export_namespace(self, output: Any, **kw: Any) -> int:
         return self._db.export_namespace(output, namespace=self._ns, **kw)
 
-    def import_namespace(self, input, **kw) -> int:
+    def import_namespace(self, input: Any, **kw: Any) -> int:
         return self._db.import_namespace(input, namespace=self._ns, **kw)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[dict[str, Any]]:
         return self._db.iter_namespace(namespace=self._ns)
 
     def __repr__(self) -> str:

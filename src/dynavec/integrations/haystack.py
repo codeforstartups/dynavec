@@ -101,7 +101,7 @@ class DynavecDocumentStore:
 
     def filter_documents(
         self,
-        filters: dict | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> list[Document]:
         """Return documents matching metadata filters."""
         documents = []

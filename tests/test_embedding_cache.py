@@ -296,3 +296,16 @@ def test_custom_cache_backend_is_used():
 def test_default_cache_is_inmemory():
     embedder = CachedEmbedder(_CountingEmbedder())
     assert isinstance(embedder.cache, InMemoryCache)
+
+
+@pytest.mark.parametrize("method", ["embed_documents", "embed_query"])
+def test_cached_dimension_tracks_ollama_inference(monkeypatch, method):
+    from dynavec.embeddings.ollama import OllamaEmbedder
+
+    inner = OllamaEmbedder(model="custom-model")
+    monkeypatch.setattr(inner, "_post", lambda *args: {"embeddings": [[0.1, 0.2, 0.3]]})
+    cached = CachedEmbedder(inner)
+    assert cached.dimension == 768
+    getattr(cached, method)(["hello"] if method == "embed_documents" else "hello")
+    assert inner.dimension == 3
+    assert cached.dimension == 3

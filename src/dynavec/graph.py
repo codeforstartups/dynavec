@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from collections import deque
-from typing import Any
+from typing import Any, cast
 
 from .config import DynavecConfig
 from .utils import (
@@ -162,7 +162,7 @@ _RENDERERS = {"mermaid": _render_mermaid, "dot": _render_dot}
 class GraphStore:
     """DynamoDB-backed property graph sharing the dynavec document table."""
 
-    def __init__(self, config: DynavecConfig, boto_session=None) -> None:
+    def __init__(self, config: DynavecConfig, boto_session: Any | None = None) -> None:
         import boto3
 
         session = boto_session or boto3.Session()
@@ -171,7 +171,7 @@ class GraphStore:
         botocore_config = config.botocore_config()
         if botocore_config is not None:
             resource_kwargs["config"] = botocore_config
-        self._ddb = session.resource("dynamodb", **resource_kwargs)  # type: ignore[arg-type]
+        self._ddb = session.resource("dynamodb", **resource_kwargs)
         self._table = self._ddb.Table(config.table)
 
     @staticmethod
@@ -289,9 +289,10 @@ class GraphStore:
 
     # ------------------------------------------------------------------ reads
     @retry()
-    def get_node(self, ns: str, entity_id: str) -> dict | None:
+    def get_node(self, ns: str, entity_id: str) -> dict[str, Any] | None:
         resp = self._table.get_item(Key={"pk": self._node_pk(ns, entity_id)})
-        return resp.get("Item")
+        item = resp.get("Item")
+        return cast(dict[str, Any], item) if item is not None else None
 
     def neighbors(self, ns: str, entity_id: str, relation: str | None = None) -> list[str]:
         node = self.get_node(ns, entity_id)
@@ -332,7 +333,7 @@ class GraphStore:
         return sorted(entity_id for entity_id, _ in self._scan_nodes(ns, "pk, entity_id"))
 
     @retry()
-    def _scan_nodes(self, ns: str, projection: str) -> list[tuple[str, dict]]:
+    def _scan_nodes(self, ns: str, projection: str) -> list[tuple[str, dict[str, Any]]]:
         """``(entity_id, item)`` for every node in ``ns``, following pagination."""
         prefix = f"{encode_key_component(ns)}{KEY_SEPARATOR}node{KEY_SEPARATOR}"
         params: dict[str, Any] = {
@@ -340,7 +341,7 @@ class GraphStore:
             "ExpressionAttributeValues": {":prefix": prefix},
             "ProjectionExpression": projection,
         }
-        nodes: list[tuple[str, dict]] = []
+        nodes: list[tuple[str, dict[str, Any]]] = []
         while True:
             resp = self._table.scan(**params)
             for item in resp.get("Items", []):

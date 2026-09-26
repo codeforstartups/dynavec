@@ -164,6 +164,10 @@ for h in hits:
     print(h.score, h.id, h.text)
 ```
 
+`search()` returns a list of hits by default. Pass `explain=True` to receive an
+`ExplainedSearchResult` containing those hits plus timing and candidate-count
+details; the type annotations distinguish the two return shapes.
+
 ### Bring your own vectors (no embedder needed)
 
 ```python

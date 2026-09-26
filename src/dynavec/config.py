@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from botocore.config import Config
 
 DistanceMetric = Literal["cosine", "euclidean"]
 
@@ -111,7 +114,7 @@ class DynavecConfig:
     structured_logging: bool = False
     log_level: str = "INFO"
 
-    def botocore_config(self):  # type: ignore[no-untyped-def]
+    def botocore_config(self) -> Config | None:
         """Return a botocore Config with pool tuning, or None for defaults.
 
         Local import keeps the base package cheap (boto3/botocore stay

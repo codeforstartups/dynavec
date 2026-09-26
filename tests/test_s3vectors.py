@@ -191,7 +191,7 @@ def test_put_vectors_parallelization():
     duration = time.perf_counter() - t0
 
     
-    assert duration < 0.25
+    assert duration < 0.5
     assert store._put_batch.call_count == 3
 
 

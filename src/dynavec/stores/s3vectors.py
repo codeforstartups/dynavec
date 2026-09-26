@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import numpy as np
@@ -65,19 +66,31 @@ class S3VectorsStore:
             vectors=payload,
         )
 
+
     def put_vectors(
         self,
         vectors: list[tuple[str, list[float], Metadata]],
+        max_workers: int = 8,
     ) -> None:
-        """Insert/overwrite (key, vector, filterable_metadata) triples."""
+        """Insert/overwrite (key, vector, filterable_metadata) triples in parallelized batches."""
+        if not vectors:
+            return
+
         t0 = time.perf_counter()
-        for start in range(0, len(vectors), _PUT_LIMIT):
-            chunk = vectors[start : start + _PUT_LIMIT]
+        chunks = [vectors[i : i + _PUT_LIMIT] for i in range(0, len(vectors), _PUT_LIMIT)]
+
+        def _upload_chunk(chunk: list[tuple[str, list[float], Metadata]]) -> None:
             payload = [
                 {"key": key, "data": {"float32": _f32(vec)}, "metadata": meta}
                 for key, vec, meta in chunk
             ]
             self._put_batch(payload)
+
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(chunks))) as executor:
+            futures = [executor.submit(_upload_chunk, chunk) for chunk in chunks]
+            for future in as_completed(futures):
+                future.result()  # Ensures any exception raised in thread is re-raised
+
         log_store_event(
             self._logger,
             "s3vectors.put_vectors",

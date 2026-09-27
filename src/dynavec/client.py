@@ -1050,6 +1050,61 @@ class Dynavec:
             **kw,
         )
 
+    def as_bm25_retriever(
+        self,
+        namespace: str = "default",
+        **kw: Any,
+    ) -> Any:
+        """Create a :class:`~dynavec.retrievers.BM25Retriever` bound to this client."""
+        from .retrievers import BM25Retriever
+
+        return BM25Retriever(self, namespace=namespace, **kw)
+
+    def as_hybrid_retriever(
+        self,
+        namespace: str = "default",
+        *,
+        dense_weight: float = 1.0,
+        sparse_weight: float = 0.8,
+        **kw: Any,
+    ) -> Any:
+        """Create a :class:`~dynavec.retrievers.BM25HybridRetriever` bound to this client."""
+        from .retrievers import BM25HybridRetriever
+
+        return BM25HybridRetriever(
+            self,
+            namespace=namespace,
+            dense_weight=dense_weight,
+            sparse_weight=sparse_weight,
+            **kw,
+        )
+
+    def hybrid_search(
+        self,
+        query: str,
+        *,
+        top_k: int = 10,
+        namespace: str = "default",
+        dense_weight: float = 1.0,
+        sparse_weight: float = 0.8,
+        rrf_k: int = 60,
+        bm25_retriever: Any = None,
+        filter: Metadata | None = None,
+        use_cache: bool | None = None,
+        **kw: Any,
+    ) -> list[SearchResult]:
+        """Execute hybrid search combining dense ANN vector search and sparse BM25 lexical search."""
+        retriever = self.as_hybrid_retriever(
+            namespace=namespace,
+            dense_weight=dense_weight,
+            sparse_weight=sparse_weight,
+            rrf_k=rrf_k,
+            top_k=top_k,
+            bm25_retriever=bm25_retriever,
+            **kw,
+        )
+        return retriever.search(query, top_k=top_k, filter=filter, use_cache=use_cache)
+
     def _resolve_query_vector(self, query: str | None, vector: list[float] | None) -> list[float]:
         if vector is not None:
             if len(vector) != self.config.dimension:

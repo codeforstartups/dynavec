@@ -20,6 +20,7 @@ Quick start
 
 from __future__ import annotations
 
+from .bm25 import BM25Index
 from .cache import BaseCache, DynamoDBCache, RedisCache, SemanticCache, warm_cache
 from .client import Dynavec
 from .config import DynavecConfig
@@ -72,6 +73,8 @@ from .retrieval import (
     reciprocal_rank_fusion,
 )
 from .retrievers import (
+    BM25HybridRetriever,
+    BM25Retriever,
     HyDERetriever,
     MultiQueryRetriever,
     QueryExpansionRetriever,
@@ -112,6 +115,9 @@ __all__ = [
     "QueryExpansionRetriever",
     "MultiQueryRetriever",
     "HyDERetriever",
+    "BM25Index",
+    "BM25Retriever",
+    "BM25HybridRetriever",
     "FitResult",
     "RRFWeightFitter",
     "HotTier",

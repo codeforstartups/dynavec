@@ -15,6 +15,7 @@ from __future__ import annotations
 import gzip
 import logging
 import time
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
 
@@ -33,6 +34,7 @@ MAX_ITEM_BYTES = 400 * 1024
 # Optimistic-concurrency counter written by ``put_versioned``. Items written by
 # ``put_many`` (plain upserts) carry no version and read back as version 0.
 VERSION_ATTR = "version"
+TTL_ATTR = "ttl"
 
 
 def _to_dynamo(obj: Any) -> Any:
@@ -68,13 +70,20 @@ def _build_item(
     text: str | None,
     metadata: Metadata,
     gzip_threshold_bytes: int | None = None,
+    ttl: int | None = None,
+    ttl_attribute: str = TTL_ATTR,
 ) -> dict[str, Any]:
+    meta = dict(metadata or {})
+    if ttl is None and "_ttl" in meta:
+        ttl = meta.pop("_ttl")
     item: dict[str, Any] = {
         "pk": _pk(namespace, doc_id),
         "ns": namespace,
         "id": doc_id,
-        "metadata": _to_dynamo(metadata or {}),
+        "metadata": _to_dynamo(meta),
     }
+    if ttl is not None:
+        item[ttl_attribute] = int(ttl)
     if text is not None:
         text_bytes = text.encode("utf-8")
         if gzip_threshold_bytes is not None and len(text_bytes) >= gzip_threshold_bytes:
@@ -117,13 +126,25 @@ def check_item_size(
     text: str | None,
     metadata: Metadata,
     gzip_threshold_bytes: int | None = None,
+    ttl: int | None = None,
+    ttl_attribute: str = TTL_ATTR,
 ) -> None:
     """Raise :class:`ItemTooLargeError` if the document would exceed the item limit.
 
     Called before any write so an oversized document fails the whole upsert up
     front, instead of DynamoDB rejecting it partway through a batch.
     """
-    _check_built_item(_build_item(namespace, doc_id, text, metadata, gzip_threshold_bytes))
+    _check_built_item(
+        _build_item(
+            namespace,
+            doc_id,
+            text,
+            metadata,
+            gzip_threshold_bytes,
+            ttl=ttl,
+            ttl_attribute=ttl_attribute,
+        )
+    )
 
 
 def _check_built_item(item: dict[str, Any]) -> None:
@@ -168,18 +189,29 @@ class DynamoDBStore:
     def put_many(
         self,
         namespace: str,
-        items: list[tuple[str, str | None, Metadata]],
+        items: Sequence[
+            tuple[str, str | None, Metadata] | tuple[str, str | None, Metadata, int | None]
+        ],
     ) -> None:
-        """Upsert (id, text, metadata) triples. Uses batch writer (auto-retry).
+        """Upsert (id, text, metadata[, ttl]) tuples. Uses batch writer (auto-retry).
 
         Raises :class:`ItemTooLargeError` before writing anything if any item is
         over DynamoDB's 400 KB limit.
         """
         t0 = time.perf_counter()
         threshold = self._config.gzip_threshold_bytes
+        ttl_attr = self._config.dynamodb_ttl_attribute
         built = [
-            _build_item(namespace, doc_id, text, metadata, threshold)
-            for doc_id, text, metadata in items
+            _build_item(
+                namespace,
+                item[0],
+                item[1],
+                item[2],
+                threshold,
+                ttl=item[3] if len(item) > 3 else None,
+                ttl_attribute=ttl_attr,
+            )
+            for item in items
         ]
         for item in built:
             _check_built_item(item)
@@ -204,6 +236,7 @@ class DynamoDBStore:
         text: str | None,
         metadata: Metadata,
         expected_version: int,
+        ttl: int | None = None,
     ) -> int:
         """Write one document only if its stored version is ``expected_version``.
 
@@ -215,7 +248,15 @@ class DynamoDBStore:
         from botocore.exceptions import ClientError
 
         t0 = time.perf_counter()
-        item = _build_item(namespace, doc_id, text, metadata, self._config.gzip_threshold_bytes)
+        item = _build_item(
+            namespace,
+            doc_id,
+            text,
+            metadata,
+            self._config.gzip_threshold_bytes,
+            ttl=ttl,
+            ttl_attribute=self._config.dynamodb_ttl_attribute,
+        )
         _check_built_item(item)
         new_version = expected_version + 1
         item[VERSION_ATTR] = new_version
@@ -255,11 +296,15 @@ class DynamoDBStore:
         item = resp.get("Item")
         if item is None:
             return None
-        return {
+        res: dict[str, Any] = {
             "text": _read_text(item),
             "metadata": _from_dynamo(item.get("metadata", {})),
             "version": int(item.get(VERSION_ATTR, 0)),
         }
+        ttl_attr = self._config.dynamodb_ttl_attribute
+        if ttl_attr in item:
+            res["ttl"] = int(item[ttl_attr])
+        return res
 
     @retry()
     def get_many(self, namespace: str, ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -286,10 +331,14 @@ class DynamoDBStore:
             while request:
                 resp = self._ddb.batch_get_item(RequestItems=request)
                 for item in resp["Responses"].get(self._config.table, []):
-                    out[item["id"]] = {
+                    entry: dict[str, Any] = {
                         "text": _read_text(item),
                         "metadata": _from_dynamo(item.get("metadata", {})),
                     }
+                    ttl_attr = self._config.dynamodb_ttl_attribute
+                    if ttl_attr in item:
+                        entry["ttl"] = int(item[ttl_attr])
+                    out[item["id"]] = entry
                 unprocessed = resp.get("UnprocessedKeys") or {}
                 request = unprocessed if unprocessed else None
 

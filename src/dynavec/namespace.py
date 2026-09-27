@@ -33,12 +33,22 @@ class NamespaceView:
     def upsert(
         self,
         documents: Sequence[Document | dict[str, Any]] | None,
+        *,
+        ttl_seconds: int | None = None,
         **kw: Any,
     ) -> UpsertResult:
-        return self._db.upsert(documents, namespace=self._ns, **kw)
+        return self._db.upsert(
+            documents, namespace=self._ns, ttl_seconds=ttl_seconds, **kw
+        )
 
-    def update(self, id: str, **kw: Any) -> UpsertResult:
-        return self._db.update(id, namespace=self._ns, **kw)
+    def update(
+        self,
+        id: str,
+        *,
+        ttl_seconds: int | None = None,
+        **kw: Any,
+    ) -> UpsertResult:
+        return self._db.update(id, namespace=self._ns, ttl_seconds=ttl_seconds, **kw)
 
     @overload
     def search(

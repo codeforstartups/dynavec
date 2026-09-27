@@ -209,6 +209,7 @@ class Dynavec:
         namespace: str,
         auto_metadata: bool,
         transform: TransformSpec | None,
+        default_ttl_seconds: int | None = None,
     ) -> tuple[list[S3Payload], list[DDBPayload], list[str], list[HotPayload]]:
         pipeline = as_pipeline(transform) or self._default_transform
 
@@ -262,8 +263,27 @@ class Dynavec:
                 auto.update(meta)
                 meta = auto
             s3_meta, ddb_meta = split_metadata(meta, self.config, namespace, d.text)
+            doc_ttl_seconds = d.ttl_seconds if d.ttl_seconds is not None else default_ttl_seconds
+            if doc_ttl_seconds is not None and doc_ttl_seconds <= 0:
+                raise ValueError(
+                    f"Document {d.id!r} ttl_seconds must be positive, got {doc_ttl_seconds}."
+                )
+            ttl_timestamp = (
+                int(time.time() + doc_ttl_seconds) if doc_ttl_seconds is not None else None
+            )
+            if ttl_timestamp is not None:
+                ddb_meta["_ttl"] = ttl_timestamp
+
             # fail before either store is written, not partway through a batch
-            check_item_size(namespace, d.id, d.text, ddb_meta, self.config.gzip_threshold_bytes)
+            check_item_size(
+                namespace,
+                d.id,
+                d.text,
+                ddb_meta,
+                self.config.gzip_threshold_bytes,
+                ttl=ttl_timestamp,
+                ttl_attribute=self.config.dynamodb_ttl_attribute,
+            )
             s3_payload.append((self._s3_key(namespace, d.id), vector, s3_meta))
             ddb_payload.append((d.id, d.text, ddb_meta))
             ids.append(d.id)
@@ -296,13 +316,24 @@ class Dynavec:
         namespace: str = "default",
         auto_metadata: bool = False,
         transform: TransformSpec | None = None,
+        ttl_seconds: int | None = None,
     ) -> UpsertResult:
-        """Insert or overwrite documents (each a :class:`Document` or dict)."""
+        """Insert or overwrite documents (each a :class:`Document` or dict).
+
+        Parameters
+        ----------
+        ttl_seconds:
+            Optional default time-to-live in seconds for documents in this batch
+            that do not specify their own ``ttl_seconds``. DynamoDB will
+            automatically expire documents after this duration.
+        """
+        if ttl_seconds is not None and ttl_seconds <= 0:
+            raise ValueError(f"ttl_seconds must be positive, got {ttl_seconds}.")
         if not documents:
             return UpsertResult(count=0, ids=[])
         docs = [d if isinstance(d, Document) else Document(**d) for d in documents]
         s3_payload, ddb_payload, ids, hot_payload = self._prepare(
-            docs, namespace, auto_metadata, transform
+            docs, namespace, auto_metadata, transform, default_ttl_seconds=ttl_seconds
         )
         self._write(namespace, s3_payload, ddb_payload)
         if self._hot is not None:
@@ -322,6 +353,7 @@ class Dynavec:
         transform: TransformSpec | None = None,
         upsert_if_missing: bool = False,
         expected_version: int | None = None,
+        ttl_seconds: int | None = None,
     ) -> UpsertResult:
         """Update an existing document's text, vector, and/or metadata.
 
@@ -336,6 +368,8 @@ class Dynavec:
         to also detect changes made since *your* last read. The returned
         :class:`UpsertResult` carries the new ``version``.
         """
+        if ttl_seconds is not None and ttl_seconds <= 0:
+            raise ValueError(f"ttl_seconds must be positive, got {ttl_seconds}.")
         existing = self._docs.get_versioned(namespace, id)
         if existing is None and not upsert_if_missing:
             raise NotFoundError(f"Document {id!r} not found in namespace {namespace!r}.")
@@ -369,7 +403,13 @@ class Dynavec:
         else:
             new_meta = metadata
 
-        doc = Document(id=id, text=new_text, vector=new_vector, metadata=new_meta)
+        doc = Document(
+            id=id,
+            text=new_text,
+            vector=new_vector,
+            metadata=new_meta,
+            ttl_seconds=ttl_seconds,
+        )
         # mark op=update for any transform that cares
         s3_payload, ddb_payload, ids, hot_payload = self._prepare(
             [doc], namespace, auto_metadata=False, transform=transform
@@ -377,8 +417,16 @@ class Dynavec:
         # The conditional DynamoDB write goes first: on a conflict it raises
         # before S3 Vectors or the hot tier are touched.
         ((_, ddb_text, ddb_meta),) = ddb_payload
+        computed_ttl = ddb_meta.pop("_ttl", None)
+        final_ttl = computed_ttl if computed_ttl is not None else existing.get("ttl")
+        if final_ttl is not None:
+            ddb_meta["_ttl"] = final_ttl
         version = self._docs.put_versioned(
-            namespace, id, ddb_text, ddb_meta, expected_version=existing["version"]
+            namespace,
+            id,
+            ddb_text,
+            ddb_meta,
+            expected_version=existing["version"],
         )
         self._vectors.put_vectors(s3_payload)
         if self._hot is not None:
@@ -691,6 +739,7 @@ class Dynavec:
                         text=doc.get("text"),
                         metadata=doc.get("metadata", {}),
                         vector=vec,
+                        ttl=doc.get("ttl"),
                     )
                 )
 
@@ -1076,6 +1125,7 @@ class Dynavec:
                 score=1.0,
                 text=hydrated[doc_id].get("text"),
                 metadata=hydrated[doc_id].get("metadata", {}),
+                ttl=hydrated[doc_id].get("ttl"),
             )
             for doc_id in ids
             if doc_id in hydrated

@@ -103,6 +103,8 @@ class DynavecConfig:
     # provisioning
     auto_provision: bool = False
     dynamodb_billing_mode: Literal["PAY_PER_REQUEST", "PROVISIONED"] = "PAY_PER_REQUEST"
+    dynamodb_enable_ttl: bool = True
+    dynamodb_ttl_attribute: str = "ttl"
 
     # document storage tuning
     gzip_threshold_bytes: int | None = None

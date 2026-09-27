@@ -11,11 +11,11 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
-from .models import Document, ExplainedSearchResult, SearchResult, UpsertResult
+from .models import Document, ExplainedSearchResult, Metadata, SearchResult, UpsertResult
 
 if TYPE_CHECKING:
     from .client import Dynavec
-    from .types import Metadata
+    from .retrievers import BM25HybridRetriever, BM25Retriever
 
 
 class NamespaceView:
@@ -142,7 +142,7 @@ class NamespaceView:
             **kw,
         )
 
-    def as_bm25_retriever(self, **kw: Any) -> Any:
+    def as_bm25_retriever(self, **kw: Any) -> BM25Retriever:
         """Create a :class:`~dynavec.retrievers.BM25Retriever` pinned to this namespace."""
         from .retrievers import BM25Retriever
 
@@ -154,7 +154,7 @@ class NamespaceView:
         dense_weight: float = 1.0,
         sparse_weight: float = 0.8,
         **kw: Any,
-    ) -> Any:
+    ) -> BM25HybridRetriever:
         """Create a :class:`~dynavec.retrievers.BM25HybridRetriever` pinned to this namespace."""
         from .retrievers import BM25HybridRetriever
 

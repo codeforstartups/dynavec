@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, TextIO, Union, overloa
 
 if TYPE_CHECKING:
     from .cache import BaseCache
+    from .retrievers import BM25HybridRetriever, BM25Retriever
 
 import numpy as np
 
@@ -1054,7 +1055,7 @@ class Dynavec:
         self,
         namespace: str = "default",
         **kw: Any,
-    ) -> Any:
+    ) -> BM25Retriever:
         """Create a :class:`~dynavec.retrievers.BM25Retriever` bound to this client."""
         from .retrievers import BM25Retriever
 
@@ -1067,7 +1068,7 @@ class Dynavec:
         dense_weight: float = 1.0,
         sparse_weight: float = 0.8,
         **kw: Any,
-    ) -> Any:
+    ) -> BM25HybridRetriever:
         """Create a :class:`~dynavec.retrievers.BM25HybridRetriever` bound to this client."""
         from .retrievers import BM25HybridRetriever
 

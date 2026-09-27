@@ -502,16 +502,43 @@ fused = reciprocal_rank_fusion([dense_hits, keyword_hits])
 PAGES["namespaces"] = ("Namespaces",
     "Multi-tenant / multi-collection isolation on a single index.",
     """
-<p>Every operation takes a <code>namespace</code>. dynavec tags each vector with it and scopes queries
-automatically, so one index can host many tenants. DynamoDB keys are <code>"{namespace}#{id}"</code> for even
-partition distribution.</p>
-""" + code("""kb = db.namespace("tenant-42")     # a view bound to one namespace
-kb.upsert([Document(id="1", text="private doc")])
-kb.search("scoped to this tenant only", top_k=4)
-kb.delete(["1"])
+<p>A namespace gives each tenant an isolated view of the same dynavec index. Every vector is tagged with its
+namespace, and searches are automatically scoped to that namespace. This lets multiple customers share the
+same infrastructure while keeping their retrieval results separated.</p>
+
+<h2>Namespace-per-tenant</h2>
+<p>Use <code>db.namespace("tenant-id")</code> to create a lightweight handle bound to one tenant. The same
+document ID can exist in multiple namespaces because the namespace is part of the storage key.</p>
+""" + code("""acme = db.namespace("acme")
+globex = db.namespace("globex")
+
+acme.upsert([Document(id="refund-policy", text="Acme refunds are available within 30 days.")])
+globex.upsert([Document(id="refund-policy", text="Globex refunds are available within 14 days.")])
+
+acme.search("What is the refund period?", top_k=2)
+globex.search("What is the refund period?", top_k=2)
 """) + """
-<div class="callout">Namespaces are the recommended way to do per-customer RAG: same infrastructure, clean
-data isolation, no cross-tenant leakage.</div>
+<h2>End-to-end multi-tenant RAG</h2>
+<p>A typical RAG application maps the authenticated tenant to a namespace, retrieves context from that namespace,
+and passes only that context to the LLM.</p>
+""" + code("""tenant = db.namespace(tenant_id)
+
+hits = tenant.search(user_query, top_k=5)
+context = "\\n\\n".join(hit.text for hit in hits)
+
+answer = llm.generate(
+    f"Answer using only the following context:\\n{context}\\n\\nQuestion: {user_query}"
+)
+""") + """
+<p>The complete runnable recipe is available in
+<code>examples/multi_tenant_rag.py</code>. It demonstrates two tenants using the same index, including identical
+document IDs with tenant-specific content.</p>
+<h2>Runnable example</h2>
+""" + code("""pip install "dynavec[sentence-transformers]"
+python examples/multi_tenant_rag.py
+""") + """
+<div class="callout">For multi-tenant RAG, keep the namespace derived from your authenticated tenant identity.
+Do not accept an arbitrary tenant ID from an untrusted request and use it directly for retrieval.</div>
 """)
 
 PAGES["streaming"] = ("Streaming",
@@ -817,6 +844,32 @@ uv pip install --upgrade dynavec""") + """
 <a href="https://github.com/codeforstartups/dynavec/blob/development/CHANGELOG.md">CHANGELOG.md</a>,
 and every version is a
 <a href="https://github.com/codeforstartups/dynavec/releases">GitHub Release</a>.</p>
+
+<h2 id="v0-6-0">0.6.0 <span class="doc__sub" style="font-weight:400">&mdash; 2026-09-25</span></h2>
+<p>A large release: new retrieval strategies, quantization methods, graph and cache capabilities, and more integrations.</p>
+<h3>Added</h3>
+<ul>
+  <li><strong>Query-expansion retrievers</strong> &mdash; <code>MultiQueryRetriever</code> and
+      <code>HyDERetriever</code>, fused with RRF.</li>
+  <li><strong>Learned RRF fusion weights</strong> &mdash; <code>RRFWeightFitter</code> (grid / random /
+      Bayesian) with <code>FitResult</code> save/load.</li>
+  <li><strong>Quantization</strong> &mdash; OPQ (rotated product quantization) and INT8
+      <code>ScalarQuantizer</code>; plus <strong>cross-encoder reranking</strong>.</li>
+  <li><strong>Graph</strong> &mdash; hybrid graph + ANN search, shortest-path, and node/edge deletion.</li>
+  <li><strong><code>search().explain()</code></strong> &mdash; per-stage timing and candidate counts.</li>
+  <li><strong>Cache</strong> &mdash; invalidation on write, <code>warm_cache()</code>, and an optional
+      embedding cache (<code>CachedEmbedder</code>).</li>
+  <li><strong>Ingestion</strong> &mdash; <code>S3Source</code>, <code>CsvSource</code>, and row-wise
+      spreadsheets; DynamoDB gzip for large text.</li>
+  <li><strong>Integrations</strong> &mdash; OpenAI Assistants tool, LlamaIndex metadata-filter
+      translation, Strands example; CLI namespace export/import, <code>describe()</code>, and
+      <code>--version</code>.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+  <li><code>XlsxSource</code> now yields one record <strong>per row</strong> (header &rarr;
+      <code>"column: value"</code>) rather than per worksheet.</li>
+</ul>
 
 <h2 id="v0-5-0">0.5.0 <span class="doc__sub" style="font-weight:400">&mdash; 2026-09-16</span></h2>
 <p>More ingestion formats, more integrations, and observability.</p>

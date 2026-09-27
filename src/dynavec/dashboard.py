@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .telemetry import TelemetryRecorder, aggregate, aggregate_eval
@@ -208,12 +209,17 @@ load();schedule();
 </body></html>"""
 
 
-def _make_handler(recorder: TelemetryRecorder):
+def _make_handler(recorder: TelemetryRecorder) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *a):  # quiet
+        def log_message(self, format: str, *args: Any) -> None:  # quiet
             pass
 
-        def _send(self, code, body, ctype="application/json"):
+        def _send(
+            self,
+            code: int,
+            body: str | bytes,
+            ctype: str = "application/json",
+        ) -> None:
             data = body.encode() if isinstance(body, str) else body
             self.send_response(code)
             self.send_header("Content-Type", ctype)
@@ -221,14 +227,16 @@ def _make_handler(recorder: TelemetryRecorder):
             self.end_headers()
             self.wfile.write(data)
 
-        def do_GET(self):
+        def do_GET(self) -> None:
             parsed = urlparse(self.path)
             path, qs = parsed.path, parse_qs(parsed.query)
             if path == "/" or path == "/index.html":
-                return self._send(200, _INDEX_HTML, "text/html; charset=utf-8")
+                self._send(200, _INDEX_HTML, "text/html; charset=utf-8")
+                return
             if path == "/api/metrics":
                 window = int(qs.get("window", ["3600"])[0])
-                return self._send(200, json.dumps(aggregate(recorder.snapshot(), window)))
+                self._send(200, json.dumps(aggregate(recorder.snapshot(), window)))
+                return
             if path == "/api/traces":
                 evs = recorder.events(
                     limit=int(qs.get("limit", ["100"])[0]),
@@ -236,15 +244,19 @@ def _make_handler(recorder: TelemetryRecorder):
                     namespace=(qs.get("namespace", [None])[0] or None),
                     status=(qs.get("status", [None])[0] or None),
                 )
-                return self._send(200, json.dumps([e.to_dict() for e in evs]))
+                self._send(200, json.dumps([e.to_dict() for e in evs]))
+                return
             if path.startswith("/api/trace/"):
                 ev = recorder.get(path.rsplit("/", 1)[-1])
                 if ev is None:
-                    return self._send(404, json.dumps({"error": "not found"}))
-                return self._send(200, json.dumps(ev.to_dict()))
+                    self._send(404, json.dumps({"error": "not found"}))
+                    return
+                self._send(200, json.dumps(ev.to_dict()))
+                return
             if path == "/api/eval/summary":
                 window = int(qs.get("window", ["86400"])[0])
-                return self._send(200, json.dumps(aggregate_eval(recorder.snapshot(), window)))
+                self._send(200, json.dumps(aggregate_eval(recorder.snapshot(), window)))
+                return
             if path == "/api/eval/runs":
                 limit = int(qs.get("limit", ["50"])[0])
                 all_events = recorder.events(limit=recorder._events.maxlen or 10000)
@@ -257,8 +269,9 @@ def _make_handler(recorder: TelemetryRecorder):
                     or e.eval_mrr is not None
                     or e.eval_ndcg is not None
                 ][:limit]
-                return self._send(200, json.dumps(eval_runs))
-            return self._send(404, json.dumps({"error": "not found"}))
+                self._send(200, json.dumps(eval_runs))
+                return
+            self._send(404, json.dumps({"error": "not found"}))
 
     return Handler
 

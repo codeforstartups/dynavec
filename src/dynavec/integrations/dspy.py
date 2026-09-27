@@ -19,7 +19,7 @@ from ..exceptions import MissingDependencyError
 
 try:
     import dspy
-    from dspy.dsp.utils import dotdict
+    from dspy.primitives.prediction import Prediction
 except ImportError as exc:  # pragma: no cover - import guard
     raise MissingDependencyError("DynavecRM", "dspy", "dspy") from exc
 
@@ -42,7 +42,7 @@ class DynavecRM(dspy.Retrieve):
         query: str,
         k: int | None = None,
         **kwargs: Any,
-    ) -> list[dotdict]:
+    ) -> list[Prediction]:
         k = k if k is not None else self.k
 
         results = self._client.search(
@@ -53,7 +53,7 @@ class DynavecRM(dspy.Retrieve):
         )
 
         return [
-            dotdict(
+            Prediction(
                 long_text=result.text or "",
                 id=result.id,
                 score=result.score,

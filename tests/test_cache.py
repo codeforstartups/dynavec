@@ -1,9 +1,16 @@
+import fnmatch
 import time
 from unittest.mock import patch
 
 import pytest
 
-from dynavec.cache import DynamoDBCache, RedisCache, SemanticCache, warm_cache
+from dynavec.cache import (
+    DynamoDBCache,
+    RedisCache,
+    SemanticCache,
+    _glob_escape,
+    warm_cache,
+)
 from dynavec.config import DynavecConfig
 from dynavec.exceptions import ConfigurationError
 from dynavec.models import SearchResult
@@ -180,6 +187,9 @@ def test_dynamodb_cache_ttl_jitter():
         def __init__(self):
             self.items = []
 
+        def get_item(self, Key):
+            return {}
+
         def put_item(self, Item):
             self.items.append(Item)
 
@@ -308,3 +318,105 @@ def test_warm_requires_a_cache():
 
     with pytest.raises(ConfigurationError, match="cache"):
         warm_cache(FakeClient(), ["what is vector search"])
+
+
+def test_semantic_cache_invalidate_namespace():
+    c = SemanticCache(threshold=0.9)
+    c.put("ns-a", [1.0, 0.0], 5, None, _res("a"))
+    c.put("ns-b", [1.0, 0.0], 5, None, _res("b"))
+    size_before = c.size_bytes
+    assert size_before > 0
+
+    c.invalidate("ns-a")
+
+    assert c.get("ns-a", [1.0, 0.0], 5, None) is None
+    hit = c.get("ns-b", [1.0, 0.0], 5, None)
+    assert hit and hit[0].id == "b"
+    assert len(c._buckets) == 1 and len(c._lru) == 1
+    assert 0 < c.size_bytes < size_before
+
+    # repeat and unknown-namespace invalidations are no-ops
+    c.invalidate("ns-a")
+    c.invalidate("ns-c")
+    assert c.get("ns-b", [1.0, 0.0], 5, None) is not None
+
+    c.invalidate("ns-b")
+    assert c.size_bytes == 0 and not c._buckets and not c._lru and not c._sig_ns
+
+
+def test_dynamodb_cache_invalidate():
+    class FakeTable:
+        def __init__(self):
+            self.items = {}
+
+        def get_item(self, Key):
+            item = self.items.get(Key["pk"])
+            return {"Item": item} if item is not None else {}
+
+        def put_item(self, Item):
+            self.items[Item["pk"]] = Item
+
+    class FakeSession:
+        def __init__(self, table):
+            self._table = table
+
+        def resource(self, name, region_name=None):
+            fake_table = self._table
+
+            class Resource:
+                def Table(self, table_name):
+                    return fake_table
+
+            return Resource()
+
+    cfg = DynavecConfig(vector_bucket="b", index="i", table="t", dimension=2)
+    cache = DynamoDBCache(cfg, boto_session=FakeSession(FakeTable()), ttl_seconds=60)
+
+    cache.put("ns", [1.0, 0.0], 5, None, _res("a"))
+    cache.put("other", [1.0, 0.0], 5, None, _res("b"))
+    assert cache.get("ns", [1.0, 0.0], 5, None)
+
+    cache.invalidate("ns")
+
+    assert cache.get("ns", [1.0, 0.0], 5, None) is None
+    assert cache.get("other", [1.0, 0.0], 5, None)[0].id == "b"
+
+    # entries written after the invalidation hit again
+    cache.put("ns", [1.0, 0.0], 5, None, _res("a2"))
+    assert cache.get("ns", [1.0, 0.0], 5, None)[0].id == "a2"
+
+
+def test_redis_cache_invalidate():
+    class FakeRedis:
+        def __init__(self):
+            self.data = {}
+
+        def get(self, key):
+            return self.data.get(key)
+
+        def set(self, key, value, ex=None):
+            self.data[key] = value
+
+        def delete(self, *keys):
+            for k in keys:
+                self.data.pop(k, None)
+
+        def scan_iter(self, match=None):
+            for k in list(self.data):
+                if match is None or fnmatch.fnmatch(k, match):
+                    yield k
+
+    fake_redis = FakeRedis()
+    cache = RedisCache(client=fake_redis, ttl_seconds=60)
+    cache.put("ns", [1.0, 0.0], 5, None, _res("a"))
+    cache.put("other", [1.0, 0.0], 5, None, _res("b"))
+
+    cache.invalidate("ns")
+
+    assert cache.get("ns", [1.0, 0.0], 5, None) is None
+    assert cache.get("other", [1.0, 0.0], 5, None)[0].id == "b"
+
+
+def test_glob_escape():
+    assert _glob_escape("plain-ns_1") == "plain-ns_1"
+    assert _glob_escape("a*b?[c]^d\\e") == "a\\*b\\?\\[c\\]\\^d\\\\e"

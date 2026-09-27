@@ -164,6 +164,10 @@ for h in hits:
     print(h.score, h.id, h.text)
 ```
 
+`search()` returns a list of hits by default. Pass `explain=True` to receive an
+`ExplainedSearchResult` containing those hits plus timing and candidate-count
+details; the type annotations distinguish the two return shapes.
+
 ### Bring your own vectors (no embedder needed)
 
 ```python
@@ -435,9 +439,9 @@ hit-rate, and a filterable **traces** table with per-trace drill-down.
 | **Namespace RAG** | Per-tenant/collection handles; isolation + even partitioning | `kb = db.namespace("kb"); kb.search(...)` |
 | **Product quantization** | Compress cached/hot-tier vectors up to 32× (ADC distance) | `ProductQuantizer(m=96).fit(X)` |
 | **Knowledge graph / ER** | Entities + relations in DynamoDB linked to embeddings; traverse to scope/guide vector search (GraphRAG) | `db.graph_add_edge(...)`, `db.graph_search(q, seed_entities=[...])` |
-| **Query cache** | DynamoDB-TTL exact cache, in-process **semantic** cache (serves near-duplicate queries), or Redis/**ElastiCache** | `Dynavec(..., cache=SemanticCache())` |
+| **Query cache** | DynamoDB-TTL exact cache, in-process **semantic** cache (serves near-duplicate queries), or Redis/**ElastiCache**; writes evict the affected namespace's entries | `Dynavec(..., cache=SemanticCache())` |
 | **Ingestion / MCP** | Pull + chunk + embed from any source; **any MCP server's resources** (Notion, Confluence, Drive, …) become a corpus | `ingest(db, MCPResourceSource(session))` |
-| **Updates + Lambda** | Update text/vector/metadata (merge or replace); transform pipeline incl. **in-account AWS Lambda** | `db.update(id, ...)`, `Dynavec(..., transform=LambdaTransform(...))` |
+| **Updates + Lambda** | Update text/vector/metadata (merge or replace) with **optimistic concurrency** (versioned conditional writes; `ConflictError` instead of lost updates); transform pipeline incl. **in-account AWS Lambda** | `db.update(id, ..., expected_version=v)`, `Dynavec(..., transform=LambdaTransform(...))` |
 | **IAM / credentials** | Access keys, session tokens, named profiles, cross-account **assume-role** | `Dynavec(..., credentials=AWSCredentials(...))` |
 | **Frameworks** | LangChain + LlamaIndex vector stores; a framework-agnostic tool for LangGraph/CrewAI/Strands | `dynavec.integrations.*` |
 | **Benchmark report** | Comparison table + recall/latency + cost-by-scale (log) charts | `python -m benchmarks.report` |
@@ -449,6 +453,10 @@ result object graph, and inspect `size_bytes` for the current accounted size:
 ```python
 cache = SemanticCache(max_size=2_048, max_bytes=64 * 1024 * 1024)
 ```
+
+`upsert`/`update`/`delete` evict the written namespace's cached queries, so
+writes are never hidden behind stale entries. Set
+`DynavecConfig(cache_invalidate_on_write=False)` to opt out.
 
 Pre-populate the cache from a list of common queries at startup with `warm_cache()` —
 it runs each query once (through `search`, so results land in the cache) and
@@ -476,11 +484,11 @@ db.graph_delete_node("globex", namespace="kb")
 
 ## Status
 
-**v0.5.0 (current)** — adds **office-document ingestion** (Docx/Pptx/Xlsx), a **Hugging Face Inference embedder**, a **DSPy retrieval integration**, opt-in **structured JSON logging** (with secret redaction), **ProductQuantizer save/load**, dashboard **dark mode**, and **vectorized MMR** reranking — on top of the v0.4 in-memory hot tier and the v0.1 hybrid core.
+**v0.6.0 (current)** — adds **query-expansion retrievers** (Multi-Query + HyDE), **learned RRF fusion weights**, **OPQ + scalar quantization**, **cross-encoder reranking**, **hybrid graph+ANN search** and graph shortest-path, **`search().explain()`**, **cache invalidation on write**, an **embedding cache**, **`S3Source`** ingestion, DynamoDB **gzip** for large text, LlamaIndex **metadata-filter translation**, an **OpenAI Assistants** tool, and CLI **namespace export/import** — on top of the v0.5 feature set and the v0.1 hybrid core.
 
 See the full history in **[CHANGELOG.md](CHANGELOG.md)**, the browsable **[Release notes](https://codeforstartups.github.io/dynavec/docs/release-notes.html)** page, or the **[GitHub Releases](https://github.com/codeforstartups/dynavec/releases)** tab.
 
-**Roadmap (v0.6):** optional `hnswlib`/`faiss` hot-tier backend for very large hot sets, sparse/BM25 hybrid computed from DynamoDB, and OPQ (rotated product quantization).
+**Roadmap (v0.7):** native async client (`AsyncDynavec` on aioboto3), optional `hnswlib`/`faiss` hot-tier backend, and sparse/BM25 hybrid computed from DynamoDB.
 
 ## Publishing (maintainers)
 

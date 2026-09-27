@@ -73,3 +73,26 @@ def test_as_pipeline_coercions():
     assert isinstance(single, TransformPipeline) and len(single) == 1
     multi = as_pipeline([lambda c: c, lambda c: c])
     assert len(multi) == 2
+
+def test_retry_uses_retry_delay(monkeypatch):
+    calls = {"n": 0}
+    delays = []
+
+    class Throttle(Exception):
+        response = {"Error": {"Code": "ThrottlingException"}}
+
+    monkeypatch.setattr("dynavec.utils.time.sleep", delays.append)
+
+    @retry(
+        max_attempts=3,
+        retry_delay=lambda exc: 3.0,
+    )
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise Throttle()
+        return "ok"
+
+    assert flaky() == "ok"
+    assert calls["n"] == 2
+    assert delays == [3.0]

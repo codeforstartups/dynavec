@@ -32,10 +32,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # 3. Create a virtual environment and install dev dependencies
 uv venv
 source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
-make install                       # editable install with dev + ingest extras
+make install                       # editable install with dev, ingest, and type-check extras
 
 # 4. Verify everything works
-make check                         # lint
+make check                         # lint + static type checks
 make test                          # run the offline test suite
 
 # 5. See every available command
@@ -52,9 +52,10 @@ AI agents working in this repo should use the standardized `make` targets:
 ```bash
 make help            # See all available targets
 make install         # Install dev environment (editable)
-make check           # Quick health check (lint)
+make check           # Quick health check (lint + static type checks)
+make typecheck       # Run mypy across the package
 make test            # Run all unit tests (offline)
-make run-ci          # Full CI pipeline locally (lint + test)
+make run-ci          # Full CI pipeline locally (lint + types + test)
 make format          # Auto-format and fix lint issues
 make docs            # Regenerate the static docs site
 make clean           # Remove caches and build artifacts
@@ -64,7 +65,9 @@ make clean           # Remove caches and build artifacts
 
 - Prefer `make` targets over invoking tools directly — they match CI exactly.
 - For direct tool calls, use the `uv run --no-sync` prefix (plain `uv run` can trigger a
-  universal resolve that pulls yanked optional deps).
+  universal resolve that pulls yanked optional deps). `make install` includes the
+  `typecheck` extra so adapter inheritance is checked against the real LangChain,
+  LlamaIndex, Haystack, and DSPy APIs.
 - Run `make run-ci` before declaring a change complete; it is the same pipeline CI runs.
 - Prefer editing existing files over creating new ones, and follow the conventions in
   neighboring modules.
@@ -108,7 +111,7 @@ dynavec is a single Python package (not a monorepo):
 **Using Make (recommended):**
 
 ```bash
-make install        # uv pip install -e ".[dev,ingest]"
+make install        # uv pip install -e ".[dev,ingest,typecheck]"
 make install-all    # everything: all embedders + adapters + dev tools
 ```
 
@@ -116,7 +119,7 @@ make install-all    # everything: all embedders + adapters + dev tools
 
 ```bash
 uv venv && source .venv/bin/activate
-uv pip install -e ".[dev]"          # add ,ingest / ,all as needed
+uv pip install -e ".[dev,ingest,typecheck]"  # same environment as make install
 ```
 
 ### Pre-commit hooks (optional but encouraged)
@@ -136,13 +139,15 @@ pre-commit run --all-files          # run across the whole tree once
 | Command | What it does |
 |---------|--------------|
 | `make help` | List all targets |
-| `make install` | Editable install with dev + ingest extras |
+| `make install` | Editable install with dev, ingest, and strict type-check dependencies |
 | `make install-all` | Editable install with **all** extras |
 | `make format` | Auto-format (`ruff format`) and auto-fix lint (`ruff --fix`) |
-| `make lint` / `make check` | Lint with ruff — mirrors CI exactly |
+| `make lint` | Lint with ruff |
+| `make typecheck` | Type-check the package with mypy's strict mode |
+| `make check` | Run lint and static type checks |
 | `make test` | Run the offline unit suite (`pytest -q`) |
 | `make test-live` | Opt-in end-to-end test against **real AWS** (costs money) |
-| `make run-ci` | The full CI pipeline locally: lint + test |
+| `make run-ci` | The full CI pipeline locally: lint + types + test |
 | `make docs` | Regenerate the static docs site |
 | `make clean` | Remove caches and build artifacts |
 
@@ -160,7 +165,7 @@ git checkout -b feat/your-feature    # branch off development
 # ... make changes ...
 
 make format                          # tidy up
-make check                           # lint
+make check                           # lint + static type checks
 make test                            # verify
 ```
 
@@ -205,19 +210,42 @@ uv run --no-sync pytest tests/test_cache.py -k "jitter" -v
 
 - **Style/linting:** [ruff](https://docs.astral.sh/ruff/) (config in `pyproject.toml`, rule
   sets `E, F, I, UP, B`, line length 100). `make format` fixes most issues automatically.
-- **Type hints:** dynavec ships a `py.typed` marker — please add type hints to new public APIs.
-- **CI** (`.github/workflows/ci.yml`) runs on every push/PR: **ruff + pytest across Python
-  3.9, 3.11, and 3.12**. `make run-ci` reproduces it locally.
+- **Type hints:** dynavec ships a `py.typed` marker. Mypy checks the package in strict mode
+  against the optional framework APIs in a dedicated CI job. Run `make install` once,
+  then `make typecheck` locally. Consumer fixtures in `tests/typing` protect
+  integration inheritance and the `explain` return contract for client, namespace,
+  and batch searches. When adding a return-shape option, cover both literal values
+  and a runtime `bool` across forwarding APIs; do not cast an overloaded callable
+  to a single result shape to satisfy an executor's type inference. Wrapper
+  annotations must also preserve live delegation: an embedder such as Ollama can
+  infer its dimension on the first request, so a cached wrapper must not snapshot
+  that property during construction.
+- **CI** (`.github/workflows/ci.yml`) runs on every push/PR: **mypy**, plus ruff and
+  pytest across Python 3.9, 3.11, and 3.12. `make run-ci` reproduces it locally.
+
+---
+
+## Finding & Claiming Issues
+
+To maintain an orderly workflow, prevent duplicated effort, and ensure a fair experience for all contributors, dynavec follows a strict **issue assignment model**:
+
+1. **Browse open issues:** Check the issue tracker or filter by [good first issues](https://github.com/codeforstartups/dynavec/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+2. **Comment to get assigned:** Before starting work, leave a comment on the issue asking to be assigned (e.g., *"I'd like to work on this"*).
+3. **Wait for official assignment:** Please wait until a maintainer officially assigns the issue to you on GitHub before starting implementation and submitting a PR.
+4. **One issue at a time:** To give all contributors an equal opportunity, contributors will only be assigned **one issue at a time**. Once your PR is reviewed and merged, you are welcome to claim another!
+5. **No PR Sniping:** Do **not** submit a Pull Request for an issue that is already assigned to another contributor. PRs opened for issues assigned to active contributors will be closed without merge to respect the assignee's time and effort.
+6. **Inactivity & Stale assignments:** If an assigned issue has no progress, updates, or PR opened within **5–7 days**, maintainers may unassign the issue to open it up for others. If you see a stale issue, feel free to ask in the comments if it can be reassigned to you.
 
 ---
 
 ## Pull Request Process
 
-1. **Fork** the repository.
-2. **Branch** off `development`: `git checkout -b feat/amazing-feature`.
-3. **Develop** using the workflow above.
-4. **Test** thoroughly: `make run-ci` must pass.
-5. **Open a PR** targeting the `development` branch and reference the issue it closes
+1. **Get assigned** to an open issue (or discuss new ideas with maintainers first).
+2. **Fork** the repository.
+3. **Branch** off `development`: `git checkout -b feat/amazing-feature`.
+4. **Develop** using the workflow above.
+5. **Test** thoroughly: `make run-ci` must pass.
+6. **Open a PR** targeting the `development` branch and reference the issue it closes
    (`Closes #123`).
 
 **Commit messages** follow [Conventional Commits](https://www.conventionalcommits.org/):
@@ -233,7 +261,7 @@ ci: add Python 3.13 to the matrix
 **Review checklist:**
 
 - [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make check`)
+- [ ] Lint and static type checks pass (`make check`)
 - [ ] New/changed behavior has tests
 - [ ] Docs updated where relevant
 

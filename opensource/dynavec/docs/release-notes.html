@@ -85,6 +85,32 @@ uv pip install --upgrade dynavec</code></pre>
 and every version is a
 <a href="https://github.com/codeforstartups/dynavec/releases">GitHub Release</a>.</p>
 
+<h2 id="v0-6-0">0.6.0 <span class="doc__sub" style="font-weight:400">&mdash; 2026-09-25</span></h2>
+<p>A large release: new retrieval strategies, quantization methods, graph and cache capabilities, and more integrations.</p>
+<h3>Added</h3>
+<ul>
+  <li><strong>Query-expansion retrievers</strong> &mdash; <code>MultiQueryRetriever</code> and
+      <code>HyDERetriever</code>, fused with RRF.</li>
+  <li><strong>Learned RRF fusion weights</strong> &mdash; <code>RRFWeightFitter</code> (grid / random /
+      Bayesian) with <code>FitResult</code> save/load.</li>
+  <li><strong>Quantization</strong> &mdash; OPQ (rotated product quantization) and INT8
+      <code>ScalarQuantizer</code>; plus <strong>cross-encoder reranking</strong>.</li>
+  <li><strong>Graph</strong> &mdash; hybrid graph + ANN search, shortest-path, and node/edge deletion.</li>
+  <li><strong><code>search().explain()</code></strong> &mdash; per-stage timing and candidate counts.</li>
+  <li><strong>Cache</strong> &mdash; invalidation on write, <code>warm_cache()</code>, and an optional
+      embedding cache (<code>CachedEmbedder</code>).</li>
+  <li><strong>Ingestion</strong> &mdash; <code>S3Source</code>, <code>CsvSource</code>, and row-wise
+      spreadsheets; DynamoDB gzip for large text.</li>
+  <li><strong>Integrations</strong> &mdash; OpenAI Assistants tool, LlamaIndex metadata-filter
+      translation, Strands example; CLI namespace export/import, <code>describe()</code>, and
+      <code>--version</code>.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+  <li><code>XlsxSource</code> now yields one record <strong>per row</strong> (header &rarr;
+      <code>"column: value"</code>) rather than per worksheet.</li>
+</ul>
+
 <h2 id="v0-5-0">0.5.0 <span class="doc__sub" style="font-weight:400">&mdash; 2026-09-16</span></h2>
 <p>More ingestion formats, more integrations, and observability.</p>
 <h3>Added</h3>

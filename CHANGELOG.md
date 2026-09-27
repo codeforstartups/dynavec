@@ -6,22 +6,50 @@ All notable changes to dynavec are documented here. This project adheres to
 ## [Unreleased]
 
 ### Added
-- **Multi-Query and HyDE fusion retrievers** (#215) — `MultiQueryRetriever` (concurrent
-  reformulation search with RRF fusion) and `HyDERetriever` (document-side hypothetical answer
-  embedding with single-passage, centroid multi-passage averaging, and fusion strategies).
-- **`warm_cache()`** (#194) — pre-populate the query cache from a list of common queries.
-- **Learned RRF fusion weights** (#204) — `RRFWeightFitter` fits per-retriever RRF
-  weights by maximizing nDCG over labeled queries.
-- **Optimized Product Quantization** (#198) — `OPQRotation` and
-  `OptimizedProductQuantizer` (rotate-then-PQ with Procrustes refinement).
-- **Hybrid graph + ANN search** (#206) — `Dynavec.hybrid_graph_search` fuses plain ANN
-  and graph-scoped results with weighted RRF.
-- **`CsvSource`** and row-wise spreadsheet ingestion (#205).
+- **Optimistic concurrency on `update()`** (#24) — each update stores a `version` on the
+  DynamoDB item and writes with a `ConditionExpression`, so a concurrent change raises
+  `ConflictError` (nothing written) instead of being silently overwritten. Pass
+  `expected_version=` to guard across your own read/update cycle; `UpsertResult.version`
+  returns the new version. Plain `upsert()` stays last-writer-wins and resets the version.
 
 ### Changed
-- **`XlsxSource` now yields one record per row** (first row = header, rendered as
-  `"column: value"` pairs) instead of one record per worksheet (#205). Behavior change
-  vs 0.5.0.
+- `update()` now writes DynamoDB before S3 Vectors (previously in parallel) so a conflict
+  leaves both stores untouched, and reads the document with a strongly consistent `GetItem`.
+
+## [0.6.0] - 2026-09-25
+
+A large release: new retrieval strategies, quantization methods, graph and cache
+capabilities, more integrations, and quality-of-life tooling.
+
+### Added
+- **Query-expansion retrievers** (#215) — `MultiQueryRetriever` (concurrent reformulation
+  search + RRF) and `HyDERetriever` (hypothetical-document embeddings; average / fuse strategies).
+- **Learned RRF fusion weights** (#204, #223) — `RRFWeightFitter` fits per-retriever RRF
+  weights by maximizing nDCG (grid / random / optional Bayesian), with `FitResult` save/load.
+- **Optimized Product Quantization** (#198) — `OPQRotation` + `OptimizedProductQuantizer`
+  (rotate-then-PQ with Procrustes refinement); **ScalarQuantizer** INT8 (#201).
+- **Cross-encoder reranking** (#208).
+- **Hybrid graph + ANN search** (#206) — `hybrid_graph_search` fuses ANN and graph-scoped
+  results with weighted RRF; **graph shortest path** (#237); **graph node/edge deletion** (#209).
+- **`search().explain()`** debug output — per-stage timing and candidate counts (#228).
+- **Query-cache invalidation on write** (#236) — `invalidate(namespace)` across backends,
+  `cache_invalidate_on_write` config; **`warm_cache()`** to pre-populate the cache (#194);
+  **optional embedding cache** (`CachedEmbedder`, #213).
+- **Client `describe()`** returning `IndexInfo` diagnostics (#218); **`dynavec --version`** (#238).
+- **CLI namespace export/import** to/from JSONL (#217).
+- **Ingestion**: `CsvSource` + row-wise spreadsheets (#205); **`S3Source`** bucket ingestion (#61).
+- **Hot-tier LRU/FIFO eviction** policy (#216).
+- **DynamoDB**: gzip-compress large text before storing (#231); item-size validation (#211).
+- **Integrations**: OpenAI Assistants file-search tool (#73), LlamaIndex metadata-filter
+  translation (#219), Strands retriever example, multi-tenant RAG example/docs.
+- **Embeddings**: OpenAI retry with `Retry-After` handling (#242); dimension > 4096 warning (#241).
+- **Eval**: retrieval-quality run trend tracking (#212).
+- **Site**: landing-page revamp + interactive cost calculator (#104).
+
+### Changed
+- **`XlsxSource` now yields one record per row** (header → `"column: value"`), not per
+  worksheet (#205). Behavior change vs 0.5.0.
+- `max_workers` is validated eagerly in config (#250).
 
 ## [0.5.0] - 2026-09-16
 

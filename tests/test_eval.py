@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -349,6 +350,32 @@ class TestEvalRunner:
         summary_dict = summary.to_dict()
         assert summary_dict["total_samples"] == 2
         assert len(summary_dict["results"]) == 2
+
+    def test_eval_runner_preserves_legacy_sequence_handling(self) -> None:
+        judge = MockJudge(
+            responses=[
+                {"claims": [{"claim": "tuple", "supported": True}]},
+                {"score": 0.9},
+                {"claims": [{"claim": "list", "supported": True}]},
+                {"score": 0.8},
+            ]
+        )
+        runner = EvalRunner(judge=judge)
+        dataset = cast(
+            Any,
+            [
+                ("Q tuple", ["C tuple"], "A tuple", "ignored"),
+                ["Q list", ["C list"], "A list", "ignored"],
+                ("too", "short"),
+                None,
+            ],
+        )
+
+        summary = runner.run(dataset)
+
+        assert summary.total_samples == 2
+        assert [result.query for result in summary.results] == ["Q tuple", "Q list"]
+        assert [result.answer for result in summary.results] == ["A tuple", "A list"]
 
 
 # ===========================================================================

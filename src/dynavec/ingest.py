@@ -16,8 +16,9 @@ consumes it. Tools and prompts primitives can be adapted the same way.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -25,9 +26,28 @@ from typing import Any
 from .client import Dynavec
 from .exceptions import MissingDependencyError
 from .models import Document
+from .transforms import Transform, TransformPipeline
 from .utils import chunked
 
 Metadata = dict[str, Any]
+
+
+def _normalize_front_matter(value: Any) -> Any:
+    """Recursively normalize parsed YAML front-matter for storage.
+
+    ``yaml.safe_load()`` converts unquoted dates (``date: 2026-09-24``) into
+    ``datetime.date`` / ``datetime.datetime`` objects, which DynamoDB's
+    ``TypeSerializer`` rejects. Convert those to ISO 8601 strings, recurse
+    through mappings and sequences, and leave strings, ints, floats, and
+    booleans untouched.
+    """
+    if isinstance(value, (datetime.datetime, datetime.date)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _normalize_front_matter(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_front_matter(v) for v in value]
+    return value
 
 
 @dataclass
@@ -60,7 +80,7 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 150) -> Iterato
 class IterableSource:
     """Wrap a list/iterable of records or dicts as a Source."""
 
-    def __init__(self, records: Iterable) -> None:
+    def __init__(self, records: Iterable[Record | dict[str, Any]]) -> None:
         self._records = records
 
     def __iter__(self) -> Iterator[Record]:
@@ -122,7 +142,7 @@ class DocxSource:
         self._document_cls = docx.Document
 
     def __iter__(self) -> Iterator[Record]:
-        doc = self._document_cls(self._path)
+        doc = self._document_cls(str(self._path))
         paragraphs = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
         if not paragraphs:
             return
@@ -156,7 +176,7 @@ class PptxSource:
         self._presentation_cls = Presentation
 
     def __iter__(self) -> Iterator[Record]:
-        prs = self._presentation_cls(self._path)
+        prs = self._presentation_cls(str(self._path))
         path_str = self._path.as_posix()
 
         for slide_num, slide in enumerate(prs.slides, start=1):
@@ -360,7 +380,9 @@ class MarkdownSource:
             metadata = {}
         if not isinstance(metadata, dict) or any(not isinstance(k, str) for k in metadata):
             raise ValueError(f"Front matter in {path} must be a mapping with string keys")
-        return "".join(lines[end + 1 :]), metadata
+        # yaml.safe_load() turns unquoted dates into datetime.date/datetime
+        # objects, which storage backends (e.g. DynamoDB) cannot serialize.
+        return "".join(lines[end + 1 :]), _normalize_front_matter(metadata)
 
     def __iter__(self) -> Iterator[Record]:
         for path in sorted(self.root.glob(self.glob)):
@@ -391,12 +413,16 @@ class MCPResourceSource:
         Optional predicate ``(uri) -> bool`` to select which resources to pull.
     """
 
-    def __init__(self, session, uri_filter=None) -> None:
+    def __init__(
+        self,
+        session: Any,
+        uri_filter: Callable[[str], bool] | None = None,
+    ) -> None:
         self._session = session
         self._uri_filter = uri_filter
 
     @staticmethod
-    def _extract_text(contents) -> str:
+    def _extract_text(contents: Any) -> str:
         # MCP read_resource returns an object/list of content parts; grab text.
         parts = getattr(contents, "contents", contents)
         if isinstance(parts, (list, tuple)):
@@ -433,16 +459,266 @@ class MCPResourceSource:
             )
 
 
+class S3Source:
+    """Ingest documents stored in an Amazon S3 bucket.
+
+    Discovers objects in ``bucket`` under ``prefix``, streaming and decoding
+    them into dynavec records according to file extension or content-type.
+
+    Supported formats:
+    - Text / Markdown (``.txt``, ``.md``, ``text/plain``, ``text/markdown``)
+      (Markdown YAML front matter is extracted into metadata)
+    - CSV (``.csv``, ``text/csv``)
+    - PDF (``.pdf``, ``application/pdf``) — requires ``pypdf``
+    - Word documents (``.docx``) — requires ``python-docx``
+    - PowerPoint presentations (``.pptx``) — requires ``python-pptx``
+    - Excel spreadsheets (``.xlsx``) — requires ``openpyxl``
+
+    Parameters
+    ----------
+    bucket:
+        Name of the S3 bucket.
+    prefix:
+        Key prefix to filter objects (default: ``""``).
+    suffix:
+        Optional file extension or tuple of extensions to include (e.g. ``".md"`` or ``(".md", ".txt")``).
+    boto_session:
+        Optional custom ``boto3.Session``.
+    s3_client:
+        Optional pre-configured S3 client (useful for dependency injection or testing).
+    """
+
+    def __init__(
+        self,
+        bucket: str,
+        *,
+        prefix: str = "",
+        suffix: str | tuple[str, ...] | None = None,
+        boto_session: Any = None,
+        s3_client: Any = None,
+    ) -> None:
+        self.bucket = bucket
+        self.prefix = prefix
+        self.suffix = suffix
+        self._session = boto_session
+        self._client = s3_client
+
+    def _get_client(self) -> Any:
+        if self._client is not None:
+            return self._client
+        import boto3
+
+        session = self._session or boto3.Session()
+        return session.client("s3")
+
+    def _matches_suffix(self, key: str) -> bool:
+        if self.suffix is None:
+            return True
+        key_lower = key.lower()
+        if isinstance(self.suffix, str):
+            return key_lower.endswith(self.suffix.lower())
+        return any(key_lower.endswith(s.lower()) for s in self.suffix)
+
+    def _parse_object(self, key: str, data: bytes, content_type: str) -> Iterator[Record]:
+        import csv
+        import io
+
+        ext = Path(key).suffix.lower()
+        record_id = f"s3://{self.bucket}/{key}"
+        base_meta: Metadata = {"source": "s3", "bucket": self.bucket, "key": key}
+
+        # 1. Markdown
+        if ext == ".md" or "text/markdown" in content_type:
+            try:
+                text = data.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                return
+            clean_text, front_meta = MarkdownSource._front_matter(text, Path(key))
+            if clean_text.strip():
+                yield Record(
+                    id=record_id,
+                    text=clean_text,
+                    metadata={**base_meta, **front_meta, "format": "md"},
+                )
+            return
+
+        # 2. CSV
+        if ext == ".csv" or "text/csv" in content_type:
+            try:
+                text = data.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                return
+            lines = text.splitlines()
+            csv_reader = csv.reader(lines)
+            try:
+                header = next(csv_reader)
+            except StopIteration:
+                return
+            for row_number, row in enumerate(csv_reader, start=1):
+                pairs = [f"{col}: {val}" for col, val in zip(header, row) if val and val.strip()]
+                row_text = ", ".join(pairs)
+                if row_text:
+                    yield Record(
+                        id=f"{record_id}#row{row_number}",
+                        text=row_text,
+                        metadata={**base_meta, "format": "csv", "row": row_number},
+                    )
+            return
+
+        # 3. PDF
+        if ext == ".pdf" or "application/pdf" in content_type:
+            try:
+                from pypdf import PdfReader
+            except ImportError as exc:
+                raise MissingDependencyError("S3Source PDF parsing", "pypdf", "ingest") from exc
+
+            pdf_reader = PdfReader(io.BytesIO(data))
+            for page_number, page in enumerate(pdf_reader.pages, start=1):
+                page_text = page.extract_text()
+                if page_text and page_text.strip():
+                    yield Record(
+                        id=f"{record_id}#page{page_number}",
+                        text=page_text,
+                        metadata={**base_meta, "format": "pdf", "page": page_number},
+                    )
+            return
+
+        # 4. Word (.docx)
+        if ext == ".docx" or "wordprocessingml.document" in content_type:
+            try:
+                import docx
+            except ImportError as exc:
+                raise MissingDependencyError(
+                    "S3Source DOCX parsing", "python-docx", "ingest"
+                ) from exc
+
+            doc = docx.Document(io.BytesIO(data))
+            paragraphs = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
+            if paragraphs:
+                yield Record(
+                    id=record_id,
+                    text="\n\n".join(paragraphs),
+                    metadata={**base_meta, "format": "docx"},
+                )
+            return
+
+        # 5. PowerPoint (.pptx)
+        if ext == ".pptx" or "presentationml.presentation" in content_type:
+            try:
+                from pptx import Presentation
+            except ImportError as exc:
+                raise MissingDependencyError(
+                    "S3Source PPTX parsing", "python-pptx", "ingest"
+                ) from exc
+
+            prs = Presentation(io.BytesIO(data))
+            for slide_num, slide in enumerate(prs.slides, start=1):
+                text_runs = [
+                    s.text.strip()
+                    for s in slide.shapes
+                    if hasattr(s, "text") and s.text and s.text.strip()
+                ]
+                if text_runs:
+                    yield Record(
+                        id=f"{record_id}#slide{slide_num}",
+                        text="\n".join(text_runs),
+                        metadata={**base_meta, "format": "pptx", "slide": slide_num},
+                    )
+            return
+
+        # 6. Excel (.xlsx)
+        if ext == ".xlsx" or "spreadsheetml.sheet" in content_type:
+            try:
+                import openpyxl
+            except ImportError as exc:
+                raise MissingDependencyError("S3Source XLSX parsing", "openpyxl", "ingest") from exc
+
+            wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True)
+            for sheet_name in wb.sheetnames:
+                sheet = wb[sheet_name]
+                row_iter = iter(sheet.iter_rows(values_only=True))
+                try:
+                    header = next(row_iter)
+                except StopIteration:
+                    continue
+                header = [str(c).strip() if c is not None else "" for c in header]
+                for row_number, row in enumerate(row_iter, start=1):
+                    pairs = [
+                        f"{col}: {val}"
+                        for col, val in zip(header, row)
+                        if val is not None and str(val).strip()
+                    ]
+                    row_text = ", ".join(pairs)
+                    if row_text:
+                        yield Record(
+                            id=f"{record_id}#{sheet_name}#row{row_number}",
+                            text=row_text,
+                            metadata={
+                                **base_meta,
+                                "format": "xlsx",
+                                "sheet": sheet_name,
+                                "row": row_number,
+                            },
+                        )
+            return
+
+        # 7. Plain text or generic fallback
+        try:
+            text = data.decode("utf-8-sig")
+            if text and text.strip():
+                yield Record(
+                    id=record_id,
+                    text=text,
+                    metadata={**base_meta, "format": "text"},
+                )
+        except UnicodeDecodeError:
+            pass
+
+    def __iter__(self) -> Iterator[Record]:
+        client = self._get_client()
+        kwargs: dict[str, Any] = {"Bucket": self.bucket}
+        if self.prefix:
+            kwargs["Prefix"] = self.prefix
+
+        continuation_token: str | None = None
+        while True:
+            req_kwargs = dict(kwargs)
+            if continuation_token:
+                req_kwargs["ContinuationToken"] = continuation_token
+
+            resp = client.list_objects_v2(**req_kwargs)
+            for obj in resp.get("Contents", []):
+                key = obj.get("Key", "")
+                if not key or key.endswith("/"):
+                    continue
+                if not self._matches_suffix(key):
+                    continue
+
+                obj_resp = client.get_object(Bucket=self.bucket, Key=key)
+                content_type = (obj_resp.get("ContentType") or "").lower()
+                body = obj_resp["Body"]
+                data = body.read() if hasattr(body, "read") else bytes(body)
+
+                yield from self._parse_object(key, data, content_type)
+
+            if resp.get("IsTruncated"):
+                continuation_token = resp.get("NextContinuationToken")
+                if not continuation_token:
+                    break
+            else:
+                break
+
+
 def ingest(
     db: Dynavec,
-    source: Iterable,
+    source: Iterable[Record | dict[str, Any]],
     *,
     namespace: str = "default",
     chunk_size: int = 1000,
     overlap: int = 150,
     batch_size: int = 256,
     auto_metadata: bool = True,
-    transform=None,
+    transform: TransformPipeline | Transform | Iterable[Transform] | None = None,
 ) -> int:
     """Pull records from ``source``, chunk, embed, and upsert. Returns #chunks.
 
@@ -485,7 +761,9 @@ __all__ = [
     "DocxSource",
     "PptxSource",
     "XlsxSource",
+    "CsvSource",
     "URLSource",
     "MarkdownSource",
     "MCPResourceSource",
+    "S3Source",
 ]

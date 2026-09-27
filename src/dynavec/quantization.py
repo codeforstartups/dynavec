@@ -92,24 +92,24 @@ class ProductQuantizer:
 
     # ----------------------------------------------------------------- encode
     def encode(self, vectors: np.ndarray) -> np.ndarray:
-        self._check_fitted()
+        codebooks, dsub = self._fitted_state()
         x = np.asarray(vectors, dtype=np.float32)
         if x.ndim == 1:
             x = x.reshape(1, -1)
         codes = np.empty((x.shape[0], self.m), dtype=np.uint8)
         for j in range(self.m):
-            sub = x[:, j * self._dsub : (j + 1) * self._dsub]
-            d = ((sub[:, None, :] - self._codebooks[j][None, :, :]) ** 2).sum(axis=2)
+            sub = x[:, j * dsub : (j + 1) * dsub]
+            d = ((sub[:, None, :] - codebooks[j][None, :, :]) ** 2).sum(axis=2)
             codes[:, j] = d.argmin(axis=1)
         return codes
 
     def decode(self, codes: np.ndarray) -> np.ndarray:
         """Approximate reconstruction from codes."""
-        self._check_fitted()
+        codebooks, dsub = self._fitted_state()
         codes = np.atleast_2d(codes)
-        out = np.empty((codes.shape[0], self.m * self._dsub), dtype=np.float32)
+        out = np.empty((codes.shape[0], self.m * dsub), dtype=np.float32)
         for j in range(self.m):
-            out[:, j * self._dsub : (j + 1) * self._dsub] = self._codebooks[j][codes[:, j]]
+            out[:, j * dsub : (j + 1) * dsub] = codebooks[j][codes[:, j]]
         return out
 
     # --------------------------------------------------------------- distance
@@ -119,14 +119,14 @@ class ProductQuantizer:
         Precomputes a per-subspace distance table so scoring N codes is a few
         table lookups — the reason PQ is fast at scale.
         """
-        self._check_fitted()
+        codebooks, dsub = self._fitted_state()
         q = np.asarray(query, dtype=np.float32).reshape(-1)
         codes = np.atleast_2d(codes)
         # distance table: (m, ksub)
         table = np.empty((self.m, self.ksub), dtype=np.float32)
         for j in range(self.m):
-            qsub = q[j * self._dsub : (j + 1) * self._dsub]
-            table[j] = ((self._codebooks[j] - qsub) ** 2).sum(axis=1)
+            qsub = q[j * dsub : (j + 1) * dsub]
+            table[j] = ((codebooks[j] - qsub) ** 2).sum(axis=1)
         # sum table lookups across subspaces
         dists = np.zeros(codes.shape[0], dtype=np.float32)
         for j in range(self.m):
@@ -151,21 +151,25 @@ class ProductQuantizer:
         RuntimeError
             If the quantizer has not been .fit() yet.
         """
-        self._check_fitted()
-        payload = {
-            "format_version": np.array(FORMAT_VERSION, dtype=np.int32),
-            "m": np.array(self.m, dtype=np.int32),
-            "nbits": np.array(self.nbits, dtype=np.int32),
-            "iters": np.array(self.iters, dtype=np.int32),
-            "seed": np.array(self.seed, dtype=np.int32),
-            "dsub": np.array(self._dsub, dtype=np.int32),
-            "codebooks": self._codebooks,
-        }
+        codebooks, dsub = self._fitted_state()
+
+        def write_payload(target: BinaryIO) -> None:
+            np.savez(
+                target,
+                format_version=np.array(FORMAT_VERSION, dtype=np.int32),
+                m=np.array(self.m, dtype=np.int32),
+                nbits=np.array(self.nbits, dtype=np.int32),
+                iters=np.array(self.iters, dtype=np.int32),
+                seed=np.array(self.seed, dtype=np.int32),
+                dsub=np.array(dsub, dtype=np.int32),
+                codebooks=codebooks,
+            )
+
         if isinstance(file, (str, Path)):
             with open(file, "wb") as f:
-                np.savez(f, **payload)
+                write_payload(f)
         else:
-            np.savez(file, **payload)
+            write_payload(file)
 
     @classmethod
     def load(cls, file: str | Path | BinaryIO) -> ProductQuantizer:
@@ -212,31 +216,30 @@ class ProductQuantizer:
         except Exception as exc:
             raise ValueError(f"Failed to load ProductQuantizer: {exc}") from exc
 
-    def _check_fitted(self) -> None:
-        if self._codebooks is None:
+    def _fitted_state(self) -> tuple[np.ndarray, int]:
+        if self._codebooks is None or self._dsub is None:
             raise RuntimeError("ProductQuantizer must be .fit() before use")
-
+        return self._codebooks, self._dsub
 
 
 @dataclass
 class ScalarQuantizer:
     """Per-dimension INT8 scalar quantization."""
 
-    def __post_init__(self):
-        self._mins = None
-        self._scales = None
+    def __post_init__(self) -> None:
+        self._mins: np.ndarray | None = None
+        self._scales: np.ndarray | None = None
 
     @property
-    def is_fitted(self):
-        return self._mins is not None
+    def is_fitted(self) -> bool:
+        return self._mins is not None and self._scales is not None
 
     @property
-    def code_size_bytes(self):
-        if self._mins is None:
-            raise RuntimeError("ScalarQuantizer is not fitted")
-        return self._mins.shape[0]
+    def code_size_bytes(self) -> int:
+        mins, _ = self._fitted_state()
+        return int(mins.shape[0])
 
-    def fit(self, vectors):
+    def fit(self, vectors: np.ndarray) -> ScalarQuantizer:
         vectors = np.asarray(vectors, dtype=np.float32)
 
         if vectors.ndim != 2:
@@ -253,8 +256,8 @@ class ScalarQuantizer:
 
         return self
 
-    def encode(self, vectors):
-        self._check_fitted()
+    def encode(self, vectors: np.ndarray) -> np.ndarray:
+        mins, scales = self._fitted_state()
 
         vectors = np.asarray(vectors, dtype=np.float32)
 
@@ -262,30 +265,32 @@ class ScalarQuantizer:
             raise ValueError("vectors must be a 2D array")
 
         codes = np.round(
-            (vectors - self._mins) / self._scales - 128
+            (vectors - mins) / scales - 128
         )
 
-        return np.clip(codes, -128, 127).astype(np.int8)
+        return np.asarray(np.clip(codes, -128, 127), dtype=np.int8)
 
-    def decode(self, codes):
-        self._check_fitted()
+    def decode(self, codes: np.ndarray) -> np.ndarray:
+        mins, scales = self._fitted_state()
 
         codes = np.asarray(codes, dtype=np.int8)
 
-        return (
-            (codes.astype(np.float32) + 128) * self._scales
-            + self._mins
-        ).astype(np.float32)
+        return np.asarray(
+            (codes.astype(np.float32) + 128) * scales
+            + mins,
+            dtype=np.float32,
+        )
 
-    def reconstruction_error(self, vectors):
+    def reconstruction_error(self, vectors: np.ndarray) -> float:
         vectors = np.asarray(vectors, dtype=np.float32)
         reconstructed = self.decode(self.encode(vectors))
 
         return float(np.mean((vectors - reconstructed) ** 2))
 
-    def _check_fitted(self):
-        if not self.is_fitted:
+    def _fitted_state(self) -> tuple[np.ndarray, np.ndarray]:
+        if self._mins is None or self._scales is None:
             raise RuntimeError("ScalarQuantizer must be .fit() before use")
+        return self._mins, self._scales
 
 
 @dataclass
@@ -328,25 +333,26 @@ class OPQRotation:
 
     def transform(self, vectors: np.ndarray) -> np.ndarray:
         """Apply the learned rotation."""
-        self._check_fitted()
+        rotation = self._fitted_rotation()
 
         x = np.asarray(vectors, dtype=np.float32)
 
-        return x @ self._rotation
+        return np.asarray(x @ rotation, dtype=np.float32)
 
     def inverse_transform(self, vectors: np.ndarray) -> np.ndarray:
         """Apply the inverse rotation."""
-        self._check_fitted()
+        rotation = self._fitted_rotation()
 
         x = np.asarray(vectors, dtype=np.float32)
 
-        return x @ self._rotation.T
+        return np.asarray(x @ rotation.T, dtype=np.float32)
 
-    def _check_fitted(self) -> None:
-        if not self.is_fitted:
+    def _fitted_rotation(self) -> np.ndarray:
+        if self._rotation is None:
             raise RuntimeError(
                 "OPQRotation must be .fit() before use"
             )
+        return self._rotation
 
 
     def _update_rotation(
@@ -384,8 +390,8 @@ class OptimizedProductQuantizer:
 
     @property
     def code_size_bytes(self) -> int:
-        self._check_fitted()
-        return self._pq.code_size_bytes
+        pq, _ = self._fitted_components()
+        return pq.code_size_bytes
 
     def fit(self, vectors: np.ndarray) -> OptimizedProductQuantizer:
         x = np.asarray(vectors, dtype=np.float32)
@@ -438,31 +444,31 @@ class OptimizedProductQuantizer:
         return self
 
     def encode(self, vectors: np.ndarray) -> np.ndarray:
-        self._check_fitted()
+        pq, opq = self._fitted_components()
 
-        rotated = self._opq.transform(vectors)
+        rotated = opq.transform(vectors)
 
-        return self._pq.encode(rotated)
+        return pq.encode(rotated)
 
     def decode(self, codes: np.ndarray) -> np.ndarray:
-        self._check_fitted()
+        pq, opq = self._fitted_components()
 
-        rotated = self._pq.decode(codes)
+        rotated = pq.decode(codes)
 
-        return self._opq.inverse_transform(rotated)
+        return opq.inverse_transform(rotated)
 
     def asymmetric_distances(
         self,
         query: np.ndarray,
         codes: np.ndarray,
     ) -> np.ndarray:
-        self._check_fitted()
+        pq, opq = self._fitted_components()
 
-        rotated_query = self._opq.transform(
+        rotated_query = opq.transform(
             np.asarray(query, dtype=np.float32)
         )
 
-        return self._pq.asymmetric_distances(
+        return pq.asymmetric_distances(
             rotated_query,
             codes,
         )
@@ -485,8 +491,9 @@ class OptimizedProductQuantizer:
         """PQ reconstruction error after each OPQ iteration."""
         return self._training_errors.copy()
 
-    def _check_fitted(self) -> None:
-        if not self.is_fitted:
+    def _fitted_components(self) -> tuple[ProductQuantizer, OPQRotation]:
+        if self._pq is None or self._opq is None:
             raise RuntimeError(
                 "OptimizedProductQuantizer must be .fit() before use"
             )
+        return self._pq, self._opq

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ..exceptions import MissingDependencyError
 from .base import Embedder, Vector
 
@@ -53,7 +55,7 @@ class MistralEmbedder(Embedder):
         out: list[Vector] = []
         for i in range(0, len(texts), self.batch_size):
             chunk = texts[i : i + self.batch_size]
-            kwargs = {"model": self.model, "inputs": chunk}
+            kwargs: dict[str, Any] = {"model": self.model, "inputs": chunk}
             if self._requested_dim is not None:
                 kwargs["output_dimension"] = self._requested_dim
             resp = self._client.embeddings.create(**kwargs)

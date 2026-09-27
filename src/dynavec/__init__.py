@@ -26,6 +26,7 @@ from .config import DynavecConfig
 from .credentials import AWSCredentials
 from .exceptions import (
     ConfigurationError,
+    ConflictError,
     DimensionMismatchError,
     DynavecError,
     EmbeddingError,
@@ -46,6 +47,7 @@ from .ingest import (
     PDFSource,
     PptxSource,
     Record,
+    S3Source,
     URLSource,
     XlsxSource,
     ingest,
@@ -82,7 +84,7 @@ from .spfresh import (
 )
 from .transforms import LambdaTransform, TransformContext, TransformPipeline
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "Dynavec",
@@ -132,6 +134,7 @@ __all__ = [
     "URLSource",
     "MarkdownSource",
     "MCPResourceSource",
+    "S3Source",
     # exceptions
     "DynavecError",
     "ConfigurationError",
@@ -140,5 +143,6 @@ __all__ = [
     "DimensionMismatchError",
     "NotFoundError",
     "ItemTooLargeError",
+    "ConflictError",
     "MissingDependencyError",
 ]

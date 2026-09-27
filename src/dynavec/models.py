@@ -90,3 +90,5 @@ class UpsertResult:
 
     count: int
     ids: list[str] = field(default_factory=list)
+    # Stored version after an update(); None for plain upserts.
+    version: int | None = None

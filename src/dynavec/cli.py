@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
+from typing import Any
 
+from . import __version__
 from .client import Dynavec
 from .config import DynavecConfig
 
@@ -12,6 +15,7 @@ from .config import DynavecConfig
 def _parser() -> argparse.ArgumentParser:
 	parser = argparse.ArgumentParser(prog="dynavec")
 	subparsers = parser.add_subparsers(dest="command")
+	subparsers.add_parser("version", help="show the installed dynavec version")
 	doctor = subparsers.add_parser("doctor", help="check AWS credentials and resource access")
 	doctor.add_argument("--bucket", help="S3 Vectors bucket name")
 	doctor.add_argument("--index", help="S3 Vectors index name")
@@ -85,10 +89,10 @@ def _parser() -> argparse.ArgumentParser:
 	return parser
 
 
-def _session(profile: str | None, region: str | None):
+def _session(profile: str | None, region: str | None) -> Any:
 	import boto3
 
-	kwargs = {}
+	kwargs: dict[str, str] = {}
 	if profile:
 		kwargs["profile_name"] = profile
 	if region:
@@ -116,7 +120,7 @@ def _resolve_resources(args: argparse.Namespace) -> tuple[str, str, str]:
 			f"Missing required resource configuration: {', '.join(missing)} "
 			"(provide via flags or DYNAVEC_* environment variables)."
 		)
-	return bucket, index, table
+	return str(bucket), str(index), str(table)
 
 
 def _export(args: argparse.Namespace) -> int:
@@ -212,7 +216,7 @@ def _import(args: argparse.Namespace) -> int:
 		return 1
 
 
-def _check(label: str, callback) -> bool:
+def _check(label: str, callback: Callable[[], str]) -> bool:
 	try:
 		detail = callback()
 	except Exception as exc:  # noqa: BLE001
@@ -229,7 +233,7 @@ def _doctor(args: argparse.Namespace) -> int:
 	session = None
 	checks_passed = True
 
-	def get_session():
+	def get_session() -> Any:
 		nonlocal session
 		if session is None:
 			session = _session(args.profile, args.region)
@@ -260,24 +264,27 @@ def _doctor(args: argparse.Namespace) -> int:
 	return 0 if checks_passed else 1
 
 
-def _identity(session) -> str:
+def _identity(session: Any) -> str:
 	identity = session.client("sts").get_caller_identity()
 	return f"Account: {identity.get('Account', 'unknown')}"
 
 
-def _check_s3vectors(session, bucket: str, index: str, region: str | None) -> str:
+def _check_s3vectors(session: Any, bucket: str, index: str, region: str | None) -> str:
 	client = session.client("s3vectors", region_name=region)
 	client.get_index(vectorBucketName=bucket, indexName=index)
 	return f"Bucket: {bucket}"
 
 
-def _check_dynamodb(session, table: str, region: str | None) -> str:
+def _check_dynamodb(session: Any, table: str, region: str | None) -> str:
 	session.client("dynamodb", region_name=region).describe_table(TableName=table)
 	return "Accessible"
 
 
 def main(argv: list[str] | None = None) -> int:
 	args = _parser().parse_args(argv)
+	if args.command == "version":
+		print(__version__)
+		return 0
 	if args.command == "doctor":
 		return _doctor(args)
 	if args.command == "export":

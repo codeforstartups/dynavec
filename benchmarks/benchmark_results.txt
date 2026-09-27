@@ -1,0 +1,60 @@
+================================================================================
+Dynavec Quantization Benchmark
+ScalarQuantizer INT8 vs ProductQuantizer
+================================================================================
+
+Dataset: 1,000 vectors × 32 dimensions
+--------------------------------------------------------------------------------
+
+ScalarQuantizer (INT8)
+  Fit time:                  0.0001 sec
+  Encode time:               0.0000 sec
+  Decode time:               0.0000 sec
+  Reconstruction error:     0.00001296
+  Bytes/vector:              32
+  Total encoded size:        31.25 KB
+  Compression:               4.00x
+
+ProductQuantizer (PQ)
+  Fit time:                  1.7511 sec
+  Encode time:               0.0528 sec
+  Decode time:               0.0001 sec
+  Reconstruction error:     0.01194051
+  Bytes/vector:              8
+  Total encoded size:        7.81 KB
+  Compression:               16.00x
+
+Comparison
+  Scalar/PQ compression:     0.25x
+  PQ encode / Scalar encode: 1248.04x
+  PQ decode / Scalar decode: 4.30x
+
+================================================================================
+
+Dataset: 10,000 vectors × 32 dimensions
+--------------------------------------------------------------------------------
+
+ScalarQuantizer (INT8)
+  Fit time:                  0.0006 sec
+  Encode time:               0.0003 sec
+  Decode time:               0.0003 sec
+  Reconstruction error:     0.00001367
+  Bytes/vector:              32
+  Total encoded size:        312.50 KB
+  Compression:               4.00x
+
+ProductQuantizer (PQ)
+  Fit time:                  16.5637 sec
+  Encode time:               0.5938 sec
+  Decode time:               0.0012 sec
+  Reconstruction error:     0.01865431
+  Bytes/vector:              8
+  Total encoded size:        78.12 KB
+  Compression:               16.00x
+
+Comparison
+  Scalar/PQ compression:     0.25x
+  PQ encode / Scalar encode: 1766.81x
+  PQ decode / Scalar decode: 3.58x
+
+================================================================================

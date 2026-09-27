@@ -332,7 +332,7 @@ class MultiQueryRetriever(QueryExpansionRetriever):
         *,
         llm_generate_queries: Callable[[str], Sequence[str]] | None = None,
         n_queries: int = 3,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         gen = generate_queries if generate_queries is not None else llm_generate_queries
         if gen is None or not callable(gen):
@@ -354,13 +354,15 @@ class MultiQueryRetriever(QueryExpansionRetriever):
             plan.append((1.0, self._text_search(text, depth, filter, use_cache)))
         return plan
 
-    def _plan(self, query: str, depth: int, filter: Metadata | None, use_cache: bool | None):
+    def _plan(
+        self, query: str, depth: int, filter: Metadata | None, use_cache: bool | None
+    ) -> list[tuple[float, Callable[[], list[SearchResult]]]]:
         raw = self._invoke_generator(self._generate_queries, query)
         return self._build_plan(raw, query, depth, filter, use_cache)
 
     async def _async_plan(
         self, query: str, depth: int, filter: Metadata | None, use_cache: bool | None
-    ):
+    ) -> list[tuple[float, Callable[[], list[SearchResult]]]]:
         raw = await self._async_invoke_generator(self._generate_queries, query)
         return self._build_plan(raw, query, depth, filter, use_cache)
 
@@ -403,7 +405,7 @@ class HyDERetriever(QueryExpansionRetriever):
         llm_generate_hypothetical: Callable[[str], str | Sequence[str]] | None = None,
         strategy: HyDEStrategy = "average",
         max_passages: int = 5,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         gen = (
             generate_hypothetical
@@ -456,12 +458,14 @@ class HyDERetriever(QueryExpansionRetriever):
 
         return plan
 
-    def _plan(self, query: str, depth: int, filter: Metadata | None, use_cache: bool | None):
+    def _plan(
+        self, query: str, depth: int, filter: Metadata | None, use_cache: bool | None
+    ) -> list[tuple[float, Callable[[], list[SearchResult]]]]:
         raw = self._invoke_generator(self._generate_hypothetical, query)
         return self._build_plan(raw, query, depth, filter, use_cache)
 
     async def _async_plan(
         self, query: str, depth: int, filter: Metadata | None, use_cache: bool | None
-    ):
+    ) -> list[tuple[float, Callable[[], list[SearchResult]]]]:
         raw = await self._async_invoke_generator(self._generate_hypothetical, query)
         return self._build_plan(raw, query, depth, filter, use_cache)

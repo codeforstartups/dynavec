@@ -14,6 +14,7 @@ vectors directly (no re-embedding).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from ..client import Dynavec
@@ -100,7 +101,7 @@ class DynavecLlamaStore(BasePydanticVectorStore):
     _namespace: str
 
     def __init__(self, client: Dynavec, namespace: str = "default") -> None:
-        super().__init__()
+        super().__init__(stores_text=True)
         self._client = client
         self._namespace = namespace
 
@@ -108,7 +109,7 @@ class DynavecLlamaStore(BasePydanticVectorStore):
     def client(self) -> Any:
         return self._client
 
-    def add(self, nodes: list[BaseNode], **kwargs: Any) -> list[str]:
+    def add(self, nodes: Sequence[BaseNode], **kwargs: Any) -> list[str]:
         docs = []
         for node in nodes:
             meta = node.metadata or {}

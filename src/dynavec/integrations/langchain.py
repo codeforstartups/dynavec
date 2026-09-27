@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Protocol
 
 from ..client import Dynavec
 from ..embeddings.base import Embedder
@@ -29,10 +29,16 @@ except ImportError as exc:  # pragma: no cover - import guard
     raise MissingDependencyError("DynavecVectorStore", "langchain-core", "langchain") from exc
 
 
+class _LCEmbeddings(Protocol):
+    def embed_documents(self, texts: list[str]) -> list[list[float]]: ...
+
+    def embed_query(self, text: str) -> list[float]: ...
+
+
 class _LCEmbeddingsAdapter(Embedder):
     """Wrap a LangChain ``Embeddings`` object as a dynavec ``Embedder``."""
 
-    def __init__(self, lc_embeddings, dimension: int) -> None:
+    def __init__(self, lc_embeddings: _LCEmbeddings, dimension: int) -> None:
         self._lc = lc_embeddings
         self.dimension = dimension
 
@@ -51,13 +57,13 @@ class DynavecVectorStore(VectorStore):
         self._namespace = namespace
 
     @property
-    def embeddings(self):  # LangChain introspects this
+    def embeddings(self) -> Any:  # LangChain introspects this
         return self._client.embedder
 
     def add_texts(
         self,
         texts: Iterable[str],
-        metadatas: list[dict] | None = None,
+        metadatas: list[dict[str, Any]] | None = None,
         ids: list[str] | None = None,
         **kwargs: Any,
     ) -> list[str]:
@@ -78,7 +84,7 @@ class DynavecVectorStore(VectorStore):
         return True
 
     def similarity_search(
-        self, query: str, k: int = 4, filter: dict | None = None, **kwargs: Any
+        self, query: str, k: int = 4, filter: dict[str, Any] | None = None, **kwargs: Any
     ) -> list[LCDocument]:
         results = self._client.search(
             query, top_k=k, namespace=self._namespace, filter=filter
@@ -92,7 +98,7 @@ class DynavecVectorStore(VectorStore):
         self,
         query: str,
         k: int = 4,
-        filter: dict | None = None,
+        filter: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> list[LCDocument]:
         results = await asyncio.to_thread(
@@ -111,7 +117,7 @@ class DynavecVectorStore(VectorStore):
         ]
 
     def similarity_search_with_score(
-        self, query: str, k: int = 4, filter: dict | None = None, **kwargs: Any
+        self, query: str, k: int = 4, filter: dict[str, Any] | None = None, **kwargs: Any
     ) -> list[tuple[LCDocument, float]]:
         results = self._client.search(
             query, top_k=k, namespace=self._namespace, filter=filter
@@ -128,7 +134,7 @@ class DynavecVectorStore(VectorStore):
         self,
         query: str,
         k: int = 4,
-        filter: dict | None = None,
+        filter: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> list[tuple[LCDocument, float]]:
         results = await asyncio.to_thread(
@@ -155,7 +161,7 @@ class DynavecVectorStore(VectorStore):
         k: int = 4,
         fetch_k: int = 20,
         lambda_mult: float = 0.5,
-        filter: dict | None = None,
+        filter: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> list[LCDocument]:
         results = self._client.search(
@@ -177,7 +183,7 @@ class DynavecVectorStore(VectorStore):
         k: int = 4,
         fetch_k: int = 20,
         lambda_mult: float = 0.5,
-        filter: dict | None = None,
+        filter: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> list[LCDocument]:
         results = await asyncio.to_thread(
@@ -201,8 +207,8 @@ class DynavecVectorStore(VectorStore):
     def from_texts(
         cls,
         texts: list[str],
-        embedding,
-        metadatas: list[dict] | None = None,
+        embedding: _LCEmbeddings,
+        metadatas: list[dict[str, Any]] | None = None,
         *,
         client: Dynavec | None = None,
         namespace: str = "default",

@@ -95,8 +95,8 @@
 
         <ul class="hero__stats">
           <li><span class="stat__n" data-stars>—</span><span class="stat__l">GitHub stars</span></li>
-          <li><span class="stat__n">$469</span><span class="stat__l">/mo at 1B vectors*</span></li>
-          <li><span class="stat__n">100%</span><span class="stat__l">in your account</span></li>
+          <li><span class="stat__n stat__n--accent">$469</span><span class="stat__l">/mo at 1B vectors*</span></li>
+          <li><span class="stat__n stat__n--accent">100%</span><span class="stat__l">in your account</span></li>
           <li><span class="stat__n">0</span><span class="stat__l">servers to run</span></li>
         </ul>
       </div>
@@ -165,35 +165,35 @@
     <!-- ============ WHY ============ -->
     <section class="section" id="why">
       <div class="wrap">
-        <h2 class="section__title">Why dynavec</h2>
+        <h2 class="section__title" data-reveal>Why dynavec</h2>
         <div class="grid grid--3">
-          <article class="card">
-            <span class="card__no">01</span>
+          <article class="card" data-reveal>
+            <span class="card__icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="13" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="3 2"/><text x="14" y="19" text-anchor="middle" font-family="var(--mono)" font-size="14" font-weight="700" fill="var(--accent)">$</text></svg></span>
             <h3>Cost-effective</h3>
             <p>No always-on cluster, no managed-service premium. You pay S3-priced vector storage plus DynamoDB on-demand. Idle cost approaches storage only.</p>
           </article>
-          <article class="card">
-            <span class="card__no">02</span>
+          <article class="card" data-reveal>
+            <span class="card__icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 28 28" fill="none"><path d="M16 3l-6 12h5l-3 10 10-14h-6l4-8z" fill="var(--accent)" opacity="0.9"/></svg></span>
             <h3>Lowest latency</h3>
             <p>S3 Vectors returns the nearest keys; the actual documents are hydrated from DynamoDB in single-digit milliseconds via <code>BatchGetItem</code>.</p>
           </article>
-          <article class="card">
-            <span class="card__no">03</span>
+          <article class="card" data-reveal>
+            <span class="card__icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 28 28" fill="none"><ellipse cx="14" cy="8" rx="9" ry="3.5" stroke="var(--accent)" stroke-width="1.5"/><path d="M5 8v5c0 1.93 4.03 3.5 9 3.5s9-1.57 9-3.5V8" stroke="var(--accent)" stroke-width="1.5"/><path d="M5 13v5c0 1.93 4.03 3.5 9 3.5s9-1.57 9-3.5v-5" stroke="var(--accent)" stroke-width="1.5"/></svg></span>
             <h3>Billion-scale</h3>
             <p>Amazon S3 Vectors searches across billions of vectors with 90%+ recall — the serverless ANN engine, managed by AWS.</p>
           </article>
-          <article class="card">
-            <span class="card__no">04</span>
+          <article class="card" data-reveal>
+            <span class="card__icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 28 28" fill="none"><path d="M14 3l9 4v7c0 5-4 9-9 11C9 23 5 19 5 14V7z" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 14l3 3 5-5" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <h3>Data compliance</h3>
             <p>Everything stays in <em>your</em> account, <em>your</em> region, <em>your</em> availability zones. dynavec only ever calls AWS with your credentials.</p>
           </article>
-          <article class="card">
-            <span class="card__no">05</span>
+          <article class="card" data-reveal>
+            <span class="card__icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect x="8" y="12" width="12" height="9" rx="2" stroke="var(--accent)" stroke-width="1.5"/><path d="M10 12V9a4 4 0 018 0v3" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/><circle cx="14" cy="16.5" r="1.5" fill="var(--accent)"/></svg></span>
             <h3>Secure &amp; elastic</h3>
             <p>Serverless primitives scale to zero and back automatically. IAM is the only access boundary; assume-role and per-tenant namespaces built in.</p>
           </article>
-          <article class="card">
-            <span class="card__no">06</span>
+          <article class="card" data-reveal>
+            <span class="card__icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect x="4" y="8" width="8" height="6" rx="2" stroke="var(--accent)" stroke-width="1.5"/><rect x="16" y="8" width="8" height="6" rx="2" stroke="var(--accent)" stroke-width="1.5"/><rect x="10" y="18" width="8" height="6" rx="2" stroke="var(--accent)" stroke-width="1.5"/><path d="M8 14v2a6 6 0 004 5.6M20 14v2a6 6 0 01-4 5.6" stroke="var(--accent)" stroke-width="1.3" stroke-linecap="round"/></svg></span>
             <h3>Framework-native</h3>
             <p>LangChain and LlamaIndex vector stores plus a framework-agnostic retriever tool for LangGraph, CrewAI, and Strands.</p>
           </article>
@@ -204,10 +204,10 @@
     <!-- ============ ARCHITECTURE ============ -->
     <section class="section section--alt" id="architecture">
       <div class="wrap">
-        <h2 class="section__title">How it works</h2>
+        <h2 class="section__title" data-reveal>How it works</h2>
         <p class="section__lede">Two AWS primitives, each doing the one job it is best at, joined by a shared key.</p>
 
-        <div class="arch">
+        <div class="arch" data-reveal="fade">
           <svg viewBox="0 0 920 378" class="arch__svg" role="img" aria-label="dynavec architecture: query → Embedder → S3 Vectors ANN → DynamoDB hydration → reranked results">
             <defs>
               <!-- Background gradient -->
@@ -431,28 +431,36 @@
     <!-- ============ BENCHMARKS ============ -->
     <section class="section" id="benchmarks">
       <div class="wrap">
-        <h2 class="section__title">Benchmarks</h2>
+        <h2 class="section__title" data-reveal>Benchmarks</h2>
         <p class="section__lede">
           Cost across every common embedding dimension (384–3072) and 100K → 1&nbsp;billion vectors.
           dynavec stays lowest at every point because its storage is priced like S3, not RAM.
         </p>
 
         <figure class="fig fig--chart">
-          <canvas id="bench-matrix" style="width:100%;height:320px;display:block"></canvas>
+          <div class="chart-wrap" style="position:relative;height:320px">
+            <canvas id="bench-matrix"></canvas>
+          </div>
           <figcaption>Monthly cost by scale &amp; dimension · 1536-dim · 1M queries/mo. dynavec (coral) is the lowest at every scale.</figcaption>
         </figure>
 
         <div class="grid grid--3-bench">
           <figure class="fig fig--chart">
-            <canvas id="bench-scale" style="width:100%;height:260px;display:block"></canvas>
+            <div class="chart-wrap" style="position:relative;height:260px">
+              <canvas id="bench-scale"></canvas>
+            </div>
             <figcaption>Cost by scale (768-d, 1M queries/mo) — log-log scale.</figcaption>
           </figure>
           <figure class="fig fig--chart">
-            <canvas id="bench-storage" style="width:100%;height:260px;display:block"></canvas>
+            <div class="chart-wrap" style="position:relative;height:260px">
+              <canvas id="bench-storage"></canvas>
+            </div>
             <figcaption>Raw float32 footprint — up to ~5.7&nbsp;TiB at 1B × 1536-d.</figcaption>
           </figure>
           <figure class="fig fig--donut">
-            <canvas id="quality-chart"></canvas>
+            <div class="chart-wrap" style="position:relative;height:260px">
+              <canvas id="quality-chart"></canvas>
+            </div>
             <figcaption>Recall ÷ Latency score — higher recall at lower query latency. Representative estimates; run <code>python -m benchmarks.report</code> to reproduce.</figcaption>
           </figure>
         </div>
@@ -514,7 +522,7 @@
     <!-- ============ QUICK START ============ -->
     <section class="section" id="quickstart">
       <div class="wrap">
-        <h2 class="section__title">Quick start</h2>
+        <h2 class="section__title" data-reveal>Quick start</h2>
         <p class="section__lede">Three steps to your first semantic search — everything runs inside your own AWS account.</p>
 
         <div class="grid grid--3">
@@ -552,7 +560,7 @@ db.search("how do cells make energy?")</code></pre>
 
     <section class="section section--alt" id="docs">
       <div class="wrap">
-        <h2 class="section__title">Pythonic by design</h2>
+        <h2 class="section__title" data-reveal>Pythonic by design</h2>
         <p class="section__lede">Clean, explicit, and framework-friendly. Bring your own embedder and API key, or your own vectors.</p>
 
         <div class="tabs" data-tabs>
@@ -670,7 +678,7 @@ ingest(db, MCPResourceSource(mcp_session), namespace="kb")</code></pre>
     <!-- ============ CONTRIBUTE ============ -->
     <section class="section" id="contribute">
       <div class="wrap">
-        <h2 class="section__title">Contribute</h2>
+        <h2 class="section__title" data-reveal>Contribute</h2>
         <p class="section__lede">dynavec is Apache-2.0 and community-built. Issues, PRs, and ideas are welcome.</p>
 
         <div class="grid grid--3">
@@ -698,6 +706,38 @@ pytest -q</code></pre>
         </div>
       </div>
     </section>
+
+    <!-- ============ CONTRIBUTORS ============ -->
+    <section class="section contributors-section" id="contributors">
+      <div class="wrap">
+        <h2 class="section__title" data-reveal>Built by the community</h2>
+        <p class="section__lede">Every commit, fix, and idea counts. Meet the people who make dynavec better.</p>
+      </div>
+
+      <div class="contrib-slider">
+        <button class="contrib-arrow contrib-arrow--left" id="contrib-prev" aria-label="Scroll left">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+
+        <div class="contrib-track-wrap" id="contrib-wrap">
+          <div class="contrib-track" id="contrib-track">
+            <!-- cards injected by JS -->
+          </div>
+        </div>
+
+        <button class="contrib-arrow contrib-arrow--right" id="contrib-next" aria-label="Scroll right">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="wrap" style="margin-top:28px;text-align:center">
+        <a class="btn btn--ghost" href="https://github.com/codeforstartups/dynavec/graphs/contributors" target="_blank" rel="noopener">View all contributors →</a>
+      </div>
+    </section>
   </main>
 
   <!-- ============ FOOTER ============ -->
@@ -717,6 +757,7 @@ pytest -q</code></pre>
     </div>
   </footer>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

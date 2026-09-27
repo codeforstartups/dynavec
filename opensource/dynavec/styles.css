@@ -921,3 +921,193 @@ body {
 
 .svc, .fig, .card { transition-property: box-shadow, border-color, transform, background; }
 .svc:hover, .fig:hover { transform: translateY(-3px); }
+
+/* ================================================
+   CARD ICONS
+   ================================================ */
+
+.card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 16px;
+  width: 44px;
+  height: 44px;
+  background: var(--accent-bg);
+  border-radius: 10px;
+  padding: 8px;
+}
+.card__icon svg { width: 28px; height: 28px; }
+
+/* Stagger card reveal delays */
+.grid--3 .card[data-reveal]:nth-child(1) { transition-delay: 0.05s; }
+.grid--3 .card[data-reveal]:nth-child(2) { transition-delay: 0.12s; }
+.grid--3 .card[data-reveal]:nth-child(3) { transition-delay: 0.19s; }
+.grid--3 .card[data-reveal]:nth-child(4) { transition-delay: 0.26s; }
+.grid--3 .card[data-reveal]:nth-child(5) { transition-delay: 0.33s; }
+.grid--3 .card[data-reveal]:nth-child(6) { transition-delay: 0.40s; }
+
+/* Stat accent colour */
+.stat__n--accent { color: var(--accent); }
+
+/* Benchmark grid border fix */
+.grid--3-bench {
+  display: grid;
+  gap: 16px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  margin-bottom: 24px;
+}
+
+/* ================================================
+   CONTRIBUTORS CAROUSEL
+   ================================================ */
+
+.contributors-section { overflow: visible; padding-bottom: 80px; }
+
+/* Flex row: arrow — track — arrow */
+.contrib-slider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 48px;
+  padding: 0 28px;
+}
+
+.contrib-arrow {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-md);
+  background: var(--bg);
+  color: var(--fg-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--t), border-color var(--t), color var(--t), box-shadow var(--t), transform 0.1s;
+  box-shadow: var(--sh-sm);
+}
+.contrib-arrow:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(232,98,59,0.28);
+  transform: scale(1.08);
+}
+.contrib-arrow:active { transform: scale(0.96); }
+.contrib-arrow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Show exactly 5 cards: 5×130px + 4×32px gaps + 2×24px padding = 842px */
+.contrib-track-wrap {
+  --card-w: 130px;
+  --card-gap: 32px;
+  --track-pad: 24px;
+  width: calc(5 * var(--card-w) + 4 * var(--card-gap) + 2 * var(--track-pad));
+  max-width: calc(100vw - 140px);
+  overflow-x: scroll;
+  scrollbar-width: none;
+}
+.contrib-track-wrap::-webkit-scrollbar { display: none; }
+
+.contrib-track {
+  display: flex;
+  gap: var(--card-gap, 32px);
+  width: max-content;
+  padding: 24px var(--track-pad, 24px);
+}
+
+/* Circular card — just avatar + name */
+.contrib-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  text-decoration: none;
+  color: inherit;
+  width: var(--card-w, 130px);
+  transition: transform var(--t);
+}
+.contrib-card:hover { transform: translateY(-5px); }
+
+.contrib-card__avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+  transition: border-color var(--t), box-shadow var(--t);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+}
+.contrib-card:hover .contrib-card__avatar {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-bg), 0 6px 20px rgba(232,98,59,0.18);
+}
+
+.contrib-card__name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  text-align: center;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contrib-card__count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-4);
+  text-align: center;
+}
+.contrib-card__count span { color: var(--accent); font-weight: 700; }
+
+/* Star badge for top 5 */
+.contrib-card__star {
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  width: 26px;
+  height: 26px;
+  background: linear-gradient(135deg, #ffd36b, #f5a200);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(245,162,0,0.45);
+  border: 2px solid #fff;
+  line-height: 1;
+}
+
+/* Top-5: coral ring on avatar */
+.contrib-card--top .contrib-card__avatar {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg), 0 4px 16px rgba(232,98,59,0.20);
+}
+
+/* Team member custom cards — slightly larger avatar */
+.contrib-card--team .contrib-card__avatar {
+  width: 106px;
+  height: 106px;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-bg), 0 6px 24px rgba(232,98,59,0.22);
+}
+.contrib-card--team .contrib-card__name {
+  color: var(--accent);
+  font-weight: 700;
+}

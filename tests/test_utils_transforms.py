@@ -1,9 +1,11 @@
 """Tests for decorators/generators and the transform pipeline (pure, no AWS)."""
 
+from unittest.mock import patch
+
 import pytest
 
 from dynavec.transforms import TransformContext, TransformPipeline, as_pipeline
-from dynavec.utils import chunked, is_retryable, retry
+from dynavec.utils import TokenBucket, chunked, is_retryable, retry
 
 
 def test_chunked_generator():
@@ -96,3 +98,67 @@ def test_retry_uses_retry_delay(monkeypatch):
     assert flaky() == "ok"
     assert calls["n"] == 2
     assert delays == [3.0]
+
+
+def test_token_bucket_consumes_tokens():
+    with patch(
+        "dynavec.utils.time.monotonic",
+        side_effect=[100.0, 100.0, 100.0],
+    ):
+        bucket = TokenBucket(rate=10, capacity=2)
+        assert bucket.tokens == 2
+
+        bucket.acquire()
+        assert bucket.tokens == 1
+
+        bucket.acquire()
+        assert bucket.tokens == 0
+
+
+def test_token_bucket_refills_tokens():
+    with patch(
+        "dynavec.utils.time.monotonic",
+        side_effect=[100.0, 100.0, 100.0, 100.2],
+    ):
+        bucket = TokenBucket(rate=10, capacity=2)
+
+        bucket.acquire()
+        bucket.acquire()
+
+        # 0.2 seconds * 10 tokens/sec = 2 new tokens
+        bucket.acquire()
+
+        assert bucket.tokens == 1
+
+
+def test_token_bucket_waits_for_token():
+    with (
+        patch(
+            "dynavec.utils.time.monotonic",
+            side_effect=[100.0, 100.0, 100.0, 100.05, 100.11],
+        ),
+        patch("dynavec.utils.time.sleep") as sleep,
+    ):
+        bucket = TokenBucket(rate=10, capacity=2)
+
+        bucket.acquire()
+        bucket.acquire()
+        bucket.acquire()
+
+        sleep.assert_called_once_with(pytest.approx(0.05))
+        assert bucket.tokens == pytest.approx(0.1)
+
+
+def test_token_bucket_does_not_exceed_capacity():
+    with patch(
+        "dynavec.utils.time.monotonic",
+        side_effect=[100.0, 100.0, 101.0],
+    ):
+        bucket = TokenBucket(rate=10, capacity=2)
+        assert bucket.tokens == 2
+
+        bucket.acquire()
+        assert bucket.tokens == 1
+
+        bucket.acquire()
+        assert bucket.tokens == 1

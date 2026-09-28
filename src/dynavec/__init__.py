@@ -20,7 +20,8 @@ Quick start
 
 from __future__ import annotations
 
-from .cache import BaseCache, DynamoDBCache, RedisCache, SemanticCache
+from .bm25 import BM25Index
+from .cache import BaseCache, DynamoDBCache, RedisCache, SemanticCache, warm_cache
 from .client import Dynavec
 from .config import DynavecConfig
 from .credentials import AWSCredentials
@@ -41,6 +42,13 @@ from .quantization import ProductQuantizer, ScalarQuantizer
 from .retrieval import (
     maximal_marginal_relevance,
     reciprocal_rank_fusion,
+)
+from .retrievers import (
+    BM25HybridRetriever,
+    BM25Retriever,
+    HyDERetriever,
+    MultiQueryRetriever,
+    QueryExpansionRetriever,
 )
 from .spfresh import (
     Partition,
@@ -69,6 +77,14 @@ __all__ = [
     "RedisCache",
     "reciprocal_rank_fusion",
     "maximal_marginal_relevance",
+    "QueryExpansionRetriever",
+    "MultiQueryRetriever",
+    "HyDERetriever",
+    "BM25Index",
+    "BM25Retriever",
+    "BM25HybridRetriever",
+    "FitResult",
+    "RRFWeightFitter",
     "HotTier",
     "Partition",
     "SPFreshConfig",

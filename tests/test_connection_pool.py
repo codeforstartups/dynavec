@@ -30,6 +30,18 @@ def test_max_pool_connections_validation():
         _config(max_pool_connections=-5)
 
 
+def test_request_rps_defaults_to_none():
+    assert _config().put_rps is None
+    assert _config().query_rps is None
+
+
+def test_request_rps_validation():
+    with pytest.raises(ValueError):
+        _config(put_rps=0)
+    with pytest.raises(ValueError):
+        _config(query_rps=-5)
+
+
 def test_botocore_config_carries_pool_size():
     cfg = _config(max_pool_connections=50)
     client_config = cfg.botocore_config()

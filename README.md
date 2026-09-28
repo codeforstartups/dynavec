@@ -113,7 +113,8 @@ Replace `REGION` and `ACCOUNT_ID`. `dynamodb:Scan` is only needed for the GraphR
         "dynamodb:CreateTable", "dynamodb:DescribeTable", "dynamodb:DeleteTable",
         "dynamodb:BatchWriteItem", "dynamodb:BatchGetItem",
         "dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem",
-        "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan"
+        "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan",
+        "dynamodb:DescribeTimeToLive", "dynamodb:UpdateTimeToLive"
       ],
       "Resource": [
         "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/dynavec_*",
@@ -182,6 +183,24 @@ hits = db.search(vector=my_query_vector, top_k=5)
 - **`auto_metadata=True`** → dynavec also derives `created_at`, `content_hash`, `word_count`, `char_count`. Your keys always win on conflict.
 
 Control the split with `DynavecConfig.filterable_keys` (allowlist of keys pushed to S3 Vectors for filtering) — keep it small; S3 Vectors caps filterable metadata size per vector.
+
+### Per-document TTL & automatic expiry
+
+Expire ephemeral documents, session memories, or cache entries automatically via DynamoDB's native Time To Live (TTL):
+
+```python
+# Pass ttl_seconds on Document or upsert()
+db.upsert([
+    Document(id="session-1", text="Temporary session context", ttl_seconds=3600),
+    Document(id="cached-doc", text="Ephemeral cache data", ttl_seconds=86400),
+])
+
+# Or set a default TTL across an entire batch
+ns = db.namespace("sessions")
+ns.upsert([Document(id="a", text="..."), Document(id="b", text="...")], ttl_seconds=1800)
+```
+
+Dynavec automatically computes the Unix epoch timestamp, stores it in the DynamoDB `ttl` attribute, and enables TTL on the table during provisioning (`auto_provision=True` or `provision_all`).
 
 ---
 

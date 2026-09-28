@@ -18,7 +18,7 @@ import numpy as np
 
 from ..config import DynavecConfig
 from ..logging import log_store_event
-from ..utils import retry
+from ..utils import TokenBucket, retry
 
 Metadata = dict[str, Any]
 
@@ -45,6 +45,12 @@ class S3VectorsStore:
 
         session = boto_session or boto3.Session()
         self._config = config
+        self._put_limiter = (
+            TokenBucket(config.put_rps) if config.put_rps is not None else None
+        )
+        self._query_limiter = (
+            TokenBucket(config.query_rps) if config.query_rps is not None else None
+        )
         client_kwargs: dict[str, object] = {"region_name": config.region}
         botocore_config = config.botocore_config()
         if botocore_config is not None:
@@ -61,6 +67,8 @@ class S3VectorsStore:
 
     @retry()
     def _put_batch(self, payload: list[dict[str, Any]]) -> None:
+        if self._put_limiter is not None:
+            self._put_limiter.acquire()
         self._client.put_vectors(
             vectorBucketName=self._config.vector_bucket,
             indexName=self._config.index,
@@ -184,7 +192,7 @@ class S3VectorsStore:
         return_distance: bool = True,
         page_size: int | None = None,
     ) -> Iterator[list[dict[str, Any]]]:
-        """Yield result **pages** as the S3 Vectors paginator returns them.
+        """Yield result pages as the S3 Vectors paginator returns them.
 
         This is what powers streaming search: an agent can begin consuming the
         first page while later pages are still in flight.
@@ -198,6 +206,7 @@ class S3VectorsStore:
         """
         if top_k <= 0:
             return
+
         if top_k > _MAX_TOP_K:
             raise ValueError(
                 f"top_k ({top_k}) exceeds Amazon S3 Vectors maximum limit of {_MAX_TOP_K}."
@@ -206,44 +215,73 @@ class S3VectorsStore:
         effective_page_size = (
             page_size if page_size is not None else self._config.top_k_page_size
         )
+
         if effective_page_size is not None and effective_page_size <= 0:
             raise ValueError("page_size must be a positive integer.")
 
         kwargs = self._query_kwargs(
-            query_vector, top_k, filter, return_metadata, return_distance
+            query_vector,
+            top_k,
+            filter,
+            return_metadata,
+            return_distance,
         )
+
         paginator = self._client.get_paginator("query_vectors")
         yielded = 0
         buffer: list[dict[str, Any]] = []
 
-        for page in paginator.paginate(
-            PaginationConfig={"MaxItems": top_k},
-            **kwargs,
-        ):
-            vectors = page.get("vectors", [])
-            if not vectors:
-                continue
+        page_iterator = iter(
+            paginator.paginate(
+                PaginationConfig={"MaxItems": top_k},
+                **kwargs,
+            )
+        )
 
-            if effective_page_size is None:
-                remaining = top_k - yielded
-                if len(vectors) > remaining:
-                    vectors = vectors[:remaining]
-                yield vectors
-                yielded += len(vectors)
-                if yielded >= top_k:
-                    return
-            else:
-                buffer.extend(vectors)
-                while len(buffer) >= effective_page_size and yielded < top_k:
-                    chunk = buffer[:effective_page_size]
-                    buffer = buffer[effective_page_size:]
+        while True:
+            if self._query_limiter is not None:
+                self._query_limiter.acquire()
+
+            try:
+                page = next(page_iterator)
+            except StopIteration:
+                break
+
+            vectors = page.get("vectors", [])
+
+            if vectors:
+                if effective_page_size is None:
                     remaining = top_k - yielded
-                    if len(chunk) > remaining:
-                        chunk = chunk[:remaining]
-                    yield chunk
-                    yielded += len(chunk)
+
+                    if len(vectors) > remaining:
+                        vectors = vectors[:remaining]
+
+                    yield vectors
+                    yielded += len(vectors)
+
                     if yielded >= top_k:
                         return
+
+                else:
+                    buffer.extend(vectors)
+
+                    while len(buffer) >= effective_page_size and yielded < top_k:
+                        chunk = buffer[:effective_page_size]
+                        buffer = buffer[effective_page_size:]
+
+                        remaining = top_k - yielded
+
+                        if len(chunk) > remaining:
+                            chunk = chunk[:remaining]
+
+                        yield chunk
+                        yielded += len(chunk)
+
+                        if yielded >= top_k:
+                            return
+
+            if page.get("NextToken") is None:
+                break
 
         if effective_page_size is not None and buffer and yielded < top_k:
             remaining = top_k - yielded

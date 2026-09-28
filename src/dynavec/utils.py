@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import functools
 import random
+import threading
 import time
 from collections.abc import Iterable, Iterator
 from typing import Any, Callable, TypeVar
@@ -120,3 +121,44 @@ def chunked(iterable: Iterable[T], size: int) -> Iterator[list[T]]:
             batch = []
     if batch:
         yield batch
+
+
+class TokenBucket:
+    def __init__(
+        self,
+        rate: float,
+        capacity: float | None = None,
+    ) -> None:
+        if rate <= 0:
+            raise ValueError("rate must be positive")
+
+        self.rate = rate
+        self.capacity = capacity if capacity is not None else rate
+
+        if self.capacity <= 0:
+            raise ValueError("capacity must be positive")
+
+        self.tokens = self.capacity
+        self.last_time = time.monotonic()
+        self._lock = threading.Lock()
+
+
+    def acquire(self) -> None:
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                elapsed = now - self.last_time
+
+                self.tokens = min(
+                    self.capacity,
+                    self.tokens + elapsed * self.rate,
+                )
+                self.last_time = now
+
+                if self.tokens >= 1:
+                    self.tokens -= 1
+                    return
+
+                wait_time = (1 - self.tokens) / self.rate
+
+            time.sleep(wait_time)

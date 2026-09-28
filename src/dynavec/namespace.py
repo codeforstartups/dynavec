@@ -11,10 +11,11 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
-from .models import Document, ExplainedSearchResult, SearchResult, UpsertResult
+from .models import Document, ExplainedSearchResult, Metadata, SearchResult, UpsertResult
 
 if TYPE_CHECKING:
     from .client import Dynavec
+    from .retrievers import BM25HybridRetriever, BM25Retriever
 
 
 class NamespaceView:
@@ -33,12 +34,22 @@ class NamespaceView:
     def upsert(
         self,
         documents: Sequence[Document | dict[str, Any]] | None,
+        *,
+        ttl_seconds: int | None = None,
         **kw: Any,
     ) -> UpsertResult:
-        return self._db.upsert(documents, namespace=self._ns, **kw)
+        return self._db.upsert(
+            documents, namespace=self._ns, ttl_seconds=ttl_seconds, **kw
+        )
 
-    def update(self, id: str, **kw: Any) -> UpsertResult:
-        return self._db.update(id, namespace=self._ns, **kw)
+    def update(
+        self,
+        id: str,
+        *,
+        ttl_seconds: int | None = None,
+        **kw: Any,
+    ) -> UpsertResult:
+        return self._db.update(id, namespace=self._ns, ttl_seconds=ttl_seconds, **kw)
 
     @overload
     def search(
@@ -138,6 +149,57 @@ class NamespaceView:
             self,
             generate_hypothetical=generate_hypothetical,
             llm_generate_hypothetical=llm_generate_hypothetical,
+            **kw,
+        )
+
+    def as_bm25_retriever(self, **kw: Any) -> BM25Retriever:
+        """Create a :class:`~dynavec.retrievers.BM25Retriever` pinned to this namespace."""
+        from .retrievers import BM25Retriever
+
+        return BM25Retriever(self._db, namespace=self._ns, **kw)
+
+    def as_hybrid_retriever(
+        self,
+        *,
+        dense_weight: float = 1.0,
+        sparse_weight: float = 0.8,
+        **kw: Any,
+    ) -> BM25HybridRetriever:
+        """Create a :class:`~dynavec.retrievers.BM25HybridRetriever` pinned to this namespace."""
+        from .retrievers import BM25HybridRetriever
+
+        return BM25HybridRetriever(
+            self._db,
+            namespace=self._ns,
+            dense_weight=dense_weight,
+            sparse_weight=sparse_weight,
+            **kw,
+        )
+
+    def hybrid_search(
+        self,
+        query: str,
+        *,
+        top_k: int = 10,
+        dense_weight: float = 1.0,
+        sparse_weight: float = 0.8,
+        rrf_k: int = 60,
+        bm25_retriever: Any = None,
+        filter: Metadata | None = None,
+        use_cache: bool | None = None,
+        **kw: Any,
+    ) -> list[SearchResult]:
+        """Execute hybrid search combining dense ANN vector search and sparse BM25 lexical search."""
+        return self._db.hybrid_search(
+            query,
+            top_k=top_k,
+            namespace=self._ns,
+            dense_weight=dense_weight,
+            sparse_weight=sparse_weight,
+            rrf_k=rrf_k,
+            bm25_retriever=bm25_retriever,
+            filter=filter,
+            use_cache=use_cache,
             **kw,
         )
 

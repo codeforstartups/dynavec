@@ -25,7 +25,7 @@ class AsyncDynavec:
         config: DynavecConfig,
         embedder: Embedder | None = None,
         *,
-        aioboto_session=None,
+        aioboto_session: Any = None,
     ) -> None:
         self.config = config
         self.embedder = embedder
@@ -115,7 +115,7 @@ class AsyncDynavec:
 
     async def upsert(
         self,
-        documents: list[Document | dict] | None = None,
+        documents: list[Document | dict[str, Any]] | None = None,
         *,
         namespace: str = "default",
         auto_metadata: bool = False,
@@ -125,15 +125,19 @@ class AsyncDynavec:
             
         docs = [d if isinstance(d, Document) else Document(**d) for d in documents]
 
-        to_embed = [(i, d.text) for i, d in enumerate(docs) if d.vector is None]
+        to_embed = [(i, d.text) for i, d in enumerate(docs) if d.vector is None and d.text is not None]
         if to_embed:
-            texts = [t for _, t in to_embed]
+            texts = [t for _, t in to_embed if t is not None]
             vectors = await self._embed_documents(texts)
             for (idx, _), vec in zip(to_embed, vectors):
                 docs[idx].vector = vec
 
-        s3_payload, ddb_payload, ids = [], [], []
+        s3_payload: list[tuple[str, list[float], dict[str, Any]]] = []
+        ddb_payload = []
+        ids = []
         for d in docs:
+            if d.vector is None:
+                raise ValueError(f"Document {d.id} is missing a vector and could not be embedded.")
             meta = dict(d.metadata)
             if auto_metadata:
                 auto = generate_auto_metadata(d.text)

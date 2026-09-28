@@ -15,7 +15,7 @@ Metadata = dict[str, Any]
 class AsyncS3VectorsStore:
     _logger = logging.getLogger("dynavec.stores.async_s3vectors")
 
-    def __init__(self, config: DynavecConfig, aioboto_session=None) -> None:
+    def __init__(self, config: DynavecConfig, aioboto_session: Any = None) -> None:
         self._config = config
         if aioboto_session is None:
             import aioboto3
@@ -54,7 +54,12 @@ class AsyncS3VectorsStore:
         )
 
     def _query_kwargs(
-        self, query_vector, top_k, filter, return_metadata, return_distance
+        self,
+        query_vector: list[float],
+        top_k: int,
+        filter: Metadata | None,
+        return_metadata: bool,
+        return_distance: bool,
     ) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "vectorBucketName": self._config.vector_bucket,

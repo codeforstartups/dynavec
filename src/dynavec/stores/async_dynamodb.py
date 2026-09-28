@@ -17,7 +17,7 @@ _BATCH_GET_LIMIT = 100
 class AsyncDynamoDBStore:
     _logger = logging.getLogger("dynavec.stores.async_dynamodb")
 
-    def __init__(self, config: DynavecConfig, aioboto_session=None) -> None:
+    def __init__(self, config: DynavecConfig, aioboto_session: Any = None) -> None:
         self._config = config
         if aioboto_session is None:
             import aioboto3
@@ -75,7 +75,7 @@ class AsyncDynamoDBStore:
         async with self._session.resource("dynamodb", **self._resource_kwargs) as ddb:
             for start in range(0, len(keys), _BATCH_GET_LIMIT):
                 chunk = keys[start : start + _BATCH_GET_LIMIT]
-                request = {self._config.table: {"Keys": chunk}}
+                request: dict[str, Any] | None = {self._config.table: {"Keys": chunk}}
                 
                 while request:
                     resp = await ddb.batch_get_item(RequestItems=request)

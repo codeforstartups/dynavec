@@ -45,8 +45,9 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
+from .bm25 import BM25Index
 from .exceptions import ConfigurationError
-from .models import Metadata, SearchResult
+from .models import Document, Metadata, SearchResult
 from .namespace import NamespaceView
 from .retrieval import reciprocal_rank_fusion
 
@@ -58,7 +59,14 @@ logger = logging.getLogger(__name__)
 OnGenerateError = Literal["fallback", "raise"]
 HyDEStrategy = Literal["average", "fuse"]
 
-__all__ = ["QueryExpansionRetriever", "MultiQueryRetriever", "HyDERetriever"]
+__all__ = [
+    "QueryExpansionRetriever",
+    "MultiQueryRetriever",
+    "HyDERetriever",
+    "BM25Index",
+    "BM25Retriever",
+    "BM25HybridRetriever",
+]
 
 
 def _clean_texts(original: str, candidates: object, limit: int) -> list[str]:
@@ -332,7 +340,7 @@ class MultiQueryRetriever(QueryExpansionRetriever):
         *,
         llm_generate_queries: Callable[[str], Sequence[str]] | None = None,
         n_queries: int = 3,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         gen = generate_queries if generate_queries is not None else llm_generate_queries
         if gen is None or not callable(gen):
@@ -354,13 +362,15 @@ class MultiQueryRetriever(QueryExpansionRetriever):
             plan.append((1.0, self._text_search(text, depth, filter, use_cache)))
         return plan
 
-    def _plan(self, query: str, depth: int, filter: Metadata | None, use_cache: bool | None):
+    def _plan(
+        self, query: str, depth: int, filter: Metadata | None, use_cache: bool | None
+    ) -> list[tuple[float, Callable[[], list[SearchResult]]]]:
         raw = self._invoke_generator(self._generate_queries, query)
         return self._build_plan(raw, query, depth, filter, use_cache)
 
     async def _async_plan(
         self, query: str, depth: int, filter: Metadata | None, use_cache: bool | None
-    ):
+    ) -> list[tuple[float, Callable[[], list[SearchResult]]]]:
         raw = await self._async_invoke_generator(self._generate_queries, query)
         return self._build_plan(raw, query, depth, filter, use_cache)
 
@@ -403,7 +413,7 @@ class HyDERetriever(QueryExpansionRetriever):
         llm_generate_hypothetical: Callable[[str], str | Sequence[str]] | None = None,
         strategy: HyDEStrategy = "average",
         max_passages: int = 5,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         gen = (
             generate_hypothetical
@@ -456,12 +466,252 @@ class HyDERetriever(QueryExpansionRetriever):
 
         return plan
 
-    def _plan(self, query: str, depth: int, filter: Metadata | None, use_cache: bool | None):
+    def _plan(
+        self, query: str, depth: int, filter: Metadata | None, use_cache: bool | None
+    ) -> list[tuple[float, Callable[[], list[SearchResult]]]]:
         raw = self._invoke_generator(self._generate_hypothetical, query)
         return self._build_plan(raw, query, depth, filter, use_cache)
 
     async def _async_plan(
         self, query: str, depth: int, filter: Metadata | None, use_cache: bool | None
-    ):
+    ) -> list[tuple[float, Callable[[], list[SearchResult]]]]:
         raw = await self._async_invoke_generator(self._generate_hypothetical, query)
         return self._build_plan(raw, query, depth, filter, use_cache)
+
+
+class BM25Retriever:
+    """Sparse lexical retriever powered by an in-memory Okapi BM25 index."""
+
+    def __init__(
+        self,
+        source: Dynavec | NamespaceView,
+        *,
+        namespace: str = "default",
+        top_k: int = 10,
+        k1: float = 1.5,
+        b: float = 0.75,
+        index: BM25Index | None = None,
+        documents: Sequence[Document | dict[str, Any]] | None = None,
+        populate_from_store: bool = False,
+    ) -> None:
+        if top_k < 1:
+            raise ValueError("top_k must be >= 1")
+
+        if isinstance(source, NamespaceView):
+            self._db = source._db
+            self._namespace = source.namespace
+        else:
+            self._db = source
+            self._namespace = namespace
+
+        self.top_k = top_k
+        self.index = index or BM25Index(k1=k1, b=b)
+
+        if documents:
+            self.index_documents(documents)
+        elif populate_from_store:
+            self.populate_from_store()
+
+    @property
+    def namespace(self) -> str:
+        return self._namespace
+
+    def index_documents(
+        self,
+        documents: Sequence[Document | dict[str, Any] | tuple[str, str | None]],
+    ) -> None:
+        """Add documents to the underlying BM25 index."""
+        self.index.add_documents(documents)
+
+    def populate_from_store(self, max_docs: int | None = None) -> int:
+        """Hydrate and index documents from the underlying DynamoDB / S3 store."""
+        count = 0
+        try:
+            for hit in self._db.list_vectors(self._namespace, hydrate=True):
+                if hit.text:
+                    self.index.add_document(hit.id, hit.text, hit.metadata)
+                    count += 1
+                    if max_docs is not None and count >= max_docs:
+                        break
+        except Exception as exc:
+            logger.warning("Could not auto-populate BM25 index from store: %s", exc)
+        return count
+
+    def search(
+        self,
+        query: str,
+        *,
+        top_k: int | None = None,
+        filter: Metadata | None = None,
+    ) -> list[SearchResult]:
+        """Perform lexical BM25 search."""
+        if not isinstance(query, str) or not query.strip():
+            raise ValueError("query must be a non-empty string")
+        k = top_k if top_k is not None else self.top_k
+        if k < 1:
+            raise ValueError("top_k must be >= 1")
+        return self.index.search(query, top_k=k, filter=filter)
+
+    async def asearch(
+        self,
+        query: str,
+        *,
+        top_k: int | None = None,
+        filter: Metadata | None = None,
+    ) -> list[SearchResult]:
+        """Async variant of lexical BM25 search."""
+        return await asyncio.to_thread(self.search, query, top_k=top_k, filter=filter)
+
+
+class BM25HybridRetriever:
+    """Hybrid dense-sparse fusion retriever combining S3 Vectors ANN and BM25 via RRF."""
+
+    def __init__(
+        self,
+        source: Dynavec | NamespaceView,
+        *,
+        namespace: str = "default",
+        dense_weight: float = 1.0,
+        sparse_weight: float = 0.8,
+        rrf_k: int = 60,
+        top_k: int = 10,
+        per_query_k: int | None = None,
+        bm25_retriever: BM25Retriever | None = None,
+        k1: float = 1.5,
+        b: float = 0.75,
+        documents: Sequence[Document | dict[str, Any]] | None = None,
+        weights: Sequence[float] | Any | None = None,
+    ) -> None:
+        if top_k < 1:
+            raise ValueError("top_k must be >= 1")
+        if rrf_k < 1:
+            raise ValueError("rrf_k must be >= 1")
+        if per_query_k is not None and per_query_k < 1:
+            raise ValueError("per_query_k must be >= 1")
+
+        if isinstance(source, NamespaceView):
+            self._db = source._db
+            self._namespace = source.namespace
+        else:
+            self._db = source
+            self._namespace = namespace
+
+        if weights is not None:
+            if hasattr(weights, "weights"):
+                weights = weights.weights
+            if len(weights) != 2:
+                raise ValueError("weights must contain exactly 2 elements [dense_weight, sparse_weight]")
+            dense_weight, sparse_weight = float(weights[0]), float(weights[1])
+
+        if dense_weight <= 0 or sparse_weight <= 0:
+            raise ValueError("weights must be positive")
+
+        self.dense_weight = dense_weight
+        self.sparse_weight = sparse_weight
+        self.rrf_k = rrf_k
+        self.top_k = top_k
+        self.per_query_k = per_query_k
+
+        if bm25_retriever is not None:
+            self.bm25_retriever = bm25_retriever
+        else:
+            self.bm25_retriever = BM25Retriever(
+                source,
+                namespace=self._namespace,
+                k1=k1,
+                b=b,
+                documents=documents,
+                top_k=top_k,
+            )
+
+        self._local_executor: ThreadPoolExecutor | None = None
+
+    @property
+    def namespace(self) -> str:
+        return self._namespace
+
+    @property
+    def _executor(self) -> ThreadPoolExecutor:
+        if hasattr(self._db, "_executor") and self._db._executor is not None:
+            return self._db._executor
+        if self._local_executor is None:
+            self._local_executor = ThreadPoolExecutor(max_workers=8)
+        return self._local_executor
+
+    def index_documents(
+        self,
+        documents: Sequence[Document | dict[str, Any] | tuple[str, str | None]],
+    ) -> None:
+        """Add documents to the BM25 index."""
+        self.bm25_retriever.index_documents(documents)
+
+    def search(
+        self,
+        query: str,
+        *,
+        top_k: int | None = None,
+        filter: Metadata | None = None,
+        use_cache: bool | None = None,
+        weights: Sequence[float] | Any | None = None,
+    ) -> list[SearchResult]:
+        """Execute parallel dense ANN and sparse BM25 retrieval and fuse via RRF."""
+        if not isinstance(query, str) or not query.strip():
+            raise ValueError("query must be a non-empty string")
+        effective_k = top_k if top_k is not None else self.top_k
+        if effective_k < 1:
+            raise ValueError("top_k must be >= 1")
+        depth = self.per_query_k or max(effective_k * 2, 10)
+
+        w_dense = self.dense_weight
+        w_sparse = self.sparse_weight
+        if weights is not None:
+            if hasattr(weights, "weights"):
+                weights = weights.weights
+            if len(weights) != 2:
+                raise ValueError("weights must contain exactly 2 elements [dense_weight, sparse_weight]")
+            w_dense, w_sparse = float(weights[0]), float(weights[1])
+
+        # Run dense vector search and sparse BM25 search in parallel
+        f_dense = self._executor.submit(
+            self._db.search,
+            query,
+            top_k=depth,
+            namespace=self._namespace,
+            filter=filter,
+            use_cache=use_cache,
+        )
+        f_sparse = self._executor.submit(
+            self.bm25_retriever.search,
+            query,
+            top_k=depth,
+            filter=filter,
+        )
+
+        dense_hits = f_dense.result()
+        sparse_hits = f_sparse.result()
+
+        fused = reciprocal_rank_fusion(
+            [dense_hits, sparse_hits],
+            k=self.rrf_k,
+            weights=[w_dense, w_sparse],
+        )
+        return fused[:effective_k]
+
+    async def asearch(
+        self,
+        query: str,
+        *,
+        top_k: int | None = None,
+        filter: Metadata | None = None,
+        use_cache: bool | None = None,
+        weights: Sequence[float] | Any | None = None,
+    ) -> list[SearchResult]:
+        """Async variant of hybrid search."""
+        return await asyncio.to_thread(
+            self.search,
+            query,
+            top_k=top_k,
+            filter=filter,
+            use_cache=use_cache,
+            weights=weights,
+        )

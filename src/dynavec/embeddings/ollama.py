@@ -6,7 +6,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import Any, cast
 
 from .base import Embedder, Vector
 
@@ -66,7 +66,7 @@ class OllamaEmbedder(Embedder):
         )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                return json.loads(resp.read().decode("utf-8"))
+                return cast(dict[str, Any], json.loads(resp.read().decode("utf-8")))
         except urllib.error.URLError as exc:
             raise RuntimeError(f"Ollama embedding request failed ({url}): {exc}") from exc
 

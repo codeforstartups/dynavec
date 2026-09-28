@@ -21,11 +21,16 @@ class Document:
     text: str | None = None
     vector: Vector | None = None
     metadata: Metadata = field(default_factory=dict)
+    ttl_seconds: int | None = None
 
     def __post_init__(self) -> None:
         if self.text is None and self.vector is None:
             raise ValueError(
                 f"Document {self.id!r} must have either 'text' or 'vector' set."
+            )
+        if self.ttl_seconds is not None and self.ttl_seconds <= 0:
+            raise ValueError(
+                f"Document {self.id!r} ttl_seconds must be positive, got {self.ttl_seconds}."
             )
 
 
@@ -43,15 +48,19 @@ class SearchResult:
     text: str | None = None
     metadata: Metadata = field(default_factory=dict)
     vector: Vector | None = None
+    ttl: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d = {
             "id": self.id,
             "score": self.score,
             "distance": self.distance,
             "text": self.text,
             "metadata": self.metadata,
         }
+        if self.ttl is not None:
+            d["ttl"] = self.ttl
+        return d
 
 
 @dataclass
@@ -90,3 +99,5 @@ class UpsertResult:
 
     count: int
     ids: list[str] = field(default_factory=list)
+    # Stored version after an update(); None for plain upserts.
+    version: int | None = None

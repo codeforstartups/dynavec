@@ -223,7 +223,7 @@ class RRFWeightFitter:
 
         def _softmax(x: np.ndarray) -> list[float]:
             e = np.exp(x - x.max())
-            return (e / e.sum()).tolist()
+            return [float(value) for value in (e / e.sum()).tolist()]
 
         def _neg_ndcg(x: np.ndarray) -> float:
             nonlocal eval_count

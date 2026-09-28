@@ -34,7 +34,9 @@
         "dynamodb:GetItem",
         "dynamodb:UpdateItem",
         "dynamodb:DeleteItem",
-        "dynamodb:Query"
+        "dynamodb:Query",
+        "dynamodb:DescribeTimeToLive",
+        "dynamodb:UpdateTimeToLive"
       ],
       "Resource": [
         "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/dynavec_*",

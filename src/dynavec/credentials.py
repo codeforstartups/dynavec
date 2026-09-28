@@ -13,6 +13,7 @@ The resulting object is a frozen, side-effect-free description; call
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -28,14 +29,14 @@ class AWSCredentials:
     role_session_name: str = "dynavec"
     external_id: str | None = None
 
-    def session(self):
+    def session(self) -> Any:
         """Build a ``boto3.Session`` from this credential description."""
         import boto3
 
         if self.assume_role_arn:
             return self._assume_role_session(boto3)
 
-        kwargs = {}
+        kwargs: dict[str, str] = {}
         if self.access_key_id and self.secret_access_key:
             kwargs["aws_access_key_id"] = self.access_key_id
             kwargs["aws_secret_access_key"] = self.secret_access_key
@@ -47,9 +48,9 @@ class AWSCredentials:
             kwargs["region_name"] = self.region
         return boto3.Session(**kwargs)
 
-    def _assume_role_session(self, boto3):
+    def _assume_role_session(self, boto3: Any) -> Any:
         # Base session used only to call STS.
-        base_kwargs = {}
+        base_kwargs: dict[str, str] = {}
         if self.access_key_id and self.secret_access_key:
             base_kwargs["aws_access_key_id"] = self.access_key_id
             base_kwargs["aws_secret_access_key"] = self.secret_access_key
@@ -79,7 +80,7 @@ class AWSCredentials:
         )
 
 
-def resolve_session(credentials: AWSCredentials | None, boto_session):
+def resolve_session(credentials: AWSCredentials | None, boto_session: Any | None) -> Any:
     """Pick a boto3 session: explicit session > credentials > default chain."""
     if boto_session is not None:
         return boto_session

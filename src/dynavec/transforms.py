@@ -13,8 +13,9 @@ they compose with ordinary Python (closures, ``functools.partial``, lambdas).
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 Vector = list[float]
 Metadata = dict[str, Any]
@@ -45,7 +46,7 @@ class TransformPipeline:
         self._transforms.append(transform)
         return self
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Transform]:
         return iter(self._transforms)
 
     def __len__(self) -> int:
@@ -57,7 +58,9 @@ class TransformPipeline:
         return ctx
 
 
-def as_pipeline(spec) -> TransformPipeline | None:
+def as_pipeline(
+    spec: TransformPipeline | Transform | Iterable[Transform] | None,
+) -> TransformPipeline | None:
     """Coerce ``None`` / a single callable / a list into a pipeline."""
     if spec is None:
         return None
@@ -75,7 +78,7 @@ class LambdaTransform:
     as JSON and must return the same shape (any subset it wants to change).
     """
 
-    def __init__(self, function_name: str, session, qualifier: str | None = None) -> None:
+    def __init__(self, function_name: str, session: Any, qualifier: str | None = None) -> None:
         self._client = session.client("lambda")
         self._function_name = function_name
         self._qualifier = qualifier
@@ -97,10 +100,10 @@ class LambdaTransform:
         if self._qualifier:
             kwargs["Qualifier"] = self._qualifier
         resp = self._client.invoke(**kwargs)
-        body = json.loads(resp["Payload"].read() or b"{}")
+        body = cast(dict[str, Any], json.loads(resp["Payload"].read() or b"{}"))
         # Lambda may return a subset; only overwrite what it provides.
         ctx.text = body.get("text", ctx.text)
         ctx.vector = body.get("vector", ctx.vector)
         if "metadata" in body and body["metadata"] is not None:
-            ctx.metadata = body["metadata"]
+            ctx.metadata = cast(Metadata, body["metadata"])
         return ctx

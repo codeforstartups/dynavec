@@ -7,6 +7,8 @@ testable without AWS.
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 
 from .config import DistanceMetric
@@ -139,7 +141,7 @@ def maximal_marginal_relevance(
 
     def _norm(x: np.ndarray) -> np.ndarray:
         n = np.linalg.norm(x, axis=-1, keepdims=True)
-        return x / np.clip(n, 1e-12, None)
+        return cast(np.ndarray, x / np.clip(n, 1e-12, None))
 
     qn = _norm(q.reshape(1, -1))[0]
     mn = _norm(mat)

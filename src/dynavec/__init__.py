@@ -21,12 +21,14 @@ Quick start
 from __future__ import annotations
 
 from .async_client import AsyncDynavec
+from .bm25 import BM25Index
 from .cache import BaseCache, DynamoDBCache, RedisCache, SemanticCache, warm_cache
 from .client import Dynavec
 from .config import DynavecConfig
 from .credentials import AWSCredentials
 from .exceptions import (
     ConfigurationError,
+    ConflictError,
     DimensionMismatchError,
     DynavecError,
     EmbeddingError,
@@ -72,6 +74,8 @@ from .retrieval import (
     reciprocal_rank_fusion,
 )
 from .retrievers import (
+    BM25HybridRetriever,
+    BM25Retriever,
     HyDERetriever,
     MultiQueryRetriever,
     QueryExpansionRetriever,
@@ -113,6 +117,9 @@ __all__ = [
     "QueryExpansionRetriever",
     "MultiQueryRetriever",
     "HyDERetriever",
+    "BM25Index",
+    "BM25Retriever",
+    "BM25HybridRetriever",
     "FitResult",
     "RRFWeightFitter",
     "HotTier",
@@ -144,5 +151,6 @@ __all__ = [
     "DimensionMismatchError",
     "NotFoundError",
     "ItemTooLargeError",
+    "ConflictError",
     "MissingDependencyError",
 ]

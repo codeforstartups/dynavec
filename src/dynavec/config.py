@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from botocore.config import Config
 
 DistanceMetric = Literal["cosine", "euclidean"]
 
@@ -88,6 +91,8 @@ class DynavecConfig:
     max_workers: int = 8
     parallel_writes: bool = True
     max_pool_connections: int | None = None
+    put_rps: float | None = None
+    query_rps: float | None = None
 
     # in-memory hot tier (optional): keep a hot working set in RAM so warmed
     # namespaces are served entirely from memory — no S3 Vectors query and no
@@ -100,6 +105,8 @@ class DynavecConfig:
     # provisioning
     auto_provision: bool = False
     dynamodb_billing_mode: Literal["PAY_PER_REQUEST", "PROVISIONED"] = "PAY_PER_REQUEST"
+    dynamodb_enable_ttl: bool = True
+    dynamodb_ttl_attribute: str = "ttl"
 
     # document storage tuning
     gzip_threshold_bytes: int | None = None
@@ -111,7 +118,7 @@ class DynavecConfig:
     structured_logging: bool = False
     log_level: str = "INFO"
 
-    def botocore_config(self):  # type: ignore[no-untyped-def]
+    def botocore_config(self) -> Config | None:
         """Return a botocore Config with pool tuning, or None for defaults.
 
         Local import keeps the base package cheap (boto3/botocore stay
@@ -155,3 +162,11 @@ class DynavecConfig:
         if self.dimension > 4096:
             logger = logging.getLogger(__name__)
             logger.warning("Amazon S3 Vectors currently supports a maximum embedding dimension of 4096. You have configured a dimension of %d. This may result in an API error during provisioning or writing data.", self.dimension)
+
+        if self.put_rps is not None and self.put_rps <= 0:
+            raise ValueError("put_rps must be positive")
+
+        if self.query_rps is not None and self.query_rps <= 0:
+            raise ValueError("query_rps must be positive")
+
+

@@ -16,8 +16,9 @@ consumes it. Tools and prompts primitives can be adapted the same way.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -25,9 +26,28 @@ from typing import Any
 from .client import Dynavec
 from .exceptions import MissingDependencyError
 from .models import Document
+from .transforms import Transform, TransformPipeline
 from .utils import chunked
 
 Metadata = dict[str, Any]
+
+
+def _normalize_front_matter(value: Any) -> Any:
+    """Recursively normalize parsed YAML front-matter for storage.
+
+    ``yaml.safe_load()`` converts unquoted dates (``date: 2026-09-24``) into
+    ``datetime.date`` / ``datetime.datetime`` objects, which DynamoDB's
+    ``TypeSerializer`` rejects. Convert those to ISO 8601 strings, recurse
+    through mappings and sequences, and leave strings, ints, floats, and
+    booleans untouched.
+    """
+    if isinstance(value, (datetime.datetime, datetime.date)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _normalize_front_matter(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_front_matter(v) for v in value]
+    return value
 
 
 @dataclass
@@ -60,7 +80,7 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 150) -> Iterato
 class IterableSource:
     """Wrap a list/iterable of records or dicts as a Source."""
 
-    def __init__(self, records: Iterable) -> None:
+    def __init__(self, records: Iterable[Record | dict[str, Any]]) -> None:
         self._records = records
 
     def __iter__(self) -> Iterator[Record]:
@@ -122,7 +142,7 @@ class DocxSource:
         self._document_cls = docx.Document
 
     def __iter__(self) -> Iterator[Record]:
-        doc = self._document_cls(self._path)
+        doc = self._document_cls(str(self._path))
         paragraphs = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
         if not paragraphs:
             return
@@ -156,7 +176,7 @@ class PptxSource:
         self._presentation_cls = Presentation
 
     def __iter__(self) -> Iterator[Record]:
-        prs = self._presentation_cls(self._path)
+        prs = self._presentation_cls(str(self._path))
         path_str = self._path.as_posix()
 
         for slide_num, slide in enumerate(prs.slides, start=1):
@@ -360,7 +380,9 @@ class MarkdownSource:
             metadata = {}
         if not isinstance(metadata, dict) or any(not isinstance(k, str) for k in metadata):
             raise ValueError(f"Front matter in {path} must be a mapping with string keys")
-        return "".join(lines[end + 1 :]), metadata
+        # yaml.safe_load() turns unquoted dates into datetime.date/datetime
+        # objects, which storage backends (e.g. DynamoDB) cannot serialize.
+        return "".join(lines[end + 1 :]), _normalize_front_matter(metadata)
 
     def __iter__(self) -> Iterator[Record]:
         for path in sorted(self.root.glob(self.glob)):
@@ -391,12 +413,16 @@ class MCPResourceSource:
         Optional predicate ``(uri) -> bool`` to select which resources to pull.
     """
 
-    def __init__(self, session, uri_filter=None) -> None:
+    def __init__(
+        self,
+        session: Any,
+        uri_filter: Callable[[str], bool] | None = None,
+    ) -> None:
         self._session = session
         self._uri_filter = uri_filter
 
     @staticmethod
-    def _extract_text(contents) -> str:
+    def _extract_text(contents: Any) -> str:
         # MCP read_resource returns an object/list of content parts; grab text.
         parts = getattr(contents, "contents", contents)
         if isinstance(parts, (list, tuple)):
@@ -523,12 +549,12 @@ class S3Source:
             except UnicodeDecodeError:
                 return
             lines = text.splitlines()
-            reader = csv.reader(lines)
+            csv_reader = csv.reader(lines)
             try:
-                header = next(reader)
+                header = next(csv_reader)
             except StopIteration:
                 return
-            for row_number, row in enumerate(reader, start=1):
+            for row_number, row in enumerate(csv_reader, start=1):
                 pairs = [f"{col}: {val}" for col, val in zip(header, row) if val and val.strip()]
                 row_text = ", ".join(pairs)
                 if row_text:
@@ -546,8 +572,8 @@ class S3Source:
             except ImportError as exc:
                 raise MissingDependencyError("S3Source PDF parsing", "pypdf", "ingest") from exc
 
-            reader = PdfReader(io.BytesIO(data))
-            for page_number, page in enumerate(reader.pages, start=1):
+            pdf_reader = PdfReader(io.BytesIO(data))
+            for page_number, page in enumerate(pdf_reader.pages, start=1):
                 page_text = page.extract_text()
                 if page_text and page_text.strip():
                     yield Record(
@@ -685,14 +711,14 @@ class S3Source:
 
 def ingest(
     db: Dynavec,
-    source: Iterable,
+    source: Iterable[Record | dict[str, Any]],
     *,
     namespace: str = "default",
     chunk_size: int = 1000,
     overlap: int = 150,
     batch_size: int = 256,
     auto_metadata: bool = True,
-    transform=None,
+    transform: TransformPipeline | Transform | Iterable[Transform] | None = None,
 ) -> int:
     """Pull records from ``source``, chunk, embed, and upsert. Returns #chunks.
 

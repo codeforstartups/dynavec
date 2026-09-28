@@ -52,6 +52,10 @@ class CachedEmbedder(Embedder):
     def dimension(self) -> int:
         return self._inner.dimension
 
+    @dimension.setter
+    def dimension(self, value: int) -> None:
+        self._inner.dimension = value
+
     def embed_documents(self, texts: list[str]) -> list[Vector]:
         if not texts:
             return []

@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from openai.types import CreateEmbeddingResponse
+
 from ..exceptions import MissingDependencyError
 from ..utils import retry
 from .base import Embedder, Vector
@@ -77,10 +82,9 @@ class OpenAIEmbedder(Embedder):
         out: list[Vector] = []
         for i in range(0, len(texts), self.batch_size):
             chunk = texts[i : i + self.batch_size]
-            kwargs = {"model": self.model, "input": chunk}
-            if self._requested_dim is not None:
-                kwargs["dimensions"] = self._requested_dim
-            resp = self._create_embeddings(**kwargs)
+            resp = self._create_embeddings(
+                model=self.model, input=chunk, dimensions=self._requested_dim
+            )
             out.extend(d.embedding for d in resp.data)
         return out
 
@@ -89,5 +93,11 @@ class OpenAIEmbedder(Embedder):
         retry_on=_is_openai_retryable,
         retry_delay=_openai_retry_after,
     )
-    def _create_embeddings(self, **kwargs: object):
-        return self._client.embeddings.create(**kwargs)
+    def _create_embeddings(
+        self, *, model: str, input: list[str], dimensions: int | None = None
+    ) -> CreateEmbeddingResponse:
+        if dimensions is None:
+            return self._client.embeddings.create(model=model, input=input)
+        return self._client.embeddings.create(
+            model=model, input=input, dimensions=dimensions
+        )

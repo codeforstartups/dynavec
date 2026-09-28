@@ -43,6 +43,20 @@ class ItemTooLargeError(DynavecError):
         self.limit_bytes = limit_bytes
 
 
+class ConflictError(DynavecError):
+    """Raised when a document changed between being read and being written."""
+
+    def __init__(self, doc_id: str, namespace: str, expected_version: int) -> None:
+        super().__init__(
+            f"Document {doc_id!r} in namespace {namespace!r} was modified concurrently: "
+            f"expected version {expected_version}, but the stored version differs. "
+            "Nothing was written. Re-read the document and retry the update."
+        )
+        self.doc_id = doc_id
+        self.namespace = namespace
+        self.expected_version = expected_version
+
+
 class MissingDependencyError(DynavecError):
     """Raised when an optional dependency for a chosen backend is not installed."""
 

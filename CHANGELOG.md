@@ -3,6 +3,19 @@
 All notable changes to dynavec are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Optimistic concurrency on `update()`** (#24) — each update stores a `version` on the
+  DynamoDB item and writes with a `ConditionExpression`, so a concurrent change raises
+  `ConflictError` (nothing written) instead of being silently overwritten. Pass
+  `expected_version=` to guard across your own read/update cycle; `UpsertResult.version`
+  returns the new version. Plain `upsert()` stays last-writer-wins and resets the version.
+
+### Changed
+- `update()` now writes DynamoDB before S3 Vectors (previously in parallel) so a conflict
+  leaves both stores untouched, and reads the document with a strongly consistent `GetItem`.
+
 ## [0.6.0] - 2026-09-25
 
 A large release: new retrieval strategies, quantization methods, graph and cache

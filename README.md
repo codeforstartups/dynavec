@@ -113,7 +113,8 @@ Replace `REGION` and `ACCOUNT_ID`. `dynamodb:Scan` is only needed for the GraphR
         "dynamodb:CreateTable", "dynamodb:DescribeTable", "dynamodb:DeleteTable",
         "dynamodb:BatchWriteItem", "dynamodb:BatchGetItem",
         "dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem",
-        "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan"
+        "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan",
+        "dynamodb:DescribeTimeToLive", "dynamodb:UpdateTimeToLive"
       ],
       "Resource": [
         "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/dynavec_*",
@@ -164,6 +165,10 @@ for h in hits:
     print(h.score, h.id, h.text)
 ```
 
+`search()` returns a list of hits by default. Pass `explain=True` to receive an
+`ExplainedSearchResult` containing those hits plus timing and candidate-count
+details; the type annotations distinguish the two return shapes.
+
 ### Bring your own vectors (no embedder needed)
 
 ```python
@@ -178,6 +183,24 @@ hits = db.search(vector=my_query_vector, top_k=5)
 - **`auto_metadata=True`** → dynavec also derives `created_at`, `content_hash`, `word_count`, `char_count`. Your keys always win on conflict.
 
 Control the split with `DynavecConfig.filterable_keys` (allowlist of keys pushed to S3 Vectors for filtering) — keep it small; S3 Vectors caps filterable metadata size per vector.
+
+### Per-document TTL & automatic expiry
+
+Expire ephemeral documents, session memories, or cache entries automatically via DynamoDB's native Time To Live (TTL):
+
+```python
+# Pass ttl_seconds on Document or upsert()
+db.upsert([
+    Document(id="session-1", text="Temporary session context", ttl_seconds=3600),
+    Document(id="cached-doc", text="Ephemeral cache data", ttl_seconds=86400),
+])
+
+# Or set a default TTL across an entire batch
+ns = db.namespace("sessions")
+ns.upsert([Document(id="a", text="..."), Document(id="b", text="...")], ttl_seconds=1800)
+```
+
+Dynavec automatically computes the Unix epoch timestamp, stores it in the DynamoDB `ttl` attribute, and enables TTL on the table during provisioning (`auto_provision=True` or `provision_all`).
 
 ---
 
@@ -437,7 +460,7 @@ hit-rate, and a filterable **traces** table with per-trace drill-down.
 | **Knowledge graph / ER** | Entities + relations in DynamoDB linked to embeddings; traverse to scope/guide vector search (GraphRAG) | `db.graph_add_edge(...)`, `db.graph_search(q, seed_entities=[...])` |
 | **Query cache** | DynamoDB-TTL exact cache, in-process **semantic** cache (serves near-duplicate queries), or Redis/**ElastiCache**; writes evict the affected namespace's entries | `Dynavec(..., cache=SemanticCache())` |
 | **Ingestion / MCP** | Pull + chunk + embed from any source; **any MCP server's resources** (Notion, Confluence, Drive, …) become a corpus | `ingest(db, MCPResourceSource(session))` |
-| **Updates + Lambda** | Update text/vector/metadata (merge or replace); transform pipeline incl. **in-account AWS Lambda** | `db.update(id, ...)`, `Dynavec(..., transform=LambdaTransform(...))` |
+| **Updates + Lambda** | Update text/vector/metadata (merge or replace) with **optimistic concurrency** (versioned conditional writes; `ConflictError` instead of lost updates); transform pipeline incl. **in-account AWS Lambda** | `db.update(id, ..., expected_version=v)`, `Dynavec(..., transform=LambdaTransform(...))` |
 | **IAM / credentials** | Access keys, session tokens, named profiles, cross-account **assume-role** | `Dynavec(..., credentials=AWSCredentials(...))` |
 | **Frameworks** | LangChain + LlamaIndex vector stores; a framework-agnostic tool for LangGraph/CrewAI/Strands | `dynavec.integrations.*` |
 | **Benchmark report** | Comparison table + recall/latency + cost-by-scale (log) charts | `python -m benchmarks.report` |

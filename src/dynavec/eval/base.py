@@ -6,7 +6,15 @@ import json
 import re
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, cast
+
+
+def _load_json_object(candidate: str) -> dict[str, Any] | None:
+    parsed: object = json.loads(candidate)
+    if isinstance(parsed, dict):
+        # JSON object keys are always strings.
+        return cast(dict[str, Any], parsed)
+    return None
 
 
 def extract_json(text: str) -> dict[str, Any]:
@@ -23,8 +31,8 @@ def extract_json(text: str) -> dict[str, Any]:
 
     # 1. Try direct json parsing
     try:
-        data = json.loads(clean)
-        if isinstance(data, dict):
+        data = _load_json_object(clean)
+        if data is not None:
             return data
     except json.JSONDecodeError:
         pass
@@ -33,7 +41,9 @@ def extract_json(text: str) -> dict[str, Any]:
     fenced_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean, re.DOTALL)
     if fenced_match:
         try:
-            return json.loads(fenced_match.group(1))
+            data = _load_json_object(fenced_match.group(1))
+            if data is not None:
+                return data
         except json.JSONDecodeError:
             pass
 
@@ -43,7 +53,9 @@ def extract_json(text: str) -> dict[str, Any]:
     if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
         candidate = clean[first_brace : last_brace + 1]
         try:
-            return json.loads(candidate)
+            data = _load_json_object(candidate)
+            if data is not None:
+                return data
         except json.JSONDecodeError:
             pass
 

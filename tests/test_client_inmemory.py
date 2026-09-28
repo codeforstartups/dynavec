@@ -100,14 +100,38 @@ class FakeS3(client_mod.S3VectorsStore):
 class FakeDDB(client_mod.DynamoDBStore):
     def __init__(self, config, boto_session=None):
         self.config = config
-        self._store = {}  # (ns, id) -> {text, metadata}
+        self._store = {}  # (ns, id) -> {text, metadata[, version]}
 
     def put_many(self, namespace, items):
+        # like a real put_item: replaces the whole item, dropping any version
         for doc_id, text, meta in items:
             self._store[(namespace, doc_id)] = {"text": text, "metadata": dict(meta)}
 
+    def put_versioned(self, namespace, doc_id, text, metadata, expected_version):
+        from dynavec.exceptions import ConflictError
+
+        stored = self._store.get((namespace, doc_id), {})
+        if stored.get("version", 0) != expected_version:
+            raise ConflictError(doc_id, namespace, expected_version)
+        self._store[(namespace, doc_id)] = {
+            "text": text,
+            "metadata": dict(metadata),
+            "version": expected_version + 1,
+        }
+        return expected_version + 1
+
+    def get_versioned(self, namespace, doc_id):
+        stored = self._store.get((namespace, doc_id))
+        if stored is None:
+            return None
+        return {**stored, "version": stored.get("version", 0)}
+
     def get_many(self, namespace, ids):
-        return {i: self._store[(namespace, i)] for i in ids if (namespace, i) in self._store}
+        return {
+            i: {"text": self._store[(namespace, i)]["text"],
+                "metadata": self._store[(namespace, i)]["metadata"]}
+            for i in ids if (namespace, i) in self._store
+        }
 
     def delete_many(self, namespace, ids):
         for i in ids:
@@ -373,6 +397,11 @@ class WrongOutputEmbedder(HashEmbedder):
         return [[0.1, 0.2] for _ in texts]
 
 
+class MissingOutputEmbedder(HashEmbedder):
+    def embed_documents(self, texts):
+        return []
+
+
 def test_embedder_output_dimension_mismatch_raises(db):
     from dynavec.exceptions import DimensionMismatchError
 
@@ -381,6 +410,18 @@ def test_embedder_output_dimension_mismatch_raises(db):
     with pytest.raises(
         DimensionMismatchError,
         match=r"Document 'x' vector has dimension 2, expected 8",
+    ):
+        db.upsert([Document(id="x", text="hello")])
+
+
+def test_embedder_missing_output_raises_configuration_error(db):
+    from dynavec.exceptions import ConfigurationError
+
+    db.embedder = MissingOutputEmbedder(8)
+
+    with pytest.raises(
+        ConfigurationError,
+        match=r"Embedder did not return a vector for document 'x'",
     ):
         db.upsert([Document(id="x", text="hello")])
 
@@ -431,6 +472,74 @@ def test_update_missing_raises(db):
 
     with pytest.raises(NotFoundError):
         db.update("nope", metadata={"x": 1})
+
+
+# ------------------------------------------------------ optimistic concurrency
+def test_update_bumps_version_on_each_write(db):
+    db.upsert([Document(id="1", text="apple pie")])
+    assert db.update("1", metadata={"a": 1}).version == 1
+    assert db.update("1", metadata={"b": 2}).version == 2
+
+
+def test_update_with_stale_expected_version_writes_nothing(db):
+    from dynavec.exceptions import ConflictError
+
+    db.upsert([Document(id="1", text="apple pie", metadata={"cat": "food"})])
+    first = db.update("1", metadata={"rating": 4})
+    db.update("1", metadata={"rating": 5})  # someone else moves it to version 2
+    vector_before = list(db._vectors._store["default#1"][0])
+
+    with pytest.raises(ConflictError) as info:
+        db.update("1", text="rocket launch", expected_version=first.version)
+
+    assert info.value.expected_version == 1
+    assert db.get(["1"])[0].text == "apple pie"
+    assert db.get(["1"])[0].metadata["rating"] == 5
+    assert db._vectors._store["default#1"][0] == vector_before
+
+
+def test_concurrent_update_between_read_and_write_is_not_lost(db):
+    from dynavec.exceptions import ConflictError
+
+    db.upsert([Document(id="1", text="apple pie", metadata={"cat": "food"})])
+    db.update("1", metadata={"views": 1})
+    real_read = db._docs.get_versioned
+
+    def read_then_race(namespace, doc_id):
+        snapshot = real_read(namespace, doc_id)
+        # another writer commits after our read but before our write
+        db._docs.put_versioned(
+            namespace, doc_id, snapshot["text"], {**snapshot["metadata"], "views": 2},
+            expected_version=snapshot["version"],
+        )
+        return snapshot
+
+    db._docs.get_versioned = read_then_race
+
+    with pytest.raises(ConflictError):
+        db.update("1", metadata={"tag": "dessert"})
+
+    meta = db.get(["1"])[0].metadata
+    assert meta["views"] == 2  # the concurrent write survived
+    assert "tag" not in meta
+
+
+def test_upsert_invalidates_earlier_versions(db):
+    from dynavec.exceptions import ConflictError
+
+    db.upsert([Document(id="1", text="apple pie")])
+    v1 = db.update("1", metadata={"a": 1}).version
+    db.upsert([Document(id="1", text="apple tart")])  # blind overwrite, unversioned
+
+    with pytest.raises(ConflictError):
+        db.update("1", metadata={"b": 2}, expected_version=v1)
+    assert db.update("1", metadata={"b": 2}).version == 1
+
+
+def test_update_upsert_if_missing_starts_at_version_one(db):
+    res = db.update("new", text="fresh doc", upsert_if_missing=True)
+    assert res.version == 1
+    assert db.get(["new"])[0].text == "fresh doc"
 
 
 def test_search_stream_yields_incrementally(db):
@@ -499,6 +608,26 @@ def test_search_many_parallel(db):
     results = db.search_many(["apple", "rocket"], top_k=1)
     assert len(results) == 2
     assert all(len(r) == 1 for r in results)
+
+
+@pytest.mark.parametrize("explain", [False, True])
+def test_search_many_explain_preserves_order_and_namespace(db, explain):
+    ns = db.namespace("kb")
+    ns.upsert([Document(id="1", text="apple"), Document(id="2", text="rocket")])
+    batches = db.search_many(
+        ["rocket", "apple"], namespace="kb", top_k=1, explain=explain,
+        normalize_scores=True,
+    )
+    assert len(batches) == 2
+    for result, expected_id in zip(batches, ["2", "1"]):
+        if explain:
+            assert isinstance(result, ExplainedSearchResult)
+            result = result.results
+        assert isinstance(result, list)
+        assert [hit.id for hit in result] == [expected_id]
+    single = ns.search("apple", explain=explain)
+    assert isinstance(single, ExplainedSearchResult if explain else list)
+    assert db.search_many([], explain=explain) == []
 
 
 def test_context_manager_closes_pool(db):

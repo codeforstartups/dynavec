@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from ..exceptions import MissingDependencyError
 from .base import Embedder, Vector
 
@@ -48,4 +50,4 @@ class SentenceTransformerEmbedder(Embedder):
             normalize_embeddings=self.normalize,
             convert_to_numpy=True,
         )
-        return arr.tolist()
+        return cast(list[Vector], arr.tolist())

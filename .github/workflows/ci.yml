@@ -6,6 +6,19 @@ on:
   pull_request:
 
 jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install (with dev and type-check extras)
+        run: uv pip install -e ".[dev,typecheck]"
+      - name: Type check
+        run: uv run --no-sync mypy
+
   test:
     runs-on: ubuntu-latest
     strategy:

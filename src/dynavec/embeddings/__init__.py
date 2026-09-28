@@ -7,7 +7,7 @@ actually construct that embedder.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .base import Embedder, Vector
 from .cache import EmbeddingCache, InMemoryCache
@@ -59,7 +59,7 @@ _LAZY = {
 }
 
 
-def __getattr__(name: str):  # PEP 562 lazy submodule attribute access
+def __getattr__(name: str) -> Any:  # PEP 562 lazy submodule attribute access
     if name in _LAZY:
         import importlib
 

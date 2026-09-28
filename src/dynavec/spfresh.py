@@ -14,7 +14,7 @@ import logging
 import threading
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 import numpy as np
 
@@ -101,7 +101,7 @@ class Partition:
         if self.metric == "cosine":
             norm = np.linalg.norm(vec)
             if norm > 1e-12:
-                return (vec / norm).astype(np.float32)
+                return cast(np.ndarray, (vec / norm).astype(np.float32))
         return vec.astype(np.float32)
 
     # ------------------------------------------------------------------

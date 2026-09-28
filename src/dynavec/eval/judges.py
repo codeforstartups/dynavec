@@ -144,8 +144,8 @@ class GeminiJudge(BaseJudge):
             raise MissingDependencyError("GeminiJudge", "google-generativeai", "gemini") from exc
 
         if api_key:
-            genai.configure(api_key=api_key)
-        self._model = genai.GenerativeModel(
+            genai.configure(api_key=api_key)  # type: ignore[attr-defined]
+        self._model = genai.GenerativeModel(  # type: ignore[attr-defined]
             model_name=model,
             generation_config={"temperature": temperature},
         )

@@ -37,7 +37,7 @@ class GeminiEmbedder(Embedder):
             raise MissingDependencyError("GeminiEmbedder", "google-generativeai", "gemini") from exc
 
         if api_key:
-            genai.configure(api_key=api_key)
+            genai.configure(api_key=api_key)  # type: ignore[attr-defined]
         self._genai = genai
         self.model = model if model.startswith("models/") else f"models/{model}"
         self.dimension = dimension or _MODEL_DIMS.get(model, 768)
@@ -45,14 +45,14 @@ class GeminiEmbedder(Embedder):
     def embed_documents(self, texts: list[str]) -> list[Vector]:
         out: list[Vector] = []
         for text in texts:
-            resp = self._genai.embed_content(
+            resp = self._genai.embed_content(  # type: ignore[attr-defined]
                 model=self.model, content=text, task_type="retrieval_document"
             )
-            out.append(cast(Vector, resp["embedding"]))
+            out.append(resp["embedding"])
         return out
 
     def embed_query(self, text: str) -> Vector:
-        resp = self._genai.embed_content(
+        resp = self._genai.embed_content(  # type: ignore[attr-defined]
             model=self.model, content=text, task_type="retrieval_query"
         )
-        return cast(Vector, resp["embedding"])
+        return resp["embedding"]

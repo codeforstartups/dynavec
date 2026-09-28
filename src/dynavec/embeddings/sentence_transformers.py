@@ -39,7 +39,7 @@ class SentenceTransformerEmbedder(Embedder):
             ) from exc
 
         self._model = SentenceTransformer(model, device=device)
-        self.dimension = self._model.get_sentence_embedding_dimension()
+        self.dimension = self._model.get_sentence_embedding_dimension() or 0
         self.normalize = normalize
         self.batch_size = batch_size
 

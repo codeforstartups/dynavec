@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from ..exceptions import MissingDependencyError
 from .base import Embedder, Vector
@@ -58,7 +58,7 @@ class VoyageEmbedder(Embedder):
             raise MissingDependencyError("VoyageEmbedder", "voyageai", "voyage") from exc
 
         self.model = model
-        self._client = voyageai.Client(api_key=api_key)
+        self._client = voyageai.Client(api_key=api_key)  # type: ignore[attr-defined]
         self._requested_dim = dimension
         self.dimension = dimension or _MODEL_DIMS.get(model, 1024)
         self.batch_size = batch_size
@@ -71,7 +71,7 @@ class VoyageEmbedder(Embedder):
             if self._requested_dim is not None:
                 kwargs["output_dimension"] = self._requested_dim
             resp = self._client.embed(chunk, **kwargs)
-            out.extend(resp.embeddings)
+            out.extend(cast(list[list[float]], resp.embeddings))
         return out
 
     def embed_documents(self, texts: list[str]) -> list[Vector]:

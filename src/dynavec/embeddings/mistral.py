@@ -59,5 +59,5 @@ class MistralEmbedder(Embedder):
             if self._requested_dim is not None:
                 kwargs["output_dimension"] = self._requested_dim
             resp = self._client.embeddings.create(**kwargs)
-            out.extend(d.embedding for d in resp.data)
+            out.extend(d.embedding for d in resp.data if d.embedding is not None)
         return out

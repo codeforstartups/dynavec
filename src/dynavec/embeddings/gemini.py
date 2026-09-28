@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 from ..exceptions import MissingDependencyError
 from .base import Embedder, Vector
@@ -32,12 +32,13 @@ class GeminiEmbedder(Embedder):
         dimension: int | None = None,
     ) -> None:
         try:
-            import google.generativeai as genai
+            import google.generativeai as _genai_raw
+            genai: Any = _genai_raw
         except ImportError as exc:  # pragma: no cover - import guard
             raise MissingDependencyError("GeminiEmbedder", "google-generativeai", "gemini") from exc
 
         if api_key:
-            genai.configure(api_key=api_key)  # type: ignore[attr-defined]
+            genai.configure(api_key=api_key)
         self._genai = genai
         self.model = model if model.startswith("models/") else f"models/{model}"
         self.dimension = dimension or _MODEL_DIMS.get(model, 768)
@@ -45,14 +46,14 @@ class GeminiEmbedder(Embedder):
     def embed_documents(self, texts: list[str]) -> list[Vector]:
         out: list[Vector] = []
         for text in texts:
-            resp = self._genai.embed_content(  # type: ignore[attr-defined]
+            resp = self._genai.embed_content(
                 model=self.model, content=text, task_type="retrieval_document"
             )
-            out.append(resp["embedding"])
+            out.append(cast(Vector, resp["embedding"]))
         return out
 
     def embed_query(self, text: str) -> Vector:
-        resp = self._genai.embed_content(  # type: ignore[attr-defined]
+        resp = self._genai.embed_content(
             model=self.model, content=text, task_type="retrieval_query"
         )
-        return resp["embedding"]
+        return cast(Vector, resp["embedding"])

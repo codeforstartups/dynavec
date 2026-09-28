@@ -53,12 +53,13 @@ class VoyageEmbedder(Embedder):
         batch_size: int = 128,
     ) -> None:
         try:
-            import voyageai
+            import voyageai as _voyageai_raw
+            voyageai: Any = _voyageai_raw
         except ImportError as exc:  # pragma: no cover - import guard
             raise MissingDependencyError("VoyageEmbedder", "voyageai", "voyage") from exc
 
         self.model = model
-        self._client = voyageai.Client(api_key=api_key)  # type: ignore[attr-defined]
+        self._client = voyageai.Client(api_key=api_key)
         self._requested_dim = dimension
         self.dimension = dimension or _MODEL_DIMS.get(model, 1024)
         self.batch_size = batch_size

@@ -23,13 +23,10 @@ from __future__ import annotations
 
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .telemetry import TelemetryRecorder, aggregate, aggregate_eval
-
-if TYPE_CHECKING:
-    from .client import Dynavec
 
 _INDEX_HTML = r"""<!doctype html>
 <html lang="en"><head>
@@ -212,7 +209,7 @@ load();schedule();
 </body></html>"""
 
 
-def _make_handler(recorder: TelemetryRecorder, db: Dynavec | None = None) -> type[BaseHTTPRequestHandler]:
+def _make_handler(recorder: TelemetryRecorder) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args: Any) -> None:  # quiet
             pass
@@ -274,45 +271,14 @@ def _make_handler(recorder: TelemetryRecorder, db: Dynavec | None = None) -> typ
                 ][:limit]
                 self._send(200, json.dumps(eval_runs))
                 return
-            if path == "/api/resources":
-                if db is None:
-                    self._send(400, json.dumps({"error": "db not provided"}))
-                    return
-                info = db.describe()
-                namespaces = getattr(db, 'list_namespaces', lambda: ['default'])()
-                self._send(200, json.dumps({
-                    "table": info.table,
-                    "table_status": info.table_status,
-                    "table_item_count": info.item_count or 0,
-                    "vector_bucket": info.vector_bucket,
-                    "index": info.index,
-                    "dimension": info.dimension,
-                    "distance_metric": info.distance_metric,
-                    "namespaces": namespaces
-                }))
-                return
-            if path == "/api/graph":
-                if db is None:
-                    self._send(400, json.dumps({"error": "db not provided"}))
-                    return
-                ns = qs.get("namespace", ["default"])[0]
-                if not hasattr(db, "graph"):
-                    self._send(400, json.dumps({"error": "db has no graph store"}))
-                    return
-                nodes, edges = db.graph._collect_subgraph(ns, None, None)
-                self._send(200, json.dumps({
-                    "nodes": [{"id": n} for n in nodes],
-                    "links": [{"source": src, "target": dst, "label": rel} for src, rel, dst in edges]
-                }))
-                return
             self._send(404, json.dumps({"error": "not found"}))
 
     return Handler
 
 
-def serve(recorder: TelemetryRecorder, port: int = 8778, host: str = "127.0.0.1", db: Dynavec | None = None) -> None:
+def serve(recorder: TelemetryRecorder, port: int = 8778, host: str = "127.0.0.1") -> None:
     """Start the dashboard server (blocking) bound to localhost by default."""
-    httpd = HTTPServer((host, port), _make_handler(recorder, db))
+    httpd = HTTPServer((host, port), _make_handler(recorder))
     print(f"dynavec observability dashboard: http://{host}:{port}/")
     try:
         httpd.serve_forever()

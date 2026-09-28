@@ -307,51 +307,130 @@ window.addEventListener("DOMContentLoaded", function () {
       },
     });
   }
+});
 
-  /* ---- 3. Cost calculator ---- */
-  const calcVectors = document.getElementById("calc-vectors");
-  const calcDim = document.getElementById("calc-dim");
-  const calcQpm = document.getElementById("calc-qpm");
-  const calcWpm = document.getElementById("calc-wpm");
-  const calcTotal = document.getElementById("calc-total");
-  const calcBreakdown = document.getElementById("calc-breakdown");
+/* ---- 3. Cost calculator v2 ---- */
+(function () {
+  function init() {
+    const slVectors = document.getElementById("sl-vectors");
+    const slDim = document.getElementById("sl-dim");
+    const slQpm = document.getElementById("sl-qpm");
+    const slWpm = document.getElementById("sl-wpm");
+    if (!slVectors) return;
 
-  function computeCost() {
-    if (!calcVectors) return;
-    const vectors = parseFloat(calcVectors.value) || 0;
-    const dim = parseFloat(calcDim.value) || 768;
-    const qpm = parseFloat(calcQpm.value) || 0;
-    const wpm = parseFloat(calcWpm.value) || 0;
+    const DIM_OPTS = [384, 768, 1536, 3072];
 
-    // S3 Vectors: $0.04 / GB-month stored + $0.04 / 1M reads
-    const bytesPerVector = dim * 4; // float32
-    const storedGB = (vectors * bytesPerVector) / 1e9;
-    const storageCost = storedGB * 0.04;
-    const readCost = (qpm / 1e6) * 0.04;
-
-    // DynamoDB: $0.00013 / read RCU + $0.00065 / write WCU (on-demand, us-east-1)
-    const dynRead = qpm * 0.00000013;
-    const dynWrite = wpm * 0.00000065;
-
-    const total = storageCost + readCost + dynRead + dynWrite;
-
-    if (calcTotal) calcTotal.textContent = `$${total.toFixed(2)} / mo`;
-    if (calcBreakdown) {
-      calcBreakdown.innerHTML =
-        `<span>S3 storage ${storedGB.toFixed(2)} GB: $${storageCost.toFixed(
-          2
-        )}</span>` +
-        `<span>S3 reads: $${readCost.toFixed(2)}</span>` +
-        `<span>DynamoDB reads: $${dynRead.toFixed(2)}</span>` +
-        `<span>DynamoDB writes: $${dynWrite.toFixed(2)}</span>`;
+    function getVectors() {
+      return Math.round(Math.pow(10, parseFloat(slVectors.value)));
     }
+    function getDim() {
+      return DIM_OPTS[parseInt(slDim.value)];
+    }
+    function getQpm() {
+      return Math.round(Math.pow(10, parseFloat(slQpm.value)));
+    }
+    function getWpm() {
+      return Math.round(Math.pow(10, parseFloat(slWpm.value)));
+    }
+
+    function fmtN(n) {
+      if (n >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, "") + " B";
+      if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, "") + " M";
+      if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + " K";
+      return String(n);
+    }
+    function fmtUSD(n) {
+      if (n >= 1000)
+        return "$" + n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      return "$" + n.toFixed(2);
+    }
+
+    const PRESETS = {
+      starter: { vectors: 5, dim: 1, qpm: 5, wpm: 4 },
+      growth: { vectors: 6, dim: 2, qpm: 6.7, wpm: 5.7 },
+      scale: { vectors: 7, dim: 2, qpm: 7.7, wpm: 6.7 },
+    };
+
+    document.querySelectorAll(".calc2__preset").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document
+          .querySelectorAll(".calc2__preset")
+          .forEach((b) => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
+        const p = PRESETS[btn.dataset.preset];
+        slVectors.value = p.vectors;
+        slDim.value = p.dim;
+        slQpm.value = p.qpm;
+        slWpm.value = p.wpm;
+        compute();
+      });
+    });
+
+    function setBar(id, amtId, cost, max) {
+      const fill = document.getElementById(id);
+      const amt = document.getElementById(amtId);
+      if (fill)
+        fill.style.width = (max > 0 ? Math.min(cost / max, 1) * 100 : 0) + "%";
+      if (amt) amt.textContent = fmtUSD(cost);
+    }
+
+    function compute() {
+      const vectors = getVectors();
+      const dim = getDim();
+      const qpm = getQpm();
+      const wpm = getWpm();
+
+      const lblV = document.getElementById("lbl-vectors");
+      const lblD = document.getElementById("lbl-dim");
+      const lblQ = document.getElementById("lbl-qpm");
+      const lblW = document.getElementById("lbl-wpm");
+      if (lblV) lblV.textContent = fmtN(vectors);
+      if (lblD) lblD.textContent = dim;
+      if (lblQ) lblQ.textContent = fmtN(qpm);
+      if (lblW) lblW.textContent = fmtN(wpm);
+
+      const storedGB = (vectors * dim * 4) / 1e9;
+      const storageCost = storedGB * 0.04;
+      const readCost = (qpm / 1e6) * 0.04;
+      const dynRead = qpm * 0.00000013;
+      const dynWrite = wpm * 0.00000065;
+      const dvTotal = storageCost + readCost + dynRead + dynWrite;
+
+      const pnTotal =
+        storedGB * 0.096 + (qpm / 1e6) * 0.1 + (wpm / 1e6) * 0.5 + 20;
+      const saving =
+        pnTotal > 0 ? Math.round((1 - dvTotal / pnTotal) * 100) : 0;
+
+      const dvEl = document.getElementById("calc-dv-price");
+      const pnEl = document.getElementById("calc-pn-price");
+      const svEl = document.getElementById("calc-savings");
+      if (dvEl) dvEl.textContent = fmtUSD(dvTotal) + " /mo";
+      if (pnEl) pnEl.textContent = "~" + fmtUSD(pnTotal) + " /mo";
+      if (svEl)
+        svEl.textContent =
+          saving > 0
+            ? `You save ~${saving}% vs Pinecone`
+            : "Similar cost to Pinecone";
+
+      const maxCost = Math.max(storageCost, readCost, dynRead, dynWrite, 0.01);
+      setBar("bar-storage", "amt-storage", storageCost, maxCost);
+      setBar("bar-reads", "amt-reads", readCost, maxCost);
+      setBar("bar-ddb-r", "amt-ddb-r", dynRead, maxCost);
+      setBar("bar-ddb-w", "amt-ddb-w", dynWrite, maxCost);
+    }
+
+    [slVectors, slDim, slQpm, slWpm].forEach((el) =>
+      el.addEventListener("input", compute)
+    );
+    compute();
   }
 
-  [calcVectors, calcDim, calcQpm, calcWpm].forEach((el) => {
-    if (el) el.addEventListener("input", computeCost);
-  });
-  computeCost();
-});
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
 
 /* ---- 4. Sticky nav ---- */
 (function () {
@@ -445,23 +524,29 @@ window.addEventListener("DOMContentLoaded", function () {
   });
 })();
 
-/* ---- 9. Contributors carousel ---- */
+/* ---- 9. Contributors grid ---- */
 (function () {
-  const section = document.querySelector(".contributors-section");
-  const wrap = section && section.querySelector(".contrib-track-wrap");
-  const track = document.getElementById("contrib-track");
-  if (!section || !wrap || !track) return;
+  const coreEl = document.getElementById("contrib-core");
+  const allEl = document.getElementById("contrib-all");
+  if (!coreEl || !allEl) return;
 
-  // To add a contributor: append their name to this array.
-  // Drop a photo as images/contributors/<name-lowercase-hyphenated>.png
-  // and it will be picked up automatically; otherwise initials avatar is shown.
-  const names = [
+  const CORE_NAMES = [
     "Abhishek Gupta",
     "Sanket Tikhande",
     "Vardhaman Gupta",
-    "shivamm-gupta",
-    "Ashishds",
-    "Isha-Zaka",
+    "Shivam Gupta",
+    "Isha Zaka",
+  ];
+
+  // To add a contributor: append their name here.
+  // Drop a photo as images/contributors/<name-lowercase-hyphenated>.png — auto-detected.
+  const ALL_NAMES = [
+    "Abhishek Gupta",
+    "Sanket Tikhande",
+    "Vardhaman Gupta",
+    "Shivam Gupta",
+    "Isha Zaka",
+    "Ashish Kumar",
     "vaishnavk09",
     "be-student",
     "redcode333",
@@ -481,14 +566,11 @@ window.addEventListener("DOMContentLoaded", function () {
   function nameToPhotoPath(name) {
     return (
       "images/contributors/" +
-      name.trim().toLowerCase().replace(/[\s]+/g, "-") +
+      name.trim().toLowerCase().replace(/\s+/g, "-") +
       ".png"
     );
   }
 
-  const allData = names.map((name) => ({ name, photo: nameToPhotoPath(name) }));
-
-  // Palette for initials avatars (cycles through)
   const PALETTE = [
     "#e8623b",
     "#4f8ef7",
@@ -506,187 +588,93 @@ window.addEventListener("DOMContentLoaded", function () {
         ? (words[0][0] + words[1][0]).toUpperCase()
         : name.slice(0, 2).toUpperCase();
     const color = PALETTE[idx % PALETTE.length];
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">
-      <circle cx="40" cy="40" r="40" fill="${color}22"/>
-      <circle cx="40" cy="40" r="39" fill="none" stroke="${color}" stroke-width="2"/>
-      <text x="40" y="46" font-family="Inter,sans-serif" font-size="26" font-weight="700"
-            fill="${color}" text-anchor="middle" dominant-baseline="middle">${initials}</text>
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+      <rect width="200" height="200" fill="${color}18"/>
+      <text x="100" y="115" font-family="Inter,sans-serif" font-size="72" font-weight="700"
+            fill="${color}" text-anchor="middle">${initials}</text>
     </svg>`;
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
   }
 
-  function makeCard(c, idx) {
+  function makeCard(name, idx, isCore) {
+    const photo = nameToPhotoPath(name);
+
     const card = document.createElement("div");
-    card.className = "contrib-card contrib-card--team";
+    card.className = "cg-card" + (isCore ? " cg-card--core" : "");
+
+    const photoWrap = document.createElement("div");
+    photoWrap.className = "cg-card__photo";
 
     const img = document.createElement("img");
-    img.src = c.photo;
-    img.alt = c.name;
-    img.className = "contrib-card__avatar";
+    img.src = photo;
+    img.alt = name;
     img.loading = "lazy";
-    img.width = 80;
-    img.height = 80;
-    // Fall back to initials avatar if the photo file doesn't exist
     img.onerror = () => {
       img.onerror = null;
-      img.src = initialsAvatar(c.name, idx);
-      card.classList.remove("contrib-card--team");
+      img.src = initialsAvatar(name, idx);
     };
 
-    const name = document.createElement("div");
-    name.className = "contrib-card__name";
-    name.textContent = c.name;
+    photoWrap.appendChild(img);
 
-    card.appendChild(img);
-    card.appendChild(name);
+    const info = document.createElement("div");
+    info.className = "cg-card__info";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "cg-card__name";
+    nameEl.textContent = name;
+
+    info.appendChild(nameEl);
+
+    card.appendChild(photoWrap);
+    card.appendChild(info);
     return card;
   }
 
-  allData.forEach((c, i) => track.appendChild(makeCard(c, i)));
+  const coreSet = new Set(CORE_NAMES);
+  CORE_NAMES.forEach((name, i) => coreEl.appendChild(makeCard(name, i, true)));
 
-  const cards = Array.from(track.querySelectorAll(".contrib-card"));
-  const total = cards.length;
-  const btnPrev = document.getElementById("contrib-prev");
-  const btnNext = document.getElementById("contrib-next");
+  const restNames = ALL_NAMES.filter((n) => !coreSet.has(n));
+  const INITIAL_SHOW = 5;
 
-  // Only enable interactive scroll if more than 5 contributors
-  if (total <= 5) {
-    if (btnPrev) btnPrev.style.display = "none";
-    if (btnNext) btnNext.style.display = "none";
-    return;
+  // Render first 5 immediately
+  restNames
+    .slice(0, INITIAL_SHOW)
+    .forEach((name, i) => allEl.appendChild(makeCard(name, i, false)));
+
+  // If there are more, add a "Show more" button
+  if (restNames.length > INITIAL_SHOW) {
+    const showMoreBtn = document.createElement("button");
+    showMoreBtn.className = "contrib-show-more";
+    showMoreBtn.textContent = `Show ${
+      restNames.length - INITIAL_SHOW
+    } more contributors`;
+    allEl.after(showMoreBtn);
+
+    showMoreBtn.addEventListener("click", () => {
+      restNames
+        .slice(INITIAL_SHOW)
+        .forEach((name, i) =>
+          allEl.appendChild(makeCard(name, INITIAL_SHOW + i, false))
+        );
+      showMoreBtn.remove();
+    });
   }
+})();
 
-  /* ---- Autoplay ---- */
-  const DWELL_TOP5 = 3000; // ms — first 5 stay longer
-  const DWELL_REST = 1500;
-  const MAX_SPEED = 6; // px per frame during hover
-  const DEAD_ZONE = 0.25; // centre fraction with no scroll
-
-  let currentIdx = 0;
-  let autoTimer = null;
-  let rafId = null;
-  let isHovering = false;
-  let velocity = 0; // px/frame, set by pointer position
-
-  const CARD_STEP = 130 + 32; // card-w + card-gap
-
-  function dwellFor(idx) {
-    return idx < 5 ? DWELL_TOP5 : DWELL_REST;
-  }
-
-  function snapToCard(idx, smooth) {
-    const card = cards[idx];
-    if (!card) return;
-    const target = card.offsetLeft - 40; // account for track padding
-    if (smooth) {
-      smoothScrollTo(target, 500);
-    } else {
-      wrap.scrollLeft = target;
-    }
-  }
-
-  function smoothScrollTo(targetLeft, duration) {
-    const start = wrap.scrollLeft;
-    const distance = targetLeft - start;
-    const startTime = performance.now();
-    function step(now) {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const ease = 1 - Math.pow(1 - progress, 3);
-      wrap.scrollLeft = start + distance * ease;
-      if (progress < 1) requestAnimationFrame(step);
-    }
-    requestAnimationFrame(step);
-  }
-
-  function updateButtons() {
-    if (btnPrev) btnPrev.disabled = wrap.scrollLeft <= 0;
-    if (btnNext)
-      btnNext.disabled =
-        wrap.scrollLeft >= wrap.scrollWidth - wrap.clientWidth - 1;
-  }
-
-  function scheduleNext() {
-    clearTimeout(autoTimer);
-    if (isHovering) return;
-    // Stop autoplay at the last card — no wrap-around
-    if (currentIdx >= total - 1) return;
-    autoTimer = setTimeout(() => {
-      if (isHovering) return;
-      currentIdx = currentIdx + 1;
-      snapToCard(currentIdx, true);
-      scheduleNext();
-    }, dwellFor(currentIdx));
-  }
-
-  /* ---- Pointer-based hover scroll (rAF loop) ---- */
-  function pointerLoop() {
-    if (!isHovering) return;
-    if (velocity !== 0) {
-      const next = wrap.scrollLeft + velocity;
-      // Clamp at edges — no wrap-around
-      wrap.scrollLeft = Math.max(
-        0,
-        Math.min(next, wrap.scrollWidth - wrap.clientWidth)
-      );
-    }
-    rafId = requestAnimationFrame(pointerLoop);
-  }
-
-  section.addEventListener("mousemove", (e) => {
-    const rect = section.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const w = rect.width;
-    const norm = (x / w) * 2 - 1;
-    if (Math.abs(norm) < DEAD_ZONE) {
-      velocity = 0;
-    } else {
-      const sign = norm > 0 ? 1 : -1;
-      const ratio = (Math.abs(norm) - DEAD_ZONE) / (1 - DEAD_ZONE);
-      velocity = sign * ratio * MAX_SPEED;
-    }
-  });
-
-  section.addEventListener("mouseenter", () => {
-    isHovering = true;
-    clearTimeout(autoTimer);
-    cancelAnimationFrame(rafId);
-    rafId = requestAnimationFrame(pointerLoop);
-  });
-
-  section.addEventListener("mouseleave", () => {
-    isHovering = false;
-    velocity = 0;
-    cancelAnimationFrame(rafId);
-    scheduleNext();
-  });
-
-  /* ---- Button click scroll ---- */
-  function smoothScrollBy(delta) {
-    const start = wrap.scrollLeft;
-    const target = Math.max(
-      0,
-      Math.min(start + delta, wrap.scrollWidth - wrap.clientWidth)
-    );
-    const duration = 120;
-    const t0 = performance.now();
-    function step(now) {
-      const t = Math.min((now - t0) / duration, 1);
-      const ease = 1 - Math.pow(1 - t, 2);
-      wrap.scrollLeft = start + (target - start) * ease;
-      if (t < 1) requestAnimationFrame(step);
-      else updateButtons();
-    }
-    requestAnimationFrame(step);
-  }
-
-  if (btnPrev)
-    btnPrev.addEventListener("click", () => smoothScrollBy(-CARD_STEP * 3));
-  if (btnNext)
-    btnNext.addEventListener("click", () => smoothScrollBy(CARD_STEP * 3));
-  wrap.addEventListener("scroll", updateButtons, { passive: true });
-  updateButtons();
-
-  // Kick off autoplay
-  scheduleNext();
+/* ---- 10. GitHub star count ---- */
+(function () {
+  fetch("https://api.github.com/repos/codeforstartups/dynavec")
+    .then((r) => r.json())
+    .then((data) => {
+      const count = data.stargazers_count;
+      if (!count) return;
+      const fmt =
+        count >= 1000
+          ? (count / 1000).toFixed(1).replace(/\.0$/, "") + "k"
+          : String(count);
+      document.querySelectorAll("[data-stars]").forEach((el) => {
+        el.textContent = fmt;
+      });
+    })
+    .catch(() => {});
 })();

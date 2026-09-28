@@ -74,9 +74,10 @@ def test_as_crewai_tool_runs_search_and_returns_text(monkeypatch):
     ]
 
 
-def test_as_crewai_tool_missing_dependency_raises():
+def test_as_crewai_tool_missing_dependency_raises(monkeypatch):
     """crewai isn't in the dev/ingest test extras, so it's genuinely absent here —
     confirms we get our own clear error instead of a raw ImportError."""
+    monkeypatch.setitem(sys.modules, "crewai", None)
     from dynavec.integrations.tools import as_crewai_tool
 
     with pytest.raises(MissingDependencyError):

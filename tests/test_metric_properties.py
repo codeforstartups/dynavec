@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, given, settings, HealthCheck
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 
@@ -141,7 +141,7 @@ def _composite_weights(draw):
     data=_vector_and_matrix(min_rows=1, max_rows=10),
     metric=st.sampled_from(_VALID_METRICS),
 )
-@settings(max_examples=150)
+@settings(max_examples=150, suppress_health_check=[HealthCheck.too_slow])
 def test_score_output_shape_and_finite(data, metric):
     """score() always returns a 1D float array matching the candidate matrix row count."""
     q, mat = data

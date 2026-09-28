@@ -50,8 +50,8 @@ class DynavecCollection(
     ) -> None:
         super().__init__(
             record_type=record_type,
-            definition=definition,  # type: ignore[arg-type]
-            collection_name=collection_name,  # type: ignore[arg-type]
+            definition=definition,
+            collection_name=collection_name,
             **kwargs,
         )
         self._client = client

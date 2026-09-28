@@ -20,6 +20,7 @@ Quick start
 
 from __future__ import annotations
 
+from .async_client import AsyncDynavec
 from .cache import BaseCache, DynamoDBCache, RedisCache, SemanticCache, warm_cache
 from .client import Dynavec
 from .config import DynavecConfig
@@ -87,6 +88,7 @@ __version__ = "0.6.0"
 
 __all__ = [
     "Dynavec",
+    "AsyncDynavec",
     "DynavecConfig",
     "AWSCredentials",
     "Document",

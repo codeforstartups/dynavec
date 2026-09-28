@@ -6,11 +6,9 @@ import logging
 import time
 from typing import Any
 
-import aioboto3
-
 from ..config import DynavecConfig
 from ..logging import log_store_event
-from .s3vectors import _f32, _PUT_LIMIT, _GET_LIMIT, _MAX_TOP_K
+from .s3vectors import _GET_LIMIT, _MAX_TOP_K, _PUT_LIMIT, _f32
 
 Metadata = dict[str, Any]
 
@@ -19,7 +17,10 @@ class AsyncS3VectorsStore:
 
     def __init__(self, config: DynavecConfig, aioboto_session=None) -> None:
         self._config = config
-        self._session = aioboto_session or aioboto3.Session()
+        if aioboto_session is None:
+            import aioboto3
+            aioboto_session = aioboto3.Session()
+        self._session = aioboto_session
         self._client_kwargs: dict[str, object] = {"region_name": config.region}
         botocore_config = config.botocore_config()
         if botocore_config is not None:

@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install (with dev and type-check extras)
-        run: uv pip install -e ".[dev,typecheck]"
+        run: uv pip install -e ".[dev,typecheck,async]"
       - name: Type check
         run: uv run --no-sync mypy
 
@@ -32,7 +32,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install (with dev extras)
-        run: uv pip install -e ".[dev,ingest,langchain,dspy,llamaindex,haystack]"
+        run: uv pip install -e ".[dev,ingest,langchain,dspy,llamaindex,haystack,async]"
       - name: Lint
         run: uv run --no-sync ruff check src benchmarks
       - name: Test

@@ -1,8 +1,10 @@
 """Example: Ingesting Word (.docx), PowerPoint (.pptx), and Excel (.xlsx) files into dynavec."""
 
 from pathlib import Path
+
 from dynavec import Dynavec, DynavecConfig
 from dynavec.ingest import DocxSource, PptxSource, XlsxSource, ingest
+
 
 def main():
     cfg = DynavecConfig(

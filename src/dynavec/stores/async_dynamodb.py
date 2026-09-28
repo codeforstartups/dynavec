@@ -7,8 +7,6 @@ import logging
 import time
 from typing import Any
 
-import aioboto3
-
 from ..config import DynavecConfig
 from ..logging import log_store_event
 from .dynamodb import _build_item, _check_built_item, _from_dynamo, _pk
@@ -21,7 +19,10 @@ class AsyncDynamoDBStore:
 
     def __init__(self, config: DynavecConfig, aioboto_session=None) -> None:
         self._config = config
-        self._session = aioboto_session or aioboto3.Session()
+        if aioboto_session is None:
+            import aioboto3
+            aioboto_session = aioboto3.Session()
+        self._session = aioboto_session
         self._resource_kwargs: dict[str, object] = {"region_name": config.region}
         botocore_config = config.botocore_config()
         if botocore_config is not None:

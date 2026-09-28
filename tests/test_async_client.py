@@ -1,15 +1,13 @@
 """Tests for the AsyncDynavec client."""
 
-import pytest
-import sys
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-# Mock aioboto3 globally to bypass PyPI installation timeout
-sys.modules["aioboto3"] = MagicMock()
+import pytest
 
 from dynavec.async_client import AsyncDynavec
 from dynavec.config import DynavecConfig
-from dynavec.models import Document, SearchResult, UpsertResult
+from dynavec.models import Document
+
 
 @pytest.fixture
 def config():

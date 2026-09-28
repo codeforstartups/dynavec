@@ -137,6 +137,8 @@ show_error_codes = true
 # dynavec code that uses them.
 [[tool.mypy.overrides]]
 module = [
+    "aioboto3",
+    "aioboto3.*",
     "bs4",
     "bs4.*",
     "boto3",

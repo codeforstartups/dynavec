@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import aioboto3
-
 from .config import DynavecConfig
 from .embeddings.base import Embedder
 from .exceptions import ConfigurationError
@@ -31,7 +29,10 @@ class AsyncDynavec:
     ) -> None:
         self.config = config
         self.embedder = embedder
-        self._session = aioboto_session or aioboto3.Session()
+        if aioboto_session is None:
+            import aioboto3
+            aioboto_session = aioboto3.Session()
+        self._session = aioboto_session
         
         self._vectors = AsyncS3VectorsStore(config, aioboto_session=self._session)
         self._docs = AsyncDynamoDBStore(config, aioboto_session=self._session)

@@ -1,6 +1,7 @@
 """Unit tests for HFInferenceEmbedder."""
 
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 from dynavec.embeddings import HFInferenceEmbedder

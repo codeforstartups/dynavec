@@ -110,6 +110,43 @@ class _FakeDDB(cm.DynamoDBStore):
             self._store.pop((ns, i), None)
 
 
+class _FakeGraph:
+    def __init__(self, config, boto_session=None):
+        self.config = config
+        self._nodes = {}  # (ns, entity_id) -> list of edges
+        
+    def add_node(self, ns, entity_id, ntype=None, props=None):
+        if (ns, entity_id) not in self._nodes:
+            self._nodes[(ns, entity_id)] = []
+            
+    def add_edge(self, ns, src, relation, dst):
+        self.add_node(ns, src)
+        self.add_node(ns, dst)
+        self._nodes[(ns, src)].append({"relation": relation, "target": dst})
+        
+    def list_node_ids(self, ns):
+        return sorted({eid for n, eid in self._nodes.keys() if n == ns})
+        
+    def _collect_subgraph(self, ns, roots, relation):
+        seeds = self.list_node_ids(ns) if roots is None else roots
+        visited = set(seeds)
+        edges = set()
+        queue = list(seeds)
+        while queue:
+            eid = queue.pop(0)
+            for edge in self._nodes.get((ns, eid), []):
+                rel = edge.get("relation") or ""
+                if relation is not None and rel != relation:
+                    continue
+                tgt = edge["target"]
+                edges.add((eid, rel, tgt))
+                if tgt not in visited:
+                    visited.add(tgt)
+                    queue.append(tgt)
+        return sorted(visited), sorted(edges)
+
+
+
 TOPICS = ["food", "space", "ai", "aws", "bio"]
 QUERIES = [
     "apple pie recipe", "rocket to mars", "serverless vectors on aws",
@@ -138,9 +175,23 @@ def _one_search(db):
 def main() -> None:
     cm.S3VectorsStore = _FakeS3
     cm.DynamoDBStore = _FakeDDB
+    import dynavec.graph
+    from dynavec.models import IndexInfo
+    dynavec.graph.GraphStore = _FakeGraph
+    cm.GraphStore = _FakeGraph
     rec = TelemetryRecorder(capture_text=True)
-    cfg = DynavecConfig(vector_bucket="b", index="i", table="t", dimension=DIM)
+    cfg = DynavecConfig(vector_bucket="dynavec-demo-bucket", index="hnsw-demo", table="dynavec-demo-table", dimension=DIM)
     db = Dynavec(cfg, embedder=_HashEmbedder(), cache=SemanticCache(threshold=0.9), telemetry=rec)
+    db.describe = lambda: IndexInfo(
+        vector_bucket=cfg.vector_bucket,
+        index=cfg.index,
+        dimension=cfg.dimension,
+        distance_metric="cosine",
+        table=cfg.table,
+        table_status="ACTIVE",
+        item_count=len(db._docs._store) if hasattr(db._docs, '_store') else 4200
+    )
+    db.list_namespaces = lambda: NAMESPACES
 
     for ns in NAMESPACES:
         db.upsert(
@@ -151,6 +202,14 @@ def main() -> None:
             ],
             namespace=ns,
         )
+        db.graph_add_edge("Serverless", "reduces", "Cost", namespace=ns)
+        db.graph_add_edge("Dynavec", "runs_on", "AWS", namespace=ns)
+        db.graph_add_edge("Dynavec", "uses", "DynamoDB", namespace=ns)
+        db.graph_add_edge("Dynavec", "uses", "S3", namespace=ns)
+        db.graph_add_edge("DynamoDB", "stores", "Metadata", namespace=ns)
+        db.graph_add_edge("DynamoDB", "stores", "Graph", namespace=ns)
+        db.graph_add_edge("S3", "stores", "Vectors", namespace=ns)
+        db.graph_add_edge("Graph", "powers", "GraphRAG", namespace=ns)
 
     for _ in range(150):  # seed real history
         _one_search(db)
@@ -162,7 +221,7 @@ def main() -> None:
             time.sleep(random.uniform(0.05, 0.25))
 
     threading.Thread(target=workload, daemon=True).start()
-    serve(rec, port=8779)
+    serve(rec, port=8779, db=db)
 
 
 if __name__ == "__main__":

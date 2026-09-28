@@ -46,3 +46,30 @@ export interface TraceFilters {
   status?: string;
   namespace?: string;
 }
+
+export interface ResourcesInfo {
+  table: string;
+  table_status: string;
+  table_item_count: number;
+  vector_bucket: string;
+  index: string;
+  dimension: number;
+  distance_metric: string;
+  namespaces: string[];
+}
+
+export interface GraphNode {
+  id: string;
+  [key: string]: any;
+}
+
+export interface GraphLink {
+  source: string;
+  target: string;
+  label: string;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  links: GraphLink[];
+}

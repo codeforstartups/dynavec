@@ -1,9 +1,9 @@
-import type { Metrics, TraceEvent, TraceFilters } from "./types";
+import type { Metrics, TraceEvent, TraceFilters, ResourcesInfo, GraphData } from "./types";
 import { mockMetrics, mockTraces } from "./mock";
 
 // Point this at a running `dynavec.dashboard.serve(recorder)` API.
 // Falls back to sample data when unset or unreachable (dev / static preview).
-const API_BASE = process.env.NEXT_PUBLIC_DYNAVEC_API || "";
+const API_BASE = process.env.NEXT_PUBLIC_DYNAVEC_API || "http://127.0.0.1:8779";
 
 let _mockTraces: TraceEvent[] | null = null;
 function sampleTraces(): TraceEvent[] {
@@ -51,4 +51,43 @@ export async function getTrace(id: string): Promise<TraceEvent | null> {
     } catch { /* fall through */ }
   }
   return sampleTraces().find((e) => e.id === id) || null;
+}
+
+export async function getResources(): Promise<ResourcesInfo | null> {
+  if (API_BASE) {
+    try {
+      const r = await fetch(`${API_BASE}/api/resources`, { cache: "no-store" });
+      if (r.ok) return (await r.json()) as ResourcesInfo;
+    } catch { /* fall through */ }
+  }
+  return {
+    table: "dynavec-mock-table",
+    table_status: "ACTIVE",
+    table_item_count: 4200,
+    vector_bucket: "dynavec-mock-bucket",
+    index: "hnsw-default",
+    dimension: 1536,
+    distance_metric: "cosine",
+    namespaces: ["default", "kb_docs", "chat_history"]
+  };
+}
+
+export async function getGraph(namespace: string): Promise<GraphData | null> {
+  if (API_BASE) {
+    try {
+      const r = await fetch(`${API_BASE}/api/graph?namespace=${namespace}`, { cache: "no-store" });
+      if (r.ok) return (await r.json()) as GraphData;
+    } catch { /* fall through */ }
+  }
+  return {
+    nodes: [
+      { id: "Mitochondria" },
+      { id: "Cell" },
+      { id: "ATP" }
+    ],
+    links: [
+      { source: "Mitochondria", target: "Cell", label: "part_of" },
+      { source: "Mitochondria", target: "ATP", label: "produces" }
+    ]
+  };
 }

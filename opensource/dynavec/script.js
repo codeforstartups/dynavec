@@ -430,9 +430,11 @@ window.addEventListener("DOMContentLoaded", function () {
   facade.addEventListener("click", () => {
     const iframe = document.createElement("iframe");
     iframe.src = "https://www.youtube.com/embed/UJ9MBALD380?autoplay=1&rel=0";
-    iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+    iframe.allow =
+      "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
     iframe.setAttribute("allowfullscreen", "");
-    iframe.style.cssText = "position:absolute;inset:0;width:100%;height:100%;border:0;";
+    iframe.style.cssText =
+      "position:absolute;inset:0;width:100%;height:100%;border:0;";
     // Clear thumbnail/play button and drop in the iframe
     facade.innerHTML = "";
     facade.style.cursor = "default";
@@ -450,58 +452,41 @@ window.addEventListener("DOMContentLoaded", function () {
   const track = document.getElementById("contrib-track");
   if (!section || !wrap || !track) return;
 
-  // All photos live in images/contributors/<filename>
-  // Add a file here and reference it below — no GitHub CDN used.
-  const allData = [
-    {
-      name: "Abhishek Gupta",
-      photo: "images/contributors/abhishek-gupta.png",
-      url: "https://github.com/shivamm-gupta",
-    },
-    {
-      name: "Sanket Tikhande",
-      photo: "images/contributors/sanket-tikhande.jpg",
-      url: "https://github.com/tikhandesanket",
-    },
-    { name: "Kaap10", photo: null, url: "https://github.com/Kaap10" },
-    {
-      name: "shivamm-gupta",
-      photo: null,
-      url: "https://github.com/shivamm-gupta",
-    },
-    { name: "Ashishds", photo: null, url: "https://github.com/Ashishds" },
-    { name: "Isha-Zaka", photo: null, url: "https://github.com/Isha-Zaka" },
-    { name: "vaishnavk09", photo: null, url: "https://github.com/vaishnavk09" },
-    { name: "be-student", photo: null, url: "https://github.com/be-student" },
-    { name: "redcode333", photo: null, url: "https://github.com/redcode333" },
-    { name: "R3108", photo: null, url: "https://github.com/R3108" },
-    {
-      name: "GenZ-CODER-X",
-      photo: null,
-      url: "https://github.com/GenZ-CODER-X",
-    },
-    {
-      name: "AyushhVatsal",
-      photo: null,
-      url: "https://github.com/AyushhVatsal",
-    },
-    { name: "arshsk16", photo: null, url: "https://github.com/arshsk16" },
-    { name: "Uzmaa7", photo: null, url: "https://github.com/Uzmaa7" },
-    {
-      name: "ramashishmaurya",
-      photo: null,
-      url: "https://github.com/ramashishmaurya",
-    },
-    { name: "Henilll", photo: null, url: "https://github.com/Henilll" },
-    { name: "Lawliet2004", photo: null, url: "https://github.com/Lawliet2004" },
-    { name: "wang1408", photo: null, url: "https://github.com/wang1408" },
-    { name: "theman6660", photo: null, url: "https://github.com/theman6660" },
-    {
-      name: "osamashabih6960",
-      photo: null,
-      url: "https://github.com/osamashabih6960",
-    },
+  // To add a contributor: append their name to this array.
+  // Drop a photo as images/contributors/<name-lowercase-hyphenated>.png
+  // and it will be picked up automatically; otherwise initials avatar is shown.
+  const names = [
+    "Abhishek Gupta",
+    "Sanket Tikhande",
+    "Vardhaman Gupta",
+    "shivamm-gupta",
+    "Ashishds",
+    "Isha-Zaka",
+    "vaishnavk09",
+    "be-student",
+    "redcode333",
+    "R3108",
+    "GenZ-CODER-X",
+    "AyushhVatsal",
+    "arshsk16",
+    "Uzmaa7",
+    "ramashishmaurya",
+    "Henilll",
+    "Lawliet2004",
+    "wang1408",
+    "theman6660",
+    "osamashabih6960",
   ];
+
+  function nameToPhotoPath(name) {
+    return (
+      "images/contributors/" +
+      name.trim().toLowerCase().replace(/[\s]+/g, "-") +
+      ".png"
+    );
+  }
+
+  const allData = names.map((name) => ({ name, photo: nameToPhotoPath(name) }));
 
   // Palette for initials avatars (cycles through)
   const PALETTE = [
@@ -531,20 +516,22 @@ window.addEventListener("DOMContentLoaded", function () {
   }
 
   function makeCard(c, idx) {
-    const hasPhoto = !!c.photo;
-    const card = document.createElement("a");
-    card.href = c.url;
-    card.target = "_blank";
-    card.rel = "noopener noreferrer";
-    card.className = "contrib-card" + (hasPhoto ? " contrib-card--team" : "");
+    const card = document.createElement("div");
+    card.className = "contrib-card contrib-card--team";
 
     const img = document.createElement("img");
-    img.src = hasPhoto ? c.photo : initialsAvatar(c.name, idx);
+    img.src = c.photo;
     img.alt = c.name;
     img.className = "contrib-card__avatar";
     img.loading = "lazy";
     img.width = 80;
     img.height = 80;
+    // Fall back to initials avatar if the photo file doesn't exist
+    img.onerror = () => {
+      img.onerror = null;
+      img.src = initialsAvatar(c.name, idx);
+      card.classList.remove("contrib-card--team");
+    };
 
     const name = document.createElement("div");
     name.className = "contrib-card__name";
@@ -614,7 +601,9 @@ window.addEventListener("DOMContentLoaded", function () {
 
   function updateButtons() {
     if (btnPrev) btnPrev.disabled = wrap.scrollLeft <= 0;
-    if (btnNext) btnNext.disabled = wrap.scrollLeft >= wrap.scrollWidth - wrap.clientWidth - 1;
+    if (btnNext)
+      btnNext.disabled =
+        wrap.scrollLeft >= wrap.scrollWidth - wrap.clientWidth - 1;
   }
 
   function scheduleNext() {
@@ -636,7 +625,10 @@ window.addEventListener("DOMContentLoaded", function () {
     if (velocity !== 0) {
       const next = wrap.scrollLeft + velocity;
       // Clamp at edges — no wrap-around
-      wrap.scrollLeft = Math.max(0, Math.min(next, wrap.scrollWidth - wrap.clientWidth));
+      wrap.scrollLeft = Math.max(
+        0,
+        Math.min(next, wrap.scrollWidth - wrap.clientWidth)
+      );
     }
     rafId = requestAnimationFrame(pointerLoop);
   }
@@ -671,12 +663,15 @@ window.addEventListener("DOMContentLoaded", function () {
 
   /* ---- Button click scroll ---- */
   function smoothScrollBy(delta) {
-    const start    = wrap.scrollLeft;
-    const target   = Math.max(0, Math.min(start + delta, wrap.scrollWidth - wrap.clientWidth));
+    const start = wrap.scrollLeft;
+    const target = Math.max(
+      0,
+      Math.min(start + delta, wrap.scrollWidth - wrap.clientWidth)
+    );
     const duration = 120;
-    const t0       = performance.now();
+    const t0 = performance.now();
     function step(now) {
-      const t    = Math.min((now - t0) / duration, 1);
+      const t = Math.min((now - t0) / duration, 1);
       const ease = 1 - Math.pow(1 - t, 2);
       wrap.scrollLeft = start + (target - start) * ease;
       if (t < 1) requestAnimationFrame(step);
@@ -685,8 +680,10 @@ window.addEventListener("DOMContentLoaded", function () {
     requestAnimationFrame(step);
   }
 
-  if (btnPrev) btnPrev.addEventListener("click", () => smoothScrollBy(-CARD_STEP * 3));
-  if (btnNext) btnNext.addEventListener("click", () => smoothScrollBy(CARD_STEP * 3));
+  if (btnPrev)
+    btnPrev.addEventListener("click", () => smoothScrollBy(-CARD_STEP * 3));
+  if (btnNext)
+    btnNext.addEventListener("click", () => smoothScrollBy(CARD_STEP * 3));
   wrap.addEventListener("scroll", updateButtons, { passive: true });
   updateButtons();
 

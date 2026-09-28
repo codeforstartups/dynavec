@@ -156,3 +156,11 @@ class AsyncDynavec:
         )
 
         return UpsertResult(count=len(ids), ids=ids)
+
+    async def delete(self, ids: list[str], namespace: str = "default") -> None:
+        """Delete documents from both stores."""
+        keys = [self._s3_key(namespace, doc_id) for doc_id in ids]
+        await asyncio.gather(
+            self._vectors.delete_vectors(keys),
+            self._docs.delete_many(namespace, ids),
+        )

@@ -543,7 +543,7 @@ window.addEventListener("DOMContentLoaded", function () {
   const ALL_NAMES = [
     "Abhishek Gupta",
     "Sanket Tikhande",
-    "Vardhaman Gupta",
+    "Vardhman Gupta",
     "Shivam Gupta",
     "Isha Zaka",
     "Uzma Khan",

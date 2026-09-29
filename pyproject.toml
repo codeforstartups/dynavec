@@ -79,6 +79,7 @@ dev = [
     "moto[dynamodb]>=5.0",
     "ruff>=0.6",
     "pre-commit>=3.5",
+    "syrupy>=6.0; python_version >= '3.10'",
 ]
 benchmark = [
     "pandas>=2.0",

@@ -1,0 +1,11 @@
+# serializer version: 1
+# name: test_cost_model_snapshot
+  dict({
+    'dynavec': 4.59,
+    'milvus_zilliz': 300,
+    'opensearch_serverless': 701.14,
+    'pinecone_serverless': 13.37,
+    'qdrant_cloud': 320,
+    'weaviate_cloud': 350,
+  })
+# ---

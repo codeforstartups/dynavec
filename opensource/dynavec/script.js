@@ -533,7 +533,7 @@ window.addEventListener("DOMContentLoaded", function () {
   const CORE_NAMES = [
     "Abhishek Gupta",
     "Sanket Tikhande",
-    "Vardhaman Gupta",
+    "Vardhman Gupta",
     "Shivam Gupta",
     "Isha Zaka",
   ];

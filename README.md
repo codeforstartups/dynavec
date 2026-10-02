@@ -503,16 +503,16 @@ db.graph_delete_node("globex", namespace="kb")
 
 ## Ecosystem
 
-dynavec is growing from a vector database into a full agent stack that runs **inside your own cloud account** — four pillars, one library, one install:
+dynavec started as a vector database, and it's growing into a full agent stack that runs inside your own cloud account. The plan has four parts:
 
-| Pillar | Tagline | What it does | Status |
-|--------|---------|--------------|--------|
-| **dynavec** | *Remember* | Serverless hybrid vector DB: S3 Vectors ANN + DynamoDB documents, caching, GraphRAG, hybrid retrieval | ✅ Available |
-| **dynaflow** | *Build & run* | Graph/state agent orchestration engine + visual ReactFlow builder | 🛠️ Planned — [#273](https://github.com/codeforstartups/dynavec/issues/273) |
-| **dynalogs** | *Observe* | In-account traces, structured logs, run history, metrics dashboard | 🌱 Seed exists ([dashboard](#observability-dashboard)) — [#274](https://github.com/codeforstartups/dynavec/issues/274) |
-| **dynaevals** | *Measure & improve* | Retrieval + RAG metrics, datasets, regression runs, CI gating | 🌱 Metrics landed — [#275](https://github.com/codeforstartups/dynavec/issues/275) |
+| Project | Tagline | What it covers | Status |
+|---------|---------|----------------|--------|
+| dynavec | Remember | The vector database: S3 Vectors for search, DynamoDB for documents, plus caching, GraphRAG and hybrid retrieval | Available |
+| dynaflow | Build & run | An orchestration engine for agents, with a visual builder | Planned ([#273](https://github.com/codeforstartups/dynavec/issues/273)) |
+| dynalogs | Observe | Traces, logs, run history and metrics, kept in your own account | Early version: the [observability dashboard](#observability-dashboard) ([#274](https://github.com/codeforstartups/dynavec/issues/274)) |
+| dynaevals | Measure & improve | Retrieval and RAG metrics, test datasets and CI checks | Retrieval metrics available ([#275](https://github.com/codeforstartups/dynavec/issues/275)) |
 
-**Roadmap:** the ecosystem plan is tracked in [#276](https://github.com/codeforstartups/dynavec/issues/276) and the pillar epics above. It is a living plan — a proposed order, not a commitment. Contributions welcome: pick an unassigned issue and see [CONTRIBUTING.md](CONTRIBUTING.md).
+The roadmap is tracked in [#276](https://github.com/codeforstartups/dynavec/issues/276). It's a proposed order rather than a fixed schedule, and help is welcome on any of the linked issues. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
 ## Status
 

@@ -346,6 +346,32 @@ async def test_aupsert_uses_async_embedding_and_writes_both_stores() -> None:
     assert document_payload[0][1] == "hello"
 
 
+async def test_aupsert_rejects_mismatched_embedding_count_before_writing() -> None:
+    class ShortEmbedder(AsyncOnlyEmbedder):
+        async def aembed_documents(
+            self,
+            texts: list[str],
+        ) -> list[list[float]]:
+            return [[1.0, 2.0, 3.0, 4.0]]
+
+    client, vectors, documents = _client(embedder=ShortEmbedder())
+
+    async with client:
+        with pytest.raises(
+            ConfigurationError,
+            match=r"Embedder returned 1 vectors for 2 documents",
+        ):
+            await client.aupsert(
+                [
+                    {"id": "a", "text": "hello"},
+                    {"id": "b", "text": "world"},
+                ]
+            )
+
+    assert vectors.put_calls == []
+    assert documents.put_calls == []
+
+
 async def test_aupsert_passes_default_ttl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

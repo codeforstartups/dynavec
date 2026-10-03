@@ -415,6 +415,20 @@ class MissingOutputEmbedder(HashEmbedder):
         return []
 
 
+class TruncatingEmbedder(HashEmbedder):
+    """Drops the last vector of every batch."""
+
+    def embed_documents(self, texts):
+        return super().embed_documents(texts)[:-1]
+
+
+class PaddingEmbedder(HashEmbedder):
+    """Returns one more vector than texts requested."""
+
+    def embed_documents(self, texts):
+        return super().embed_documents(texts + ["extra"])
+
+
 def test_embedder_output_dimension_mismatch_raises(db):
     from dynavec.exceptions import DimensionMismatchError
 
@@ -434,9 +448,55 @@ def test_embedder_missing_output_raises_configuration_error(db):
 
     with pytest.raises(
         ConfigurationError,
-        match=r"Embedder did not return a vector for document 'x'",
+        match=r"Embedder returned 0 vectors for 1 documents",
     ):
         db.upsert([Document(id="x", text="hello")])
+
+
+def test_embedder_returning_fewer_vectors_writes_nothing(db):
+    from dynavec.exceptions import ConfigurationError
+
+    db.embedder = TruncatingEmbedder(8)
+
+    with pytest.raises(
+        ConfigurationError,
+        match=r"Embedder returned 2 vectors for 3 documents",
+    ):
+        db.upsert([Document(id=str(i), text=f"doc {i}") for i in range(3)])
+
+    assert db._vectors._store == {}
+    assert db._docs._store == {}
+
+
+def test_embedder_returning_extra_vectors_raises(db):
+    from dynavec.exceptions import ConfigurationError
+
+    db.embedder = PaddingEmbedder(8)
+
+    with pytest.raises(
+        ConfigurationError,
+        match=r"Embedder returned 3 vectors for 2 documents",
+    ):
+        db.upsert([Document(id="a", text="one"), Document(id="b", text="two")])
+
+    assert db._vectors._store == {}
+
+
+def test_update_with_empty_embedder_response_raises(db):
+    from dynavec.exceptions import ConfigurationError
+
+    db.upsert([Document(id="1", text="apple")])
+    before = list(db._vectors._store["default#1"][0])
+    db.embedder = MissingOutputEmbedder(8)
+
+    with pytest.raises(
+        ConfigurationError,
+        match=r"Embedder returned 0 vectors for 1 document \('1'\)",
+    ):
+        db.update("1", text="rocket launch trajectory")
+
+    assert db._vectors._store["default#1"][0] == before
+    assert db.get(["1"])[0].text == "apple"
 
 
 def test_auto_metadata_switch(db):

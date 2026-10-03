@@ -92,8 +92,24 @@ def assign_embeddings(
     targets: list[EmbeddingTarget],
     vectors: list[list[float]],
 ) -> None:
+    if len(vectors) != len(targets):
+        raise ConfigurationError(
+            f"Embedder returned {len(vectors)} vectors for "
+            f"{len(targets)} documents."
+        )
+
     for (index, _), vector in zip(targets, vectors):
         docs[index].vector = vector
+
+
+def single_embedding(vectors: list[list[float]], doc_id: str) -> list[float]:
+    if len(vectors) != 1:
+        raise ConfigurationError(
+            f"Embedder returned {len(vectors)} vectors for 1 document "
+            f"({doc_id!r})."
+        )
+
+    return vectors[0]
 
 
 def build_write_payloads(

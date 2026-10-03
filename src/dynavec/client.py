@@ -50,6 +50,7 @@ from .client_common import (
     documents_to_embed,
     embedding_texts,
     s3_key,
+    single_embedding,
     split_key,
 )
 from .config import NS_METADATA_KEY, TEXT_METADATA_KEY, DynavecConfig
@@ -353,7 +354,7 @@ class Dynavec:
         new_vector = vector
         if new_vector is None:
             if text is not None and self.embedder is not None:
-                new_vector = self.embedder.embed_documents([text])[0]
+                new_vector = single_embedding(self.embedder.embed_documents([text]), id)
             else:
                 fetched = self._vectors.get_vectors([self._s3_key(namespace, id)])
                 got = fetched.get(self._s3_key(namespace, id))

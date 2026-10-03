@@ -41,6 +41,7 @@ NAV = [
         ("credentials", "Credentials & IAM"),
     ]),
     ("Ecosystem", [
+    ("ecosystem", "Ecosystem overview"),
     ("integrations", "Framework integrations"),
     ("dashboard", "Telemetry dashboard"),
     ("benchmarking", "Benchmarking"),
@@ -127,6 +128,7 @@ Weaviate, and OpenSearch that bills only when you use it.</p>
   <a href="integrations.html"><h3>Integrations</h3><p>LangChain, LlamaIndex, and a tool for LangGraph / CrewAI / Strands.</p></a>
   <a href="faq.html"><h3>FAQ</h3><p>Common questions about regions, limits, consistency, and costs.</p></a>
   <a href="benchmarking.html"><h3>Benchmarking</h3><p>Recall, latency, and cost modeled across dimensions and scale.</p></a>
+  <a href="ecosystem.html"><h3>Ecosystem</h3><p>The four pillars &mdash; dynavec, dynaflow, dynalogs, dynaevals &mdash; and the roadmap.</p></a>
 </div>
 """)
 
@@ -843,7 +845,8 @@ uv pip install --upgrade dynavec""") + """
 <p>The full machine-readable history lives in
 <a href="https://github.com/codeforstartups/dynavec/blob/development/CHANGELOG.md">CHANGELOG.md</a>,
 and every version is a
-<a href="https://github.com/codeforstartups/dynavec/releases">GitHub Release</a>.</p>
+<a href="https://github.com/codeforstartups/dynavec/releases">GitHub Release</a>.
+For what's coming next, see the <a href="ecosystem.html">Ecosystem overview</a> and its phased roadmap.</p>
 
 <h2 id="v0-7-0">0.7.0 <span class="doc__sub" style="font-weight:400">&mdash; 2026-10-01</span></h2>
 <p>Concurrency and scale: a native async client, a lexical/hybrid retrieval path, per-document TTL, a new framework connector, and a graph data-loss fix.</p>
@@ -1009,6 +1012,139 @@ filterable traces table with per-trace drill-down:</p>
 <img src="../images/dashboard_tracing.png" alt="Tracing view" class="doc__img" />
 <p>Click any row to open a detail drawer with per-call similarity scores, filter state, and error details.</p>
 """)
+
+def issue(n: int) -> str:
+    return f'<a href="https://github.com/codeforstartups/dynavec/issues/{n}">#{n}</a>'
+
+
+PAGES["ecosystem"] = ("Ecosystem overview",
+    "Four projects that together cover remembering, running, observing and measuring an AI application.",
+    """
+<p>dynavec started as a vector database, and it's growing into a full agent stack that runs inside
+your own cloud account. The plan has four parts. Each one answers a question about an AI application:
+what does it know, what does it do, what happened when it ran, and how good were the results?</p>
+<div class="callout">This page follows the ecosystem epics (""" + issue(273) + "&ndash;" + issue(276) + """).
+It's a living plan: the order is a proposal rather than a fixed schedule, and it will change as work lands.</div>
+
+<h2>The four projects</h2>
+<table class="doc__params">
+<tr><th>Project</th><th>Tagline</th><th>What it covers</th><th>Status</th></tr>
+<tr><td><strong>dynavec</strong></td><td>Remember</td>
+    <td>The vector database: S3 Vectors for search, DynamoDB for documents, plus caching, the knowledge
+    graph, hybrid retrieval and framework integrations.</td>
+    <td>Available</td></tr>
+<tr><td><strong>dynaflow</strong></td><td>Build &amp; run</td>
+    <td>An orchestration engine for agents (nodes, edges, shared state, branches, loops, retries) with a
+    visual builder where the code and the canvas describe the same graph.</td>
+    <td>In progress: chat models are available (""" + issue(285) + """), the engine is next.
+    Epic """ + issue(273) + """</td></tr>
+<tr><td><strong>dynalogs</strong></td><td>Observe</td>
+    <td>Traces for each step of a run, structured logs with secrets removed, searchable run history and
+    a metrics dashboard, all stored in your own account.</td>
+    <td>Early version: the <a href="dashboard.html">telemetry dashboard</a>. Epic """ + issue(274) + """</td></tr>
+<tr><td><strong>dynaevals</strong></td><td>Measure &amp; improve</td>
+    <td>Retrieval metrics, LLM-judged answer quality, test datasets, regression runs and CI checks that
+    fail when quality drops.</td>
+    <td>Partly available: retrieval metrics, faithfulness and answer relevance, trend tracking.
+    Epic """ + issue(275) + """</td></tr>
+</table>
+
+<h2>How they fit together</h2>
+<p>Each project feeds the next one, and all of them keep their data in the same account:</p>
+<ul>
+  <li><strong>dynaflow</strong> runs the agent. Its retriever and memory steps read from and write to
+      <strong>dynavec</strong>, and the state of each run is saved in DynamoDB so it can be resumed.</li>
+  <li>Every step records what it did. <strong>dynalogs</strong> puts those records together into one view
+      of the run that you can search and drill into.</li>
+  <li><strong>dynaevals</strong> scores the same runs, shows the scores next to the trace, and can fail a
+      CI build when a score goes down.</li>
+  <li>What the scores tell you goes back into the agent: its prompts, its steps and its retrieval settings.</li>
+</ul>
+""" + code("""   dynaflow  --- retrieve / remember -->  dynavec
+ (build &amp; run)                          (remember)
+       |
+       |  traces, logs
+       v
+   dynalogs  --- runs, traces ------->  dynaevals
+   (observe)                        (measure &amp; improve)
+       ^                                    |
+       +------- improve the agent ----------+""") + """
+
+<h2>What you can use today</h2>
+<p>Some of the newer pieces have already landed in the <code>dynavec</code> package.</p>
+<h3>Chat models (dynaflow)</h3>
+<p>One interface for OpenAI, Anthropic and Amazon Bedrock. With Bedrock, the model calls stay in your
+AWS account like the rest of dynavec.</p>
+""" + code("""from dynavec.chat import BedrockChatModel, Message
+
+model = BedrockChatModel(region_name="us-east-1")   # or OpenAIChatModel()
+result = model.invoke([
+    Message(role="system", content="Answer in one sentence."),
+    Message(role="user", content="What is a vector database?"),
+])
+print(result.message.content)""") + """
+<p>Every model also has <code>stream()</code>, <code>ainvoke()</code> and <code>astream()</code>, and accepts
+<code>tools=</code> for function calling.</p>
+<h3>Evaluation (dynaevals)</h3>
+<p>Check how well search finds the documents you expect:</p>
+""" + code("""from dynavec.eval import compute_mrr, compute_ndcg_at_k, compute_recall_at_k
+
+retrieved = ["d3", "d1", "d7", "d2"]   # ids returned by search, best first
+relevant = {"d1", "d2"}                # ids you know are correct
+
+compute_recall_at_k(retrieved, relevant, k=3)   # 0.5
+compute_mrr(retrieved, relevant)                # 0.5
+compute_ndcg_at_k(retrieved, relevant, k=3)     # 0.3869""") + """
+<p>And use an LLM as a judge to check whether an answer sticks to the retrieved context and actually
+answers the question:</p>
+""" + code("""from dynavec.eval import OpenAIJudge, evaluate_rag
+
+result = evaluate_rag(
+    query="What powers the cell?",
+    context=["The mitochondria is the powerhouse of the cell."],
+    answer="The mitochondria.",
+    judge=OpenAIJudge(model="gpt-4o-mini"),   # or BedrockJudge, GeminiJudge, CustomJudge
+)
+print(result.faithfulness.score, result.answer_relevance.score)""") + """
+<h3>Telemetry (dynalogs)</h3>
+<p>Attach a <code>TelemetryRecorder</code> to your client to capture latency, cache hits and scores for every
+search, then view them in the <a href="dashboard.html">telemetry dashboard</a>.</p>
+
+<h2>Roadmap</h2>
+<p>The proposed order of work, grouped by area. Each row links to its issues.</p>
+<table class="doc__params">
+<tr><th>Area</th><th>What's included</th><th>Issues</th></tr>
+<tr><td>Engine core</td>
+    <td>The graph and state runtime, branches, loops and parallel steps, retries, saving run state to
+    DynamoDB, and snapshots for resume and replay</td>
+    <td>""" + issue(277) + "&ndash;" + issue(281) + """</td></tr>
+<tr><td>Nodes and models</td>
+    <td>A typed node schema, built-in and custom nodes, chat models (done), prompt templates and output parsers</td>
+    <td>""" + issue(282) + "&ndash;" + issue(286) + """</td></tr>
+<tr><td>Agents</td>
+    <td>A tool registry with MCP connectors, a tool-calling loop and planner, multi-agent handoffs and
+    conversation memory</td>
+    <td>""" + issue(287) + "&ndash;" + issue(290) + """</td></tr>
+<tr><td>Visual builder</td>
+    <td>A drag-and-drop canvas, converting between code and canvas, watching runs live, stepping through
+    a run, and a CLI</td>
+    <td>""" + issue(291) + "&ndash;" + issue(295) + """</td></tr>
+<tr><td>Observability</td>
+    <td>Traces per step, structured logs, run history and run metrics</td>
+    <td>""" + issue(299) + "&ndash;" + issue(302) + """</td></tr>
+<tr><td>Evaluation</td>
+    <td>More RAG metrics, test datasets, regression runs with CI checks, and scores shown next to traces</td>
+    <td>""" + issue(303) + "&ndash;" + issue(306) + """</td></tr>
+<tr><td>Production and multi-cloud</td>
+    <td>Pausing for human approval, long-running workflows, one-command serverless deploy, and GCP and
+    Azure backends</td>
+    <td>""" + issue(296) + "&ndash;" + issue(298) + ", " + issue(307) + "&ndash;" + issue(308) + """</td></tr>
+</table>
+<p>Want to help? Pick an unassigned issue, comment on it to get assigned, and follow
+<a href="https://github.com/codeforstartups/dynavec/blob/development/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
+""")
+
+
 def render(slug: str) -> str:
     title, sub, body = PAGES[slug]
     # sidebar

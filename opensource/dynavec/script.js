@@ -351,17 +351,42 @@ window.addEventListener("DOMContentLoaded", function () {
       scale: { vectors: 7, dim: 2, qpm: 7.7, wpm: 6.7 },
     };
 
-    document.querySelectorAll(".calc2__preset").forEach((btn) => {
+    const presetBtns = document.querySelectorAll(".calc2__preset");
+
+    function updateActivePreset() {
+      const v = parseFloat(slVectors.value);
+      const d = parseInt(slDim.value);
+      const q = parseFloat(slQpm.value);
+      const w = parseFloat(slWpm.value);
+
+      let matchedPreset = null;
+      for (const [key, p] of Object.entries(PRESETS)) {
+        if (
+          Math.abs(v - p.vectors) < 0.05 &&
+          d === p.dim &&
+          Math.abs(q - p.qpm) < 0.05 &&
+          Math.abs(w - p.wpm) < 0.05
+        ) {
+          matchedPreset = key;
+          break;
+        }
+      }
+
+      presetBtns.forEach((btn) => {
+        btn.classList.toggle("is-active", btn.dataset.preset === matchedPreset);
+      });
+    }
+
+    presetBtns.forEach((btn) => {
       btn.addEventListener("click", () => {
-        document
-          .querySelectorAll(".calc2__preset")
-          .forEach((b) => b.classList.remove("is-active"));
-        btn.classList.add("is-active");
         const p = PRESETS[btn.dataset.preset];
+        if (!p) return;
         slVectors.value = p.vectors;
         slDim.value = p.dim;
         slQpm.value = p.qpm;
         slWpm.value = p.wpm;
+        presetBtns.forEach((b) => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
         compute();
       });
     });
@@ -417,6 +442,7 @@ window.addEventListener("DOMContentLoaded", function () {
       setBar("bar-reads", "amt-reads", readCost, maxCost);
       setBar("bar-ddb-r", "amt-ddb-r", dynRead, maxCost);
       setBar("bar-ddb-w", "amt-ddb-w", dynWrite, maxCost);
+      updateActivePreset();
     }
 
     [slVectors, slDim, slQpm, slWpm].forEach((el) =>
@@ -506,21 +532,36 @@ window.addEventListener("DOMContentLoaded", function () {
 (function () {
   const facade = document.getElementById("yt-facade");
   if (!facade) return;
-  facade.addEventListener("click", () => {
+
+  function activateVideo(e) {
+    if (e && (e.ctrlKey || e.metaKey || e.shiftKey)) return;
+    if (e) e.preventDefault();
+
+    if (facade.querySelector("iframe")) return;
+
     const iframe = document.createElement("iframe");
     iframe.src = "https://www.youtube.com/embed/UJ9MBALD380?autoplay=1&rel=0";
+    iframe.title = "dynavec demo video";
     iframe.allow =
       "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
     iframe.setAttribute("allowfullscreen", "");
     iframe.style.cssText =
-      "position:absolute;inset:0;width:100%;height:100%;border:0;";
-    // Clear thumbnail/play button and drop in the iframe
-    facade.innerHTML = "";
+      "position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:inherit;";
+
+    facade.removeAttribute("href");
+    facade.removeAttribute("target");
+    facade.removeAttribute("rel");
     facade.style.cursor = "default";
+    facade.innerHTML = "";
     facade.appendChild(iframe);
-  });
+  }
+
+  facade.addEventListener("click", activateVideo);
   facade.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") facade.click();
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      activateVideo();
+    }
   });
 })();
 

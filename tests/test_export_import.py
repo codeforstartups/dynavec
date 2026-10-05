@@ -63,7 +63,8 @@ class FakeS3(client_mod.S3VectorsStore):
     def get_vectors(self, keys, return_metadata=False):
         return {
             k: {"vector": self._store[k][0], "metadata": self._store[k][1]}
-            for k in keys if k in self._store
+            for k in keys
+            if k in self._store
         }
 
     def list_pages(self, return_data=False, return_metadata=False, page_size=None):
@@ -154,8 +155,14 @@ def test_import_namespace_from_file(monkeypatch, tmp_path):
     db = _make(monkeypatch)
     in_file = tmp_path / "import.jsonl"
     in_file.write_text(
-        json.dumps({"id": "imp1", "vector": [0.1] * 8, "text": "imported text", "metadata": {"x": 1}}) + "\n"
-        + json.dumps({"id": "imp2", "vector": [0.2] * 8, "text": "second imported", "metadata": {"x": 2}}) + "\n",
+        json.dumps(
+            {"id": "imp1", "vector": [0.1] * 8, "text": "imported text", "metadata": {"x": 1}}
+        )
+        + "\n"
+        + json.dumps(
+            {"id": "imp2", "vector": [0.2] * 8, "text": "second imported", "metadata": {"x": 2}}
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -234,5 +241,72 @@ def test_import_validation_errors(monkeypatch):
     with pytest.raises(ValueError, match="Invalid JSON at line 1"):
         db.import_namespace(io.StringIO("not-valid-json\n"))
 
-    with pytest.raises(ValueError, match="Missing required 'id' or 'vector' field at line 1"):
+    # with pytest.raises(ValueError, match="Missing required 'id' or 'vector' field at line 1"):
+    #     db.import_namespace(io.StringIO('{"text": "no id or vector"}\n'))
+    with pytest.raises(ValueError, match=r"(?i)line 1.*id"):
         db.import_namespace(io.StringIO('{"text": "no id or vector"}\n'))
+
+
+# ********** neha-5456*************
+@pytest.mark.parametrize(
+    "record,field",
+    [
+        (42, "object"),
+        (["invalid"], "object"),
+        ({}, "id"),
+        ({"id": "x"}, "vector"),
+        ({"id": "", "vector": [0.1] * 8}, "id"),
+        ({"id": True, "vector": [0.1] * 8}, "id"),
+        ({"id": "x", "vector": "bad"}, "vector"),
+        ({"id": "x", "vector": [0.1] * 4}, "vector"),
+        ({"id": "x", "vector": [True] * 8}, "vector"),
+        ({"id": "x", "vector": [float("nan")] * 8}, "vector"),
+        ({"id": "x", "vector": [float("inf")] * 8}, "vector"),
+        (
+            {
+                "id": "x",
+                "vector": [0.1] * 8,
+                "metadata": ["invalid"],
+            },
+            "metadata",
+        ),
+    ],
+)
+def test_import_invalid_schema(monkeypatch, record, field):
+    db = _make(monkeypatch)
+
+    stream = io.StringIO("\n" + json.dumps(record) + "\n")
+
+    with pytest.raises(
+        ValueError,
+        match=rf"(?i)line 2.*{field}",
+    ):
+        db.import_namespace(stream)
+
+
+def test_invalid_record_does_not_write_batch(monkeypatch):
+    db = _make(monkeypatch)
+    records = [
+        {"id": "valid", "vector": [0.1] * 8},
+        {"id": "invalid", "vector": [0.1] * 4},
+    ]
+    stream = io.StringIO("\n".join(json.dumps(r) for r in records))
+
+    with pytest.raises(ValueError, match="Line 2"):
+        db.import_namespace(stream, batch_size=2)
+
+    assert db.get(["valid"]) == []
+
+
+def test_previous_batch_remains_committed(monkeypatch):
+    db = _make(monkeypatch)
+    records = [
+        {"id": "valid", "vector": [0.1] * 8},
+        {"id": "invalid", "vector": [0.1] * 4},
+    ]
+    stream = io.StringIO("\n".join(json.dumps(r) for r in records))
+
+    with pytest.raises(ValueError, match="Line 2"):
+        db.import_namespace(stream, batch_size=1)
+
+    assert len(db.get(["valid"])) == 1

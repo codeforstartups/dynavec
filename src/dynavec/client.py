@@ -26,6 +26,7 @@ rewrite. (A native asyncio client is on the roadmap.)
 from __future__ import annotations
 
 import json
+import math
 import time
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -261,7 +262,6 @@ class Dynavec:
             auto_metadata,
             default_ttl_seconds=default_ttl_seconds,
         )
-
 
     def _write(
         self,
@@ -1591,14 +1591,68 @@ class Dynavec:
                 except Exception as exc:
                     raise ValueError(f"Invalid JSON at line {line_no}: {exc}") from exc
 
-                if "id" not in obj or "vector" not in obj:
-                    raise ValueError(f"Missing required 'id' or 'vector' field at line {line_no}")
+                # if "id" not in obj or "vector" not in obj:
+                #     raise ValueError(f"Missing required 'id' or 'vector' field at line {line_no}")
+
+                # doc = Document(
+                #     id=str(obj["id"]),
+                #     vector=obj["vector"],
+                #     text=obj.get("text"),
+                #     metadata=obj.get("metadata") or {},
+                # )
+                if not isinstance(obj, dict):
+                    raise ValueError(f"Line {line_no}: expected JSON object")
+
+                if "id" not in obj:
+                    raise ValueError(f"Line {line_no}: missing id")
+
+                doc_id = obj["id"]
+
+                if (
+                    isinstance(doc_id, bool)
+                    or not isinstance(doc_id, (str, int))
+                    or not str(doc_id).strip()
+                ):
+                    raise ValueError(f"Line {line_no}: invalid id")
+
+                if "vector" not in obj:
+                    raise ValueError(f"Line {line_no}: missing vector")
+
+                vector = obj["vector"]
+
+                if not isinstance(vector, list):
+                    raise ValueError(f"Line {line_no}: vector must be a list")
+
+                if len(vector) != self.config.dimension:
+                    raise ValueError(
+                        f"Line {line_no}: vector dimension "
+                        f"must be {self.config.dimension}, "
+                        f"got {len(vector)}"
+                    )
+
+                for index, value in enumerate(vector):
+                    if (
+                        isinstance(value, bool)
+                        or not isinstance(value, (int, float))
+                        or not math.isfinite(value)
+                    ):
+                        raise ValueError(
+                            f"Line {line_no}: vector element {index} must be a finite number"
+                        )
+
+                metadata = obj.get("metadata")
+
+                if metadata is None:
+                    metadata = {}
+
+                if not isinstance(metadata, dict):
+                    raise ValueError(f"Line {line_no}: metadata must be an object")
 
                 doc = Document(
-                    id=str(obj["id"]),
-                    vector=obj["vector"],
+                    id=str(doc_id),
+                    vector=vector,
                     text=obj.get("text"),
-                    metadata=obj.get("metadata") or {},
+                    metadata=metadata,
                 )
                 batch.append(doc)
                 if len(batch) >= batch_size:

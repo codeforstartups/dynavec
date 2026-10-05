@@ -222,6 +222,25 @@ uv run --no-sync pytest tests/test_cache.py -k "jitter" -v
   that property during construction.
 - **CI** (`.github/workflows/ci.yml`) runs on every push/PR: **mypy**, plus ruff and
   pytest across Python 3.9, 3.11, and 3.12. `make run-ci` reproduces it locally.
+- **Fork PR approval:** GitHub holds workflow runs for pull requests from forks until a
+  maintainer approves them, so checks may not appear right after you open a PR. See
+  [Fork PR CI approval](#fork-pr-ci-approval) below.
+
+### Fork PR CI approval
+
+GitHub does not run workflows on pull requests from forks until a maintainer approves
+them, to keep untrusted code from reaching repository secrets. Depending on the repo's
+"Fork pull request workflows" setting, this applies to first-time contributors or to all
+outside collaborators.
+
+- **As a contributor:** open your PR as usual. The checks panel shows "Workflow awaiting
+  approval" until a maintainer acts. No action is needed on your side, and an empty
+  checks list does not mean your change failed.
+- **As a maintainer:** open the PR's **Checks** tab (or the Actions tab) and click
+  **Approve and run workflows**. Review the diff first, since approval runs the PR's code
+  in CI. Approve promptly so reviews are not blocked on checks.
+- **Repo setting:** the approval rule lives in GitHub, not in `ci.yml`. Repo owners set it
+  under **Settings → Actions → General → Fork pull request workflows**.
 
 ---
 

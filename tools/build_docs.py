@@ -13,42 +13,60 @@ OUT = os.path.join(os.path.dirname(__file__), "..", "opensource", "dynavec", "do
 
 # Sidebar structure: (group title, [(slug, nav label)])
 NAV = [
-    ("Getting started", [
-        ("index", "Overview"),
-        ("installation", "Installation"),
-        ("quickstart", "Quickstart"),
-        ("configuration", "Configuration"),
-        ("faq", "FAQ"),
-    ]),
-    ("Writing data", [
-        ("embeddings", "Embeddings"),
-        ("upsert", "Upsert"),
-        ("update-and-lambda", "Update & Lambda"),
-        ("ingestion", "Ingestion & MCP"),
-    ]),
-    ("Searching", [
-        ("search", "Search"),
-        ("metrics-and-rerank", "Metrics & rerank"),
-        ("namespaces", "Namespaces"),
-        ("streaming", "Streaming"),
-        ("caching", "Caching"),
-    ]),
-    ("Advanced", [
-        ("knowledge-graph", "Knowledge graph"),
-        ("hot-tier", "In-memory hot tier"),
-        ("quantization", "Product quantization"),
-        ("concurrency", "Concurrency"),
-        ("credentials", "Credentials & IAM"),
-    ]),
-    ("Ecosystem", [
-    ("ecosystem", "Ecosystem overview"),
-    ("integrations", "Framework integrations"),
-    ("dashboard", "Telemetry dashboard"),
-    ("benchmarking", "Benchmarking"),
-    ]),
-    ("About", [
-        ("release-notes", "Release notes"),
-    ]),
+    (
+        "Getting started",
+        [
+            ("index", "Overview"),
+            ("installation", "Installation"),
+            ("quickstart", "Quickstart"),
+            ("configuration", "Configuration"),
+            ("faq", "FAQ"),
+        ],
+    ),
+    (
+        "Writing data",
+        [
+            ("embeddings", "Embeddings"),
+            ("upsert", "Upsert"),
+            ("update-and-lambda", "Update & Lambda"),
+            ("ingestion", "Ingestion & MCP"),
+        ],
+    ),
+    (
+        "Searching",
+        [
+            ("search", "Search"),
+            ("metrics-and-rerank", "Metrics & rerank"),
+            ("namespaces", "Namespaces"),
+            ("streaming", "Streaming"),
+            ("caching", "Caching"),
+        ],
+    ),
+    (
+        "Advanced",
+        [
+            ("knowledge-graph", "Knowledge graph"),
+            ("hot-tier", "In-memory hot tier"),
+            ("quantization", "Product quantization"),
+            ("concurrency", "Concurrency"),
+            ("credentials", "Credentials & IAM"),
+        ],
+    ),
+    (
+        "Ecosystem",
+        [
+            ("ecosystem", "Ecosystem overview"),
+            ("integrations", "Framework integrations"),
+            ("dashboard", "Telemetry dashboard"),
+            ("benchmarking", "Benchmarking"),
+        ],
+    ),
+    (
+        "About",
+        [
+            ("release-notes", "Release notes"),
+        ],
+    ),
 ]
 
 # flat order for prev/next
@@ -105,7 +123,8 @@ OPENAI_API_KEY=sk-...        # or GOOGLE_API_KEY / COHERE_API_KEY"""
 # ---- page bodies (slug -> (title, subtitle, html)) ----
 PAGES: dict[str, tuple[str, str, str]] = {}
 
-PAGES["index"] = ("dynavec documentation",
+PAGES["index"] = (
+    "dynavec documentation",
     "A serverless hybrid vector database that runs inside your own AWS account.",
     """
 <p>dynavec fuses <a href="https://aws.amazon.com/dynamodb/">Amazon DynamoDB</a> (single-digit-millisecond
@@ -130,13 +149,16 @@ Weaviate, and OpenSearch that bills only when you use it.</p>
   <a href="benchmarking.html"><h3>Benchmarking</h3><p>Recall, latency, and cost modeled across dimensions and scale.</p></a>
   <a href="ecosystem.html"><h3>Ecosystem</h3><p>The four pillars &mdash; dynavec, dynaflow, dynalogs, dynaevals &mdash; and the roadmap.</p></a>
 </div>
-""")
+""",
+)
 
-PAGES["installation"] = ("Installation",
+PAGES["installation"] = (
+    "Installation",
     "Base install is boto3 + numpy. Everything else is an optional extra.",
     """
 <p>Install with pip or uv — both pull from PyPI.</p>
-""" + code("""# base (boto3 + numpy only)
+"""
+    + code("""# base (boto3 + numpy only)
 pip install dynavec
 uv add dynavec
 
@@ -146,7 +168,8 @@ pip install "dynavec[sentence-transformers]"
 
 # everything (all embedders + framework adapters)
 pip install "dynavec[all]"
-""") + """
+""")
+    + """
 <h2>Optional extras</h2>
 <table class="doc__params">
 <tr><th>Extra</th><th>Adds</th></tr>
@@ -159,14 +182,17 @@ pip install "dynavec[all]"
 </table>
 <div class="callout">dynavec needs AWS credentials with permission for S3 Vectors and DynamoDB.
 See <a href="credentials.html">Credentials &amp; IAM</a>.</div>
-""")
+""",
+)
 
-PAGES["quickstart"] = ("Quickstart",
+PAGES["quickstart"] = (
+    "Quickstart",
     "Provision, upsert, and search in a dozen lines.",
     """
 <p>With <code>auto_provision=True</code>, dynavec creates the S3 vector bucket, the vector index, and the
 DynamoDB table on first use.</p>
-""" + code("""from dynavec import Dynavec, DynavecConfig, Document
+"""
+    + code("""from dynavec import Dynavec, DynavecConfig, Document
 from dynavec.embeddings import OpenAIEmbedder
 
 cfg = DynavecConfig(
@@ -186,17 +212,21 @@ db.upsert([
 
 for hit in db.search("how do cells make energy?", top_k=3):
     print(hit.score, hit.id, hit.text)
-""") + """
+""")
+    + """
 <div class="callout">S3 Vectors is eventually consistent right after ingest — allow a few seconds before
 querying freshly written vectors.</div>
-""")
+""",
+)
 
-PAGES["configuration"] = ("Configuration",
+PAGES["configuration"] = (
+    "Configuration",
     "Everything the client needs, in one frozen dataclass.",
     """
 <p><code>DynavecConfig</code> is an immutable description of your resources and tuning. It never holds secrets —
 credentials are passed separately (see <a href="credentials.html">Credentials &amp; IAM</a>).</p>
-""" + code("""from dynavec import DynavecConfig
+"""
+    + code("""from dynavec import DynavecConfig
 
 cfg = DynavecConfig(
     vector_bucket="my-vectors",   # S3 vector bucket name
@@ -214,7 +244,8 @@ cfg = DynavecConfig(
     structured_logging=True,      # opt-in structured JSON logging across stores
     auto_provision=True,
 )
-""") + """
+""")
+    + """
 <h2>Key parameters</h2>
 <table class="doc__params">
 <tr><th>Field</th><th>Meaning</th></tr>
@@ -229,9 +260,11 @@ cfg = DynavecConfig(
 <tr><td><code>structured_logging</code></td><td>Opt-in structured JSON logging across DynamoDB and S3 Vectors store operations with automatic secret redaction. Defaults to <code>False</code>.</td></tr>
 <tr><td><code>log_level</code></td><td>Minimum log level (<code>"DEBUG"</code>, <code>"INFO"</code>, etc.). Defaults to <code>"INFO"</code>.</td></tr>
 </table>
-""")
+""",
+)
 
-PAGES["faq"] = ("Frequently Asked Questions",
+PAGES["faq"] = (
+    "Frequently Asked Questions",
     "Common questions about regions, limits, consistency, costs, and architecture.",
     """
 <h2>Regions &amp; Availability</h2>
@@ -298,14 +331,17 @@ PAGES["faq"] = ("Frequently Asked Questions",
 
 <h3>How does multi-tenancy work?</h3>
 <p>dynavec provides native <a href="namespaces.html">Namespaces</a>. A single S3 vector bucket and DynamoDB table can host many independent tenants. DynamoDB partition keys are cleanly isolated via escaped <code>"{namespace}#{id}"</code> prefixes, and vector queries are automatically scoped so data never leaks across namespaces.</p>
-""")
+""",
+)
 
-PAGES["embeddings"] = ("Embeddings",
+PAGES["embeddings"] = (
+    "Embeddings",
     "Pluggable, bring-your-own-key — or bring your own vectors.",
     """
 <p>Choose an embedder and supply your own API key, or skip the embedder entirely and pass pre-computed vectors.
 Embedder backends are imported lazily, so the base install stays light.</p>
-""" + code("""from dynavec.embeddings import (
+"""
+    + code("""from dynavec.embeddings import (
     OpenAIEmbedder, GeminiEmbedder, MistralEmbedder, BedrockEmbedder,
     SentenceTransformerEmbedder,
 )
@@ -318,33 +354,40 @@ emb = MistralEmbedder(model="mistral-embed")                # 1024-d
 # in-account (no third party) or fully local / offline
 emb = BedrockEmbedder(model_id="amazon.titan-embed-text-v2:0", region="us-east-1")
 emb = SentenceTransformerEmbedder(model="all-MiniLM-L6-v2") # 384-d, free
-""") + """
+""")
+    + """
 <h2>Bring your own vectors</h2>
 <p>No embedder needed — pass vectors directly and query with a vector.</p>
-""" + code("""from dynavec import Dynavec, DynavecConfig, Document
+"""
+    + code("""from dynavec import Dynavec, DynavecConfig, Document
 
 db = Dynavec(cfg)  # no embedder
 db.upsert([Document(id="x", vector=my_1536d_vector, metadata={"lang": "en"})])
 db.search(vector=my_query_vector, top_k=5)
-""") + """
+""")
+    + """
 <div class="callout"><strong>Compliance tip:</strong> use <code>BedrockEmbedder</code> or
 <code>SentenceTransformerEmbedder</code> to keep embedding in-account or offline — no data leaves your
 environment.</div>
-""")
+""",
+)
 
-PAGES["upsert"] = ("Upsert",
+PAGES["upsert"] = (
+    "Upsert",
     "Write documents to both stores in one call.",
     """
 <p>Each document carries an <code>id</code>, either <code>text</code> (which gets embedded) or a
 <code>vector</code>, and optional <code>metadata</code>. dynavec splits metadata: a small filterable subset
 goes to S3 Vectors, the full copy plus text goes to DynamoDB.</p>
-""" + code("""from dynavec import Document
+"""
+    + code("""from dynavec import Document
 
 db.upsert([
     Document(id="1", text="apple pie recipe", metadata={"cat": "food", "rating": 5}),
     Document(id="2", text="rocket launch schedule", metadata={"cat": "space"}),
 ], namespace="kb", auto_metadata=True)
-""") + """
+""")
+    + """
 <h2>The metadata switch</h2>
 <ul>
 <li><strong>You provide metadata</strong> — stored verbatim.</li>
@@ -360,7 +403,8 @@ db.upsert([
 raise <code>ItemTooLargeError</code> (with <code>doc_id</code>, <code>namespace</code>,
 <code>size_bytes</code>, and <code>limit_bytes</code>) if one is too big. The whole call fails, so S3 Vectors
 and DynamoDB never end up with half a batch.</p>
-""" + code("""from dynavec import ItemTooLargeError
+"""
+    + code("""from dynavec import ItemTooLargeError
 from dynavec.ingest import chunk_text
 
 try:
@@ -372,72 +416,88 @@ except ItemTooLargeError as err:
          for i, chunk in enumerate(chunk_text(long_text, chunk_size=2000))],
         namespace="kb",
     )
-"""))
+"""),
+)
 
-PAGES["update-and-lambda"] = ("Update &amp; Lambda transforms",
+PAGES["update-and-lambda"] = (
+    "Update &amp; Lambda transforms",
     "Change text, vector, or metadata — and transform data in-account.",
     """
 <p><code>update()</code> is a read-modify-write: metadata merges by default, and the vector is only
 re-derived when the text changes or you pass a new vector.</p>
-""" + code("""# merge new metadata, keep existing text + vector
+"""
+    + code("""# merge new metadata, keep existing text + vector
 db.update("1", namespace="kb", metadata={"rating": 4})
 
 # change text -> re-embbeds and overwrites the vector
 db.update("1", namespace="kb", text="new content")
-""") + """
+""")
+    + """
 <h2>Transform pipeline</h2>
 <p>Transforms are plain callables run on each document before it is written — for enrichment, redaction, or
 deriving vectors elsewhere.</p>
-""" + code("""from dynavec.transforms import TransformPipeline
+"""
+    + code("""from dynavec.transforms import TransformPipeline
 
 def redact(ctx):
     ctx.metadata["pii"] = False
     return ctx
 
 db.upsert(docs, transform=redact)             # or transform=TransformPipeline([...])
-""") + """
+""")
+    + """
 <h2>Run the transform in your own AWS Lambda</h2>
 <p><code>LambdaTransform</code> invokes a Lambda you own with the document payload and applies whatever it
 returns — keeping custom logic in-account.</p>
-""" + code("""from dynavec.transforms import LambdaTransform
+"""
+    + code("""from dynavec.transforms import LambdaTransform
 
 xform = LambdaTransform("my-transform-fn", session=db._session)
 db.upsert(docs, transform=xform)
-""") + """
+""")
+    + """
 <div class="callout">Grant <code>lambda:InvokeFunction</code> on that function — see
 <a href="credentials.html">Credentials &amp; IAM</a>.</div>
-""")
+""",
+)
 
-PAGES["ingestion"] = ("Ingestion &amp; MCP",
+PAGES["ingestion"] = (
+    "Ingestion &amp; MCP",
     "Suck in content from anywhere — including any MCP server.",
     """
 <p>A <em>source</em> is any iterable of records. <code>ingest()</code> chunks, embeds, and upserts them.</p>
-""" + code("""from dynavec.ingest import ingest, IterableSource
+"""
+    + code("""from dynavec.ingest import ingest, IterableSource
 
 src = IterableSource([
     {"id": "doc1", "text": long_text, "metadata": {"src": "wiki"}},
 ])
 ingest(db, src, namespace="kb", chunk_size=1000, overlap=150)
-""") + """
+""")
+    + """
 <h2>From a Markdown or text directory</h2>
 <p><code>MarkdownSource</code> reads UTF-8 <code>.md</code> and <code>.txt</code> files recursively.
 Install <code>dynavec[ingest]</code> for YAML front matter support.</p>
-""" + code("""from dynavec.ingest import MarkdownSource, ingest
+"""
+    + code("""from dynavec.ingest import MarkdownSource, ingest
 
 source = MarkdownSource("./notes")
 # Or select files with a root-relative glob:
 source = MarkdownSource("./notes", glob="guides/**/*.md")
 ingest(db, source, namespace="notes")
-""") + """
+""")
+    + """
 <p>A Markdown file may begin with a YAML mapping between two <code>---</code> lines:</p>
-""" + code("""---
+"""
+    + code("""---
 title: Deployment guide
 topic: aws
 tags: [deployment, rag]
 ---
 # Deploying the service
 The document body starts here.
-""") + """
+""")
+    + """
 <p>Front matter becomes metadata and is removed from the text before chunking. Use storage-compatible
 values (strings, numbers, booleans, lists, and mappings); quote dates to keep them as strings.
 Malformed or unclosed front matter raises an error naming the file. Text files are read verbatim.</p>
@@ -450,20 +510,25 @@ AWS calls. The example also supports ingestion into an existing index using an O
 <h2>From any MCP server</h2>
 <p><code>MCPResourceSource</code> turns an MCP server's <em>resources</em> (Notion, Confluence, Drive, your
 own) into an embeddable corpus — no per-source code.</p>
-""" + code("""from dynavec.ingest import ingest, MCPResourceSource
+"""
+    + code("""from dynavec.ingest import ingest, MCPResourceSource
 
 ingest(db, MCPResourceSource(mcp_session), namespace="kb")
-""") + """
+""")
+    + """
 <p>Chunk ids are <code>"{record_id}#chunk{n}"</code> with <code>source_id</code> / <code>chunk</code>
 metadata, so you can group or delete a whole document later.</p>
-""")
+""",
+)
 
-PAGES["search"] = ("Search",
+PAGES["search"] = (
+    "Search",
     "ANN in S3 Vectors, document hydration from DynamoDB.",
     """
 <p>Provide a <code>query</code> string (embedded for you) or a raw <code>vector</code>. S3 Vectors returns the
 nearest keys; dynavec hydrates the full documents from DynamoDB via <code>BatchGetItem</code>.</p>
-""" + code("""hits = db.search(
+"""
+    + code("""hits = db.search(
     "how do cells make energy?",
     top_k=5,
     namespace="kb",
@@ -471,41 +536,53 @@ nearest keys; dynavec hydrates the full documents from DynamoDB via <code>BatchG
 )
 for h in hits:
     print(h.score, h.id, h.text, h.metadata)
-""") + """
+""")
+    + """
 <h2>Metadata filtering</h2>
 <p>Filters use the S3 Vectors dialect — bare <code>{"k": v}</code> is equality; operators like
 <code>$gte</code>, <code>$in</code>, <code>$and</code>, <code>$or</code> are supported. Only keys in
 <code>filterable_keys</code> can be filtered.</p>
-""" + code("""db.search("q", filter={"$and": [{"topic": "bio"}, {"year": {"$gte": 2020}}]})
-""") + """
+"""
+    + code("""db.search("q", filter={"$and": [{"topic": "bio"}, {"year": {"$gte": 2020}}]})
+""")
+    + """
 <p>Results come back as <code>SearchResult</code> with <code>id</code>, <code>score</code> (higher = more
 similar), <code>distance</code>, <code>text</code>, and <code>metadata</code>. Refine ordering with
 <a href="metrics-and-rerank.html">metrics &amp; rerank</a>, speed up repeats with
 <a href="caching.html">caching</a>.</p>
-""")
+""",
+)
 
-PAGES["metrics-and-rerank"] = ("Metrics &amp; rerank",
+PAGES["metrics-and-rerank"] = (
+    "Metrics &amp; rerank",
     "Cosine, dot, euclidean, manhattan, weighted combinations, and MMR.",
     """
 <p>The S3 Vectors index metric is cosine or euclidean. On top of the returned candidates, dynavec can
 <strong>rescore</strong> with any metric — or a weighted combination — client-side.</p>
-""" + code("""# single metric
+"""
+    + code("""# single metric
 db.search("q", top_k=5, rescore="manhattan")
 
 # weighted combination (normalized per candidate set)
 db.search("q", top_k=5, rescore={"cosine": 0.7, "dot": 0.3})
-""") + """
+""")
+    + """
 <h2>MMR diversity rerank</h2>
 <p>Maximal Marginal Relevance balances relevance against diversity so results are not near-duplicates.</p>
-""" + code("""db.search("q", top_k=5, rerank="mmr", mmr_lambda=0.5)  # 1=relevance, 0=diversity
-""") + """
+"""
+    + code("""db.search("q", top_k=5, rerank="mmr", mmr_lambda=0.5)  # 1=relevance, 0=diversity
+""")
+    + """
 <p>Both over-fetch <code>top_k * over_fetch</code> candidates first. You can also fuse multiple result lists
 with Reciprocal Rank Fusion:</p>
-""" + code("""from dynavec import reciprocal_rank_fusion
+"""
+    + code("""from dynavec import reciprocal_rank_fusion
 fused = reciprocal_rank_fusion([dense_hits, keyword_hits])
-"""))
+"""),
+)
 
-PAGES["namespaces"] = ("Namespaces",
+PAGES["namespaces"] = (
+    "Namespaces",
     "Multi-tenant / multi-collection isolation on a single index.",
     """
 <p>A namespace gives each tenant an isolated view of the same dynavec index. Every vector is tagged with its
@@ -515,7 +592,8 @@ same infrastructure while keeping their retrieval results separated.</p>
 <h2>Namespace-per-tenant</h2>
 <p>Use <code>db.namespace("tenant-id")</code> to create a lightweight handle bound to one tenant. The same
 document ID can exist in multiple namespaces because the namespace is part of the storage key.</p>
-""" + code("""acme = db.namespace("acme")
+"""
+    + code("""acme = db.namespace("acme")
 globex = db.namespace("globex")
 
 acme.upsert([Document(id="refund-policy", text="Acme refunds are available within 30 days.")])
@@ -523,11 +601,13 @@ globex.upsert([Document(id="refund-policy", text="Globex refunds are available w
 
 acme.search("What is the refund period?", top_k=2)
 globex.search("What is the refund period?", top_k=2)
-""") + """
+""")
+    + """
 <h2>End-to-end multi-tenant RAG</h2>
 <p>A typical RAG application maps the authenticated tenant to a namespace, retrieves context from that namespace,
 and passes only that context to the LLM.</p>
-""" + code("""tenant = db.namespace(tenant_id)
+"""
+    + code("""tenant = db.namespace(tenant_id)
 
 hits = tenant.search(user_query, top_k=5)
 context = "\\n\\n".join(hit.text for hit in hits)
@@ -535,37 +615,47 @@ context = "\\n\\n".join(hit.text for hit in hits)
 answer = llm.generate(
     f"Answer using only the following context:\\n{context}\\n\\nQuestion: {user_query}"
 )
-""") + """
+""")
+    + """
 <p>The complete runnable recipe is available in
 <code>examples/multi_tenant_rag.py</code>. It demonstrates two tenants using the same index, including identical
 document IDs with tenant-specific content.</p>
 <h2>Runnable example</h2>
-""" + code("""pip install "dynavec[sentence-transformers]"
+"""
+    + code("""pip install "dynavec[sentence-transformers]"
 python examples/multi_tenant_rag.py
-""") + """
+""")
+    + """
 <div class="callout">For multi-tenant RAG, keep the namespace derived from your authenticated tenant identity.
 Do not accept an arbitrary tenant ID from an untrusted request and use it directly for retrieval.</div>
-""")
+""",
+)
 
-PAGES["streaming"] = ("Streaming",
+PAGES["streaming"] = (
+    "Streaming",
     "Deliver results to agents page-by-page as they arrive.",
     """
 <p><code>search_stream()</code> is a generator: it yields one hit at a time as S3 Vectors paginates, so an agent can start
 consuming the first results before the full set returns. Amazon S3 Vectors returns at most 100 vectors per response page;
 dynavec follows <code>nextToken</code> up to the service limit of 10,000 results.</p>
-""" + code("""for hit in db.search_stream("large query", top_k=250, namespace="kb", page_size=50):
+"""
+    + code("""for hit in db.search_stream("large query", top_k=250, namespace="kb", page_size=50):
     handle(hit)   # one hit at a time; page_size is the DynamoDB hydration batch
-""") + """
+""")
+    + """
 <p><code>page_size</code> (or <code>DynavecConfig(top_k_page_size=50)</code>) only changes how many hits are hydrated from DynamoDB per batch. It does not change the S3 Vectors page size (fixed at 100) or time-to-first-result.</p>
 <div class="callout">Reranking and rescoring need the full candidate set, so they are not applied in
 streaming mode. Use <a href="search.html">search()</a> when you need them.</div>
-""")
+""",
+)
 
-PAGES["caching"] = ("Caching",
+PAGES["caching"] = (
+    "Caching",
     "Skip the vector DB for repeated or similar queries.",
     """
 <p>Attach a cache and repeated queries are served without hitting S3 Vectors. Three backends:</p>
-""" + code("""from dynavec import Dynavec, SemanticCache, DynamoDBCache, RedisCache
+"""
+    + code("""from dynavec import Dynavec, SemanticCache, DynamoDBCache, RedisCache
 
 # 1) in-process semantic cache — also serves near-duplicate queries
 db = Dynavec(cfg, embedder=emb, cache=SemanticCache(threshold=0.97))
@@ -579,7 +669,8 @@ db = Dynavec(
 
 # 3) sub-millisecond shared cache on Redis / AWS ElastiCache
 db = Dynavec(cfg, embedder=emb, cache=RedisCache("redis://my-elasticache:6379/0"))
-""") + """
+""")
+    + """
 <table class="doc__params">
 <tr><th>Backend</th><th>Best for</th></tr>
 <tr><td><code>SemanticCache</code></td><td>single process; tolerant of near-duplicate hits; zero infra</td></tr>
@@ -587,15 +678,18 @@ db = Dynavec(cfg, embedder=emb, cache=RedisCache("redis://my-elasticache:6379/0"
 <tr><td><code>RedisCache</code></td><td>many workers/hosts; lowest latency; AWS ElastiCache</td></tr>
 </table>
 <p>Force a fresh search per call with <code>db.search(..., use_cache=False)</code>.</p>
-""")
+""",
+)
 
-PAGES["knowledge-graph"] = ("Knowledge graph",
+PAGES["knowledge-graph"] = (
+    "Knowledge graph",
     "Attach meaning to embeddings and traverse it to guide search.",
     """
 <p>Alongside the vector index, dynavec keeps a lightweight entity-relationship graph in DynamoDB. Entities link
 to documents; you can traverse the graph first (cheap key lookups) to gather a candidate set, then rank only
 those against the query embedding. That is the DynamoDB → S3 Vectors reference join.</p>
-""" + code("""# build the graph
+"""
+    + code("""# build the graph
 db.graph_add_edge("acme", "competes_with", "globex", namespace="kb")
 db.graph_link("acme", ["doc-1", "doc-2"], namespace="kb")
 
@@ -607,27 +701,32 @@ hits = db.graph_search(
     top_k=10,
     namespace="kb",
 )
-""") + """
+""")
+    + """
 <p>Traversal helpers: <code>graph_add_node</code>, <code>graph_add_edge</code>, <code>graph_link</code>,
 <code>graph_neighbors</code>.</p>
 <h2>Removing nodes and edges</h2>
 <p>Both deletes are idempotent — removing something that is already gone returns <code>0</code> — and both
 return the number of edges removed.</p>
-""" + code("""# drop one relation (pass bidirectional=True to remove the reverse edge too)
+"""
+    + code("""# drop one relation (pass bidirectional=True to remove the reverse edge too)
 db.graph_delete_edge("acme", "competes_with", "globex", namespace="kb")
 
 # drop an entity, its outbound edges, and every edge pointing at it
 db.graph_delete_node("globex", namespace="kb")
-""") + """
+""")
+    + """
 <p><code>graph_delete_node</code> leaves linked documents and their embeddings in place; delete those with
 <code>db.delete(...)</code> if you want them gone. Nothing indexes inbound edges, so finding them scans the
 namespace (<code>dynamodb:Scan</code>) — fine for occasional cleanup, not for a hot path. Edge removal is a
 conditional write that retries if another writer changes the adjacency list concurrently.</p>
 <div class="callout">The graph uses embedded adjacency lists (one item per node). Very high fan-out entities
 want a sort-key adjacency design — on the roadmap.</div>
-""")
+""",
+)
 
-PAGES["hot-tier"] = ("In-memory hot tier",
+PAGES["hot-tier"] = (
+    "In-memory hot tier",
     "Pinecone-class latency for the hot working set — without a paid cluster.",
     """
 <p>Amazon S3 Vectors is cheap and serverless, but it is an object-backed ANN: its per-query
@@ -643,7 +742,8 @@ or has grown past the RAM cap, transparently falls back to the S3 Vectors path. 
 ever make queries faster, never wrong.</div>
 
 <h2>Enable it</h2>
-""" + code("""from dynavec import Dynavec, DynavecConfig
+"""
+    + code("""from dynavec import Dynavec, DynavecConfig
 
 cfg = DynavecConfig(
     vector_bucket="my-vectors", index="docs", table="dynavec_docs",
@@ -655,7 +755,8 @@ db = Dynavec(cfg, embedder=my_embedder)
 
 db.warm(namespace="default")       # load from S3 Vectors -> RAM (authoritative)
 hits = db.search("query", top_k=5) # served from memory: no S3, no DynamoDB
-print(db.hot_stats())              # {'authoritative_namespaces': ['default'], ...}""") + """
+print(db.hot_stats())              # {'authoritative_namespaces': ['default'], ...}""")
+    + """
 <h2>How it works</h2>
 <ul>
   <li><strong>warm(namespace)</strong> scans the namespace from S3 Vectors, hydrates text from
@@ -671,15 +772,18 @@ print(db.hot_stats())              # {'authoritative_namespaces': ['default'], .
 
 <div class="callout">This is how dynavec approaches Pinecone's latency without an always-on RAM cluster:
 keep only the <em>hot</em> set in memory, and let cold/bulk data stay on cheap S3 Vectors.</div>
-""")
+""",
+)
 
-PAGES["quantization"] = ("Product quantization",
+PAGES["quantization"] = (
+    "Product quantization",
     "Compress cached vectors up to 32× with asymmetric distance.",
     """
 <p>S3 Vectors stores float32 and manages its own layout, so PQ does not change what it stores. PQ compresses
 the vectors <em>dynavec</em> caches — the in-memory hot tier and local candidate caches — turning a
 <code>dim × 4</code> byte vector into <code>m</code> bytes.</p>
-""" + code("""from dynavec import ProductQuantizer
+"""
+    + code("""from dynavec import ProductQuantizer
 
 pq = ProductQuantizer(m=96, nbits=8).fit(training_vectors)   # 768-d -> 96 bytes (32x)
 codes = pq.encode(vectors)          # uint8 codes
@@ -689,21 +793,25 @@ print(pq.reconstruction_error(vectors))
 # Persist and reload codebooks across restarts
 pq.save("pq_model.npz")
 loaded_pq = ProductQuantizer.load("pq_model.npz")
-""") + """
+""")
+    + """
 <table class="doc__params">
 <tr><th>Param</th><th>Meaning</th></tr>
 <tr><td><code>m</code></td><td>Number of subspaces; must divide the vector dimension.</td></tr>
 <tr><td><code>nbits</code></td><td>Bits per subquantizer (8 → 256 centroids, uint8 codes).</td></tr>
 </table>
-""")
+""",
+)
 
-PAGES["concurrency"] = ("Concurrency",
+PAGES["concurrency"] = (
+    "Concurrency",
     "GIL-aware thread pool for I/O-bound AWS calls.",
     """
 <p>dynavec's workload is I/O-bound (network calls to AWS), and Python releases the GIL during those calls — so
 a thread pool gives real parallelism without an async rewrite. Batched writes fan out across threads, and
 <code>search_many</code> runs several queries concurrently.</p>
-""" + code("""# many queries at once
+"""
+    + code("""# many queries at once
 results = db.search_many(["q1", "q2", "q3"], top_k=5, namespace="kb")
 
 # tune the pool
@@ -712,17 +820,21 @@ cfg = DynavecConfig(..., max_workers=16, parallel_writes=True)
 # clean up the pool (or use the client as a context manager)
 with Dynavec(cfg, embedder=emb) as db:
     ...
-""") + """
+""")
+    + """
 <div class="callout">A native asyncio client (<code>aioboto3</code>) is on the roadmap for very high
 concurrency.</div>
-""")
+""",
+)
 
-PAGES["credentials"] = ("Credentials &amp; IAM",
+PAGES["credentials"] = (
+    "Credentials &amp; IAM",
     "Connect to your account, with least-privilege permissions.",
     """
 <p>dynavec uses the standard boto3 credential chain, so exported env vars just work. You can also pass keys
 explicitly or assume a cross-account role.</p>
-""" + code("""from dynavec import Dynavec, AWSCredentials
+"""
+    + code("""from dynavec import Dynavec, AWSCredentials
 
 # explicit keys / profile / cross-account role
 creds = AWSCredentials(
@@ -733,7 +845,8 @@ creds = AWSCredentials(
     # assume_role_arn="arn:aws:iam::OTHER_ACCOUNT:role/dynavec",
 )
 db = Dynavec(cfg, credentials=creds)
-""") + """
+""")
+    + """
 <h2>Step-by-step: create the IAM user &amp; keys</h2>
 <ol>
 <li>AWS Console → <strong>IAM</strong> → <strong>Users</strong> → <strong>Create user</strong>. Name it <code>dynavec</code> (programmatic access only — no console sign-in needed).</li>
@@ -742,13 +855,17 @@ db = Dynavec(cfg, credentials=creds)
 <li>Open the user → <strong>Security credentials</strong> → <strong>Create access key</strong> → <em>Application running outside AWS</em>. Copy the access key id and secret (shown once).</li>
 <li>Put them in a <code>.env</code> file (below), then run any example.</li>
 </ol>
-""" + code(POLICY_JSON) + """
+"""
+    + code(POLICY_JSON)
+    + """
 <div class="callout"><strong>Seeing red ARN errors in the JSON editor?</strong> Check the region spelling in the
 DynamoDB ARNs — it must be a real region such as <code>ap-south-1</code>. A typo like <code>ap-soute-1</code>
 makes the ARN invalid and shows two errors. The <code>s3vectors</code> block uses <code>"*"</code>, so it is
 not affected.</div>
 <h3>Your .env</h3>
-""" + code(ENV_SAMPLE) + """
+"""
+    + code(ENV_SAMPLE)
+    + """
 <p>Load it before running — <code>set -a &amp;&amp; . ./.env &amp;&amp; set +a</code> — or use
 <code>python-dotenv</code>. dynavec then picks up the credentials automatically.</p>
 <h2>Least-privilege IAM policy</h2>
@@ -763,40 +880,51 @@ lives at <a href="https://github.com/codeforstartups/dynavec/blob/development/do
 </table>
 <div class="callout"><strong>Never commit secrets.</strong> Use <code>.env</code> (gitignored) locally,
 GitHub Secrets in CI, and prefer an IAM role over long-lived keys in production.</div>
-""")
+""",
+)
 
-PAGES["integrations"] = ("Framework integrations",
+PAGES["integrations"] = (
+    "Framework integrations",
     "LangChain, LlamaIndex, and a tool for any agent framework.",
     """
 <h2>LangChain</h2>
-""" + code("""from dynavec.integrations.langchain import DynavecVectorStore
+"""
+    + code("""from dynavec.integrations.langchain import DynavecVectorStore
 store = DynavecVectorStore(db, namespace="kb")
 retriever = store.as_retriever(search_kwargs={"k": 4})
-""") + """
+""")
+    + """
 <h2>LlamaIndex</h2>
-""" + code("""from dynavec.integrations.llamaindex import DynavecLlamaStore
+"""
+    + code("""from dynavec.integrations.llamaindex import DynavecLlamaStore
 from llama_index.core import VectorStoreIndex, StorageContext
 
 store = DynavecLlamaStore(db, namespace="kb")
 ctx = StorageContext.from_defaults(vector_store=store)
 index = VectorStoreIndex.from_documents(docs, storage_context=ctx)
-""") + """
+""")
+    + """
 <h2>LangGraph / CrewAI / Strands</h2>
 <p>A framework-agnostic retriever tool — just a callable that takes a query and returns text.</p>
-""" + code("""from dynavec.integrations.tools import make_retriever_fn
+"""
+    + code("""from dynavec.integrations.tools import make_retriever_fn
 retrieve = make_retriever_fn(db, top_k=4)   # fn(query: str) -> str
 # also: as_langchain_tool(db), as_crewai_tool(db)
-""") + """
+""")
+    + """
 <h2>FastMCP server (Claude Desktop, Cursor, AI agents)</h2>
 <p>Expose dynavec as an MCP server with <code>dynavec_search</code> and <code>dynavec_graph_search</code> tools. Configure via environment variables and launch over stdio:</p>
-""" + code("""# Install with MCP extra
+"""
+    + code("""# Install with MCP extra
 pip install "dynavec[mcp]"
 
 # Launch the FastMCP server via CLI
 dynavec mcp
-""") + """
+""")
+    + """
 <p>Add to your Claude Desktop / Cursor configuration (<code>claude_desktop_config.json</code>):</p>
-""" + code("""{
+"""
+    + code("""{
   "mcpServers": {
     "dynavec": {
       "command": "uvx",
@@ -813,20 +941,25 @@ dynavec mcp
     }
   }
 }
-""") + """
+""")
+    + """
 <p>Programmatic initialization is also supported:</p>
-""" + code("""from dynavec.mcp import create_mcp_server
+"""
+    + code("""from dynavec.mcp import create_mcp_server
 
 mcp = create_mcp_server(db)
 mcp.run(transport="stdio")
-"""))
+"""),
+)
 
-PAGES["benchmarking"] = ("Benchmarking",
+PAGES["benchmarking"] = (
+    "Benchmarking",
     "Recall, latency, and cost — with tables and charts.",
     """
 <p>The suite measures recall@k and latency against a labeled dataset and models cost versus Pinecone,
 OpenSearch, Qdrant, Weaviate, and Milvus across dimensions and scale.</p>
-""" + code("""pip install "dynavec[benchmark]"
+"""
+    + code("""pip install "dynavec[benchmark]"
 
 # recall + latency (local control, or real AWS)
 python -m benchmarks.run_benchmark --backend local --n 50000 --dim 384
@@ -835,17 +968,22 @@ python -m benchmarks.run_benchmark --backend dynavec --bucket my-vectors \\
 
 # cost comparison + charts (dimensions 384-3072, 100K -> 1B vectors)
 python -m benchmarks.report --qpm 1_000_000
-""") + """
+""")
+    + """
 <div class="callout">Cost figures are cost-model estimates from public list prices. Competitor recall/latency
 are representative until you run the live benchmark against your own account.</div>
-""")
+""",
+)
 
-PAGES["release-notes"] = ("Release notes",
+PAGES["release-notes"] = (
+    "Release notes",
     "What changed in each version of dynavec, newest first.",
     """
 <p>dynavec follows <a href="https://semver.org/">semantic versioning</a>. Upgrade with:</p>
-""" + code("""pip install --upgrade dynavec
-uv pip install --upgrade dynavec""") + """
+"""
+    + code("""pip install --upgrade dynavec
+uv pip install --upgrade dynavec""")
+    + """
 <p>The full machine-readable history lives in
 <a href="https://github.com/codeforstartups/dynavec/blob/development/CHANGELOG.md">CHANGELOG.md</a>,
 and every version is a
@@ -977,10 +1115,12 @@ For what's coming next, see the <a href="ecosystem.html">Ecosystem overview</a> 
 <p>Initial public release: the hybrid Amazon DynamoDB + Amazon S3 Vectors store, pluggable
 embedders, namespace RAG, product quantization, RRF fusion, MMR rerank, the GraphRAG layer,
 caching backends, framework adapters, and one-shot provisioning.</p>
-""")
+""",
+)
 
 
-PAGES["dashboard"] = ("Telemetry dashboard",
+PAGES["dashboard"] = (
+    "Telemetry dashboard",
     "A native, in-your-brand observability dashboard — a Langfuse-style view of real query telemetry.",
     """
 <p>Attach a recorder to your client and every search is captured with latency, cache outcome,
@@ -988,19 +1128,23 @@ result count, and score stats. No simulated data.</p>
 <div class="callout">Live interactive preview: <a href="https://codeforstartups.github.io/dynavec/dashboard/" target="_blank" rel="noopener">codeforstartups.github.io/dynavec/dashboard</a> (landing-page theme).</div>
 <h2>1. Expose real telemetry</h2>
 <p>Attach a recorder to your client and serve the API:</p>
-""" + code("""from dynavec import Dynavec, DynavecConfig, SemanticCache
+"""
+    + code("""from dynavec import Dynavec, DynavecConfig, SemanticCache
 from dynavec.telemetry import TelemetryRecorder
 from dynavec.dashboard import serve
 
 rec = TelemetryRecorder()
 db = Dynavec(cfg, embedder=emb, cache=SemanticCache(), telemetry=rec)
 # ... your app runs searches; the recorder fills automatically ...
-serve(rec, port=8779)          # JSON API at http://127.0.0.1:8779""") + """
+serve(rec, port=8779)          # JSON API at http://127.0.0.1:8779""")
+    + """
 <h2>2. Run the dashboard</h2>
 <p>Points at that API; falls back to sample data if unset:</p>
-""" + code("""cd dashboard
+"""
+    + code("""cd dashboard
 npm install
-NEXT_PUBLIC_DYNAVEC_API=http://127.0.0.1:8779 npm run dev   # http://localhost:3000""") + """
+NEXT_PUBLIC_DYNAVEC_API=http://127.0.0.1:8779 npm run dev   # http://localhost:3000""")
+    + """
 <p>No AWS? <code>python examples/dashboard_demo.py</code> runs real searches against in-memory
 stand-ins and serves the API on <code>:8779</code> for the dashboard to read.</p>
 <h2>Tracing view</h2>
@@ -1015,19 +1159,26 @@ filterable traces table with per-trace drill-down:</p>
 </table>
 <img src="../images/dashboard_tracing.png" alt="Tracing view" class="doc__img" />
 <p>Click any row to open a detail drawer with per-call similarity scores, filter state, and error details.</p>
-""")
+""",
+)
+
 
 def issue(n: int) -> str:
     return f'<a href="https://github.com/codeforstartups/dynavec/issues/{n}">#{n}</a>'
 
 
-PAGES["ecosystem"] = ("Ecosystem overview",
+PAGES["ecosystem"] = (
+    "Ecosystem overview",
     "Four projects that together cover remembering, running, observing and measuring an AI application.",
     """
 <p>dynavec started as a vector database, and it's growing into a full agent stack that runs inside
 your own cloud account. The plan has four parts. Each one answers a question about an AI application:
 what does it know, what does it do, what happened when it ran, and how good were the results?</p>
-<div class="callout">This page follows the ecosystem epics (""" + issue(273) + "&ndash;" + issue(276) + """).
+<div class="callout">This page follows the ecosystem epics ("""
+    + issue(273)
+    + "&ndash;"
+    + issue(276)
+    + """).
 It's a living plan: the order is a proposal rather than a fixed schedule, and it will change as work lands.</div>
 
 <h2>The four projects</h2>
@@ -1040,17 +1191,25 @@ It's a living plan: the order is a proposal rather than a fixed schedule, and it
 <tr><td><strong>dynaflow</strong></td><td>Build &amp; run</td>
     <td>An orchestration engine for agents (nodes, edges, shared state, branches, loops, retries) with a
     visual builder where the code and the canvas describe the same graph.</td>
-    <td>In progress: chat models are available (""" + issue(285) + """), the engine is next.
-    Epic """ + issue(273) + """</td></tr>
+    <td>In progress: chat models are available ("""
+    + issue(285)
+    + """), the engine is next.
+    Epic """
+    + issue(273)
+    + """</td></tr>
 <tr><td><strong>dynalogs</strong></td><td>Observe</td>
     <td>Traces for each step of a run, structured logs with secrets removed, searchable run history and
     a metrics dashboard, all stored in your own account.</td>
-    <td>Early version: the <a href="dashboard.html">telemetry dashboard</a>. Epic """ + issue(274) + """</td></tr>
+    <td>Early version: the <a href="dashboard.html">telemetry dashboard</a>. Epic """
+    + issue(274)
+    + """</td></tr>
 <tr><td><strong>dynaevals</strong></td><td>Measure &amp; improve</td>
     <td>Retrieval metrics, LLM-judged answer quality, test datasets, regression runs and CI checks that
     fail when quality drops.</td>
     <td>Partly available: retrieval metrics, faithfulness and answer relevance, trend tracking.
-    Epic """ + issue(275) + """</td></tr>
+    Epic """
+    + issue(275)
+    + """</td></tr>
 </table>
 
 <h2>How they fit together</h2>
@@ -1064,7 +1223,8 @@ It's a living plan: the order is a proposal rather than a fixed schedule, and it
       CI build when a score goes down.</li>
   <li>What the scores tell you goes back into the agent: its prompts, its steps and its retrieval settings.</li>
 </ul>
-""" + code("""   dynaflow  --- retrieve / remember -->  dynavec
+"""
+    + code("""   dynaflow  --- retrieve / remember -->  dynavec
  (build &amp; run)                          (remember)
        |
        |  traces, logs
@@ -1072,36 +1232,42 @@ It's a living plan: the order is a proposal rather than a fixed schedule, and it
    dynalogs  --- runs, traces ------->  dynaevals
    (observe)                        (measure &amp; improve)
        ^                                    |
-       +------- improve the agent ----------+""") + """
+       +------- improve the agent ----------+""")
+    + """
 
 <h2>What you can use today</h2>
 <p>Some of the newer pieces have already landed in the <code>dynavec</code> package.</p>
 <h3>Chat models (dynaflow)</h3>
 <p>One interface for OpenAI, Anthropic and Amazon Bedrock. With Bedrock, the model calls stay in your
 AWS account like the rest of dynavec.</p>
-""" + code("""from dynavec.chat import BedrockChatModel, Message
+"""
+    + code("""from dynavec.chat import BedrockChatModel, Message
 
 model = BedrockChatModel(region_name="us-east-1")   # or OpenAIChatModel()
 result = model.invoke([
     Message(role="system", content="Answer in one sentence."),
     Message(role="user", content="What is a vector database?"),
 ])
-print(result.message.content)""") + """
+print(result.message.content)""")
+    + """
 <p>Every model also has <code>stream()</code>, <code>ainvoke()</code> and <code>astream()</code>, and accepts
 <code>tools=</code> for function calling.</p>
 <h3>Evaluation (dynaevals)</h3>
 <p>Check how well search finds the documents you expect:</p>
-""" + code("""from dynavec.eval import compute_mrr, compute_ndcg_at_k, compute_recall_at_k
+"""
+    + code("""from dynavec.eval import compute_mrr, compute_ndcg_at_k, compute_recall_at_k
 
 retrieved = ["d3", "d1", "d7", "d2"]   # ids returned by search, best first
 relevant = {"d1", "d2"}                # ids you know are correct
 
 compute_recall_at_k(retrieved, relevant, k=3)   # 0.5
 compute_mrr(retrieved, relevant)                # 0.5
-compute_ndcg_at_k(retrieved, relevant, k=3)     # 0.3869""") + """
+compute_ndcg_at_k(retrieved, relevant, k=3)     # 0.3869""")
+    + """
 <p>And use an LLM as a judge to check whether an answer sticks to the retrieved context and actually
 answers the question:</p>
-""" + code("""from dynavec.eval import OpenAIJudge, evaluate_rag
+"""
+    + code("""from dynavec.eval import OpenAIJudge, evaluate_rag
 
 result = evaluate_rag(
     query="What powers the cell?",
@@ -1109,7 +1275,8 @@ result = evaluate_rag(
     answer="The mitochondria.",
     judge=OpenAIJudge(model="gpt-4o-mini"),   # or BedrockJudge, GeminiJudge, CustomJudge
 )
-print(result.faithfulness.score, result.answer_relevance.score)""") + """
+print(result.faithfulness.score, result.answer_relevance.score)""")
+    + """
 <h3>Telemetry (dynalogs)</h3>
 <p>Attach a <code>TelemetryRecorder</code> to your client to capture latency, cache hits and scores for every
 search, then view them in the <a href="dashboard.html">telemetry dashboard</a>.</p>
@@ -1121,32 +1288,65 @@ search, then view them in the <a href="dashboard.html">telemetry dashboard</a>.<
 <tr><td>Engine core</td>
     <td>The graph and state runtime, branches, loops and parallel steps, retries, saving run state to
     DynamoDB, and snapshots for resume and replay</td>
-    <td>""" + issue(277) + "&ndash;" + issue(281) + """</td></tr>
+    <td>"""
+    + issue(277)
+    + "&ndash;"
+    + issue(281)
+    + """</td></tr>
 <tr><td>Nodes and models</td>
     <td>A typed node schema, built-in and custom nodes, chat models (done), prompt templates and output parsers</td>
-    <td>""" + issue(282) + "&ndash;" + issue(286) + """</td></tr>
+    <td>"""
+    + issue(282)
+    + "&ndash;"
+    + issue(286)
+    + """</td></tr>
 <tr><td>Agents</td>
     <td>A tool registry with MCP connectors, a tool-calling loop and planner, multi-agent handoffs and
     conversation memory</td>
-    <td>""" + issue(287) + "&ndash;" + issue(290) + """</td></tr>
+    <td>"""
+    + issue(287)
+    + "&ndash;"
+    + issue(290)
+    + """</td></tr>
 <tr><td>Visual builder</td>
     <td>A drag-and-drop canvas, converting between code and canvas, watching runs live, stepping through
     a run, and a CLI</td>
-    <td>""" + issue(291) + "&ndash;" + issue(295) + """</td></tr>
+    <td>"""
+    + issue(291)
+    + "&ndash;"
+    + issue(295)
+    + """</td></tr>
 <tr><td>Observability</td>
     <td>Traces per step, structured logs, run history and run metrics</td>
-    <td>""" + issue(299) + "&ndash;" + issue(302) + """</td></tr>
+    <td>"""
+    + issue(299)
+    + "&ndash;"
+    + issue(302)
+    + """</td></tr>
 <tr><td>Evaluation</td>
     <td>More RAG metrics, test datasets, regression runs with CI checks, and scores shown next to traces</td>
-    <td>""" + issue(303) + "&ndash;" + issue(306) + """</td></tr>
+    <td>"""
+    + issue(303)
+    + "&ndash;"
+    + issue(306)
+    + """</td></tr>
 <tr><td>Production and multi-cloud</td>
     <td>Pausing for human approval, long-running workflows, one-command serverless deploy, and GCP and
     Azure backends</td>
-    <td>""" + issue(296) + "&ndash;" + issue(298) + ", " + issue(307) + "&ndash;" + issue(308) + """</td></tr>
+    <td>"""
+    + issue(296)
+    + "&ndash;"
+    + issue(298)
+    + ", "
+    + issue(307)
+    + "&ndash;"
+    + issue(308)
+    + """</td></tr>
 </table>
 <p>Want to help? Pick an unassigned issue, comment on it to get assigned, and follow
 <a href="https://github.com/codeforstartups/dynavec/blob/development/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
-""")
+""",
+)
 
 
 def render(slug: str) -> str:
@@ -1154,7 +1354,9 @@ def render(slug: str) -> str:
     # sidebar
     side = ['<button class="side__toggle">☰ Menu</button>', '<nav class="side" aria-label="Docs">']
     for group, items in NAV:
-        side.append(f'<div class="side__group"><p class="side__title">{group}</p><ul class="side__list">')
+        side.append(
+            f'<div class="side__group"><p class="side__title">{group}</p><ul class="side__list">'
+        )
         for s, label in items:
             cur = ' class="is-current"' if s == slug else ""
             side.append(f'<li><a href="{s}.html"{cur}>{label}</a></li>')
@@ -1181,7 +1383,9 @@ def render(slug: str) -> str:
         "title": title.replace("&amp;", "&"),
         "sub": sub,
         "side": "\n".join(side),
-        "crumbs": crumbs if slug != "index" else '<div class="doc__crumbs"><a href="../index.html">dynavec</a> / Docs</div>',
+        "crumbs": crumbs
+        if slug != "index"
+        else '<div class="doc__crumbs"><a href="../index.html">dynavec</a> / Docs</div>',
         "body": body,
         "next": nxt,
     }

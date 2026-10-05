@@ -1,7 +1,7 @@
 """Use dynavec as a Haystack DocumentStore and retriever.
 
-    pip install "dynavec[sentence-transformers,haystack]"
-    python examples/haystack_integration.py
+pip install "dynavec[sentence-transformers,haystack]"
+python examples/haystack_integration.py
 """
 
 from haystack import Document

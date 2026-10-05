@@ -365,7 +365,9 @@ def test_hyde_requires_embedder(monkeypatch):
     monkeypatch.setattr(client_mod, "S3VectorsStore", FakeS3)
     monkeypatch.setattr(client_mod, "DynamoDBStore", FakeDDB)
     monkeypatch.setattr(client_mod, "GraphStore", FakeGraph)
-    bare = Dynavec(DynavecConfig(vector_bucket="b", index="i", table="t", dimension=4, region="us-east-1"))
+    bare = Dynavec(
+        DynavecConfig(vector_bucket="b", index="i", table="t", dimension=4, region="us-east-1")
+    )
     with pytest.raises(ConfigurationError):
         HyDERetriever(bare, lambda q: "x")
 

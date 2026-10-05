@@ -18,13 +18,13 @@ _MODEL_DIMS = {
     "text-embedding-ada-002": 1536,
 }
 
+
 def _is_openai_retryable(exc: Exception) -> bool:
     """Return True for OpenAI rate-limit and server errors."""
     status_code = getattr(exc, "status_code", None)
 
-    return status_code == 429 or (
-        isinstance(status_code, int) and 500 <= status_code < 600
-    )
+    return status_code == 429 or (isinstance(status_code, int) and 500 <= status_code < 600)
+
 
 def _openai_retry_after(exc: Exception) -> float | None:
     """Return the server-provided Retry-After delay, if available."""
@@ -88,7 +88,6 @@ class OpenAIEmbedder(Embedder):
             out.extend(d.embedding for d in resp.data)
         return out
 
-
     @retry(
         retry_on=_is_openai_retryable,
         retry_delay=_openai_retry_after,
@@ -98,6 +97,4 @@ class OpenAIEmbedder(Embedder):
     ) -> CreateEmbeddingResponse:
         if dimensions is None:
             return self._client.embeddings.create(model=model, input=input)
-        return self._client.embeddings.create(
-            model=model, input=input, dimensions=dimensions
-        )
+        return self._client.embeddings.create(model=model, input=input, dimensions=dimensions)

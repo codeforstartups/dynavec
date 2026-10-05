@@ -166,14 +166,12 @@ def test_split_text_mirror_optional():
         # None and empty filter
         (None, "default", {NS_METADATA_KEY: "default"}),
         ({}, "production", {NS_METADATA_KEY: "production"}),
-
         # Bare equality
         (
             {"genre": "scifi"},
             "ns1",
             {"$and": [{"genre": "scifi"}, {NS_METADATA_KEY: "ns1"}]},
         ),
-
         # $eq operator
         (
             {"status": {"$eq": "active"}},
@@ -185,7 +183,6 @@ def test_split_text_mirror_optional():
                 ]
             },
         ),
-
         # $ne operator
         (
             {"archived": {"$ne": True}},
@@ -197,7 +194,6 @@ def test_split_text_mirror_optional():
                 ]
             },
         ),
-
         # Numeric comparison operators ($gte, $gt, $lte, $lt)
         (
             {"rating": {"$gte": 4.5}},
@@ -229,7 +225,6 @@ def test_split_text_mirror_optional():
                 ]
             },
         ),
-
         # $in and $nin operators
         (
             {"tag": {"$in": ["python", "aws", "vector"]}},
@@ -251,7 +246,6 @@ def test_split_text_mirror_optional():
                 ]
             },
         ),
-
         # $or operator combinations
         (
             {"$or": [{"category": "news"}, {"category": "tech"}]},
@@ -295,11 +289,7 @@ def test_split_text_mirror_optional():
                 "$and": [
                     {
                         "$or": [
-                            {
-                                "category": {
-                                    "$in": ["electronics", "computers"]
-                                }
-                            },
+                            {"category": {"$in": ["electronics", "computers"]}},
                             {"discount": {"$gte": 0.2}},
                         ]
                     },
@@ -307,7 +297,6 @@ def test_split_text_mirror_optional():
                 ]
             },
         ),
-
         # Top-level $and list extension (should not double wrap)
         (
             {"$and": [{"a": 1}]},
@@ -330,7 +319,6 @@ def test_split_text_mirror_optional():
                 ]
             },
         ),
-
         # Complex nested $and + $or + $in + $gte combinations
         (
             {

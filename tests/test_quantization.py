@@ -196,6 +196,7 @@ def test_load_corrupted_file_raises(tmp_path):
     with pytest.raises(ValueError):
         ProductQuantizer.load(corrupt)
 
+
 def test_opq_rotation_fit():
     rng = np.random.default_rng(42)
 

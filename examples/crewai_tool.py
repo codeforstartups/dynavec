@@ -1,7 +1,7 @@
 """Wrap dynavec as a CrewAI tool so an agent can retrieve from it.
 
-    pip install "dynavec[sentence-transformers,crewai]"
-    python examples/crewai_tool.py
+pip install "dynavec[sentence-transformers,crewai]"
+python examples/crewai_tool.py
 """
 
 from dynavec import Document, Dynavec, DynavecConfig
@@ -24,7 +24,10 @@ db = Dynavec(cfg, embedder=embedder)
 db.upsert(
     [
         Document(id="cw-1", text="CrewAI orchestrates multiple agents that collaborate on a task."),
-        Document(id="cw-2", text="A CrewAI tool is any callable an agent can invoke to fetch information."),
+        Document(
+            id="cw-2",
+            text="A CrewAI tool is any callable an agent can invoke to fetch information.",
+        ),
         Document(id="cw-3", text="dynavec keeps all vectors inside your own AWS account."),
     ],
     namespace="kb",

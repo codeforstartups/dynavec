@@ -1,7 +1,7 @@
 """Minimal end-to-end dynavec example (requires AWS credentials + S3 Vectors).
 
-    pip install "dynavec[sentence-transformers]"
-    python examples/quickstart.py
+pip install "dynavec[sentence-transformers]"
+python examples/quickstart.py
 """
 
 from dynavec import Document, Dynavec, DynavecConfig
@@ -17,19 +17,26 @@ cfg = DynavecConfig(
     dimension=embedder.dimension,
     distance_metric="cosine",
     region="us-east-1",
-    auto_provision=True,   # creates bucket + index + table if missing
+    auto_provision=True,  # creates bucket + index + table if missing
 )
 
 db = Dynavec(cfg, embedder=embedder)
 
 db.upsert(
     [
-        Document(id="1", text="The mitochondria is the powerhouse of the cell.",
-                 metadata={"topic": "biology"}),
-        Document(id="2", text="Rockets reach orbit at roughly 28,000 km/h.",
-                 metadata={"topic": "space"}),
-        Document(id="3", text="Photosynthesis converts sunlight into chemical energy.",
-                 metadata={"topic": "biology"}),
+        Document(
+            id="1",
+            text="The mitochondria is the powerhouse of the cell.",
+            metadata={"topic": "biology"},
+        ),
+        Document(
+            id="2", text="Rockets reach orbit at roughly 28,000 km/h.", metadata={"topic": "space"}
+        ),
+        Document(
+            id="3",
+            text="Photosynthesis converts sunlight into chemical energy.",
+            metadata={"topic": "biology"},
+        ),
     ],
     auto_metadata=True,
 )

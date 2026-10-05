@@ -63,7 +63,8 @@ class FakeS3(client_mod.S3VectorsStore):
     def get_vectors(self, keys, return_metadata=False):
         return {
             k: {"vector": self._store[k][0], "metadata": self._store[k][1]}
-            for k in keys if k in self._store
+            for k in keys
+            if k in self._store
         }
 
     def list_pages(self, return_data=False, return_metadata=False, page_size=None):
@@ -154,8 +155,14 @@ def test_import_namespace_from_file(monkeypatch, tmp_path):
     db = _make(monkeypatch)
     in_file = tmp_path / "import.jsonl"
     in_file.write_text(
-        json.dumps({"id": "imp1", "vector": [0.1] * 8, "text": "imported text", "metadata": {"x": 1}}) + "\n"
-        + json.dumps({"id": "imp2", "vector": [0.2] * 8, "text": "second imported", "metadata": {"x": 2}}) + "\n",
+        json.dumps(
+            {"id": "imp1", "vector": [0.1] * 8, "text": "imported text", "metadata": {"x": 1}}
+        )
+        + "\n"
+        + json.dumps(
+            {"id": "imp2", "vector": [0.2] * 8, "text": "second imported", "metadata": {"x": 2}}
+        )
+        + "\n",
         encoding="utf-8",
     )
 

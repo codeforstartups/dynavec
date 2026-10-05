@@ -40,10 +40,10 @@ class OpenAIChatModel(ChatModel):
         out = []
         for msg in messages:
             d: dict[str, Any] = {"role": msg.role}
-            
+
             if msg.content is not None:
                 d["content"] = msg.content
-                
+
             if msg.tool_calls:
                 d["tool_calls"] = [
                     {
@@ -53,11 +53,11 @@ class OpenAIChatModel(ChatModel):
                     }
                     for tc in msg.tool_calls
                 ]
-                
+
             if msg.tool_call_id:
                 d["tool_call_id"] = msg.tool_call_id
                 d["name"] = "tool"  # some models/APIs require a name
-                
+
             out.append(d)
         return out
 
@@ -82,14 +82,14 @@ class OpenAIChatModel(ChatModel):
         """Invoke the chat model synchronously."""
         openai_msgs = self._convert_messages(messages)
         openai_tools = self._convert_tools(tools)
-        
+
         args: dict[str, Any] = {"model": self.model, "messages": openai_msgs, **kwargs}
         if openai_tools:
             args["tools"] = openai_tools
 
         resp = self._client.chat.completions.create(**args)
         choice = resp.choices[0]
-        
+
         out_msg = Message(role=choice.message.role or "assistant", content=choice.message.content)
         if choice.message.tool_calls:
             out_msg.tool_calls = [
@@ -109,20 +109,25 @@ class OpenAIChatModel(ChatModel):
         """Stream the chat model response."""
         openai_msgs = self._convert_messages(messages)
         openai_tools = self._convert_tools(tools)
-        
-        args: dict[str, Any] = {"model": self.model, "messages": openai_msgs, "stream": True, **kwargs}
+
+        args: dict[str, Any] = {
+            "model": self.model,
+            "messages": openai_msgs,
+            "stream": True,
+            **kwargs,
+        }
         if openai_tools:
             args["tools"] = openai_tools
 
         resp = self._client.chat.completions.create(**args)
-        
+
         for chunk in resp:
             if not chunk.choices:
                 continue
-                
+
             choice = chunk.choices[0]
             delta = choice.delta
-            
+
             tool_calls = []
             if delta.tool_calls:
                 for tc in delta.tool_calls:
@@ -130,8 +135,10 @@ class OpenAIChatModel(ChatModel):
                         ToolCall(
                             id=tc.id or "",
                             name=tc.function.name if (tc.function and tc.function.name) else "",
-                            arguments=tc.function.arguments if (tc.function and tc.function.arguments) else "",
+                            arguments=tc.function.arguments
+                            if (tc.function and tc.function.arguments)
+                            else "",
                         )
                     )
-                    
+
             yield ChatChunk(content=delta.content, tool_calls=tool_calls)

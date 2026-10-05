@@ -45,9 +45,7 @@ class S3VectorsStore:
 
         session = boto_session or boto3.Session()
         self._config = config
-        self._put_limiter = (
-            TokenBucket(config.put_rps) if config.put_rps is not None else None
-        )
+        self._put_limiter = TokenBucket(config.put_rps) if config.put_rps is not None else None
         self._query_limiter = (
             TokenBucket(config.query_rps) if config.query_rps is not None else None
         )
@@ -74,7 +72,6 @@ class S3VectorsStore:
             indexName=self._config.index,
             vectors=payload,
         )
-
 
     def put_vectors(
         self,
@@ -212,9 +209,7 @@ class S3VectorsStore:
                 f"top_k ({top_k}) exceeds Amazon S3 Vectors maximum limit of {_MAX_TOP_K}."
             )
 
-        effective_page_size = (
-            page_size if page_size is not None else self._config.top_k_page_size
-        )
+        effective_page_size = page_size if page_size is not None else self._config.top_k_page_size
 
         if effective_page_size is not None and effective_page_size <= 0:
             raise ValueError("page_size must be a positive integer.")
@@ -308,9 +303,7 @@ class S3VectorsStore:
             leaves the page size to Amazon S3 Vectors.
         """
         if page_size is not None and not _LIST_PAGE_MIN <= page_size <= _LIST_PAGE_MAX:
-            raise ValueError(
-                f"page_size must be between {_LIST_PAGE_MIN} and {_LIST_PAGE_MAX}."
-            )
+            raise ValueError(f"page_size must be between {_LIST_PAGE_MIN} and {_LIST_PAGE_MAX}.")
 
         kwargs: dict[str, Any] = {
             "vectorBucketName": self._config.vector_bucket,

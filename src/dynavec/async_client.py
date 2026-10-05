@@ -72,18 +72,11 @@ class AsyncDynavec:
         self._default_transform = as_pipeline(transform)
         self._cache = cache
         self._telemetry = telemetry
-        self._hot = (
-            HotTier(config)
-            if config.hot_tier
-            else None
-        )
+        self._hot = HotTier(config) if config.hot_tier else None
 
         self._exit_stack: AsyncExitStack | None = None
 
-        if (
-            embedder is not None
-            and embedder.dimension != config.dimension
-        ):
+        if embedder is not None and embedder.dimension != config.dimension:
             raise ConfigurationError(
                 f"Embedder dimension ({embedder.dimension}) "
                 f"!= index dimension ({config.dimension}). "
@@ -146,10 +139,7 @@ class AsyncDynavec:
             )
 
     def _invalidate_cache(self, namespace: str) -> None:
-        if (
-            self._cache is not None
-            and self.config.cache_invalidate_on_write
-        ):
+        if self._cache is not None and self.config.cache_invalidate_on_write:
             self._cache.invalidate(namespace)
 
     async def _resolve_query_vector(
@@ -160,15 +150,12 @@ class AsyncDynavec:
         if vector is not None:
             if len(vector) != self.config.dimension:
                 raise DimensionMismatchError(
-                    f"Query vector dimension {len(vector)} "
-                    f"!= {self.config.dimension}."
+                    f"Query vector dimension {len(vector)} != {self.config.dimension}."
                 )
             return vector
 
         if query is None:
-            raise ValueError(
-                "Provide either 'query' text or a 'vector'."
-            )
+            raise ValueError("Provide either 'query' text or a 'vector'.")
 
         if self.embedder is None:
             raise ConfigurationError(
@@ -270,11 +257,7 @@ class AsyncDynavec:
 
         yielded = 0
 
-        effective_page_size = (
-            page_size
-            if page_size is not None
-            else self.config.top_k_page_size
-        )
+        effective_page_size = page_size if page_size is not None else self.config.top_k_page_size
 
         async for page in self._vectors.query_pages(
             query_vector=query_vector,
@@ -336,10 +319,7 @@ class AsyncDynavec:
         list[str],
         list[HotPayload],
     ]:
-        pipeline = (
-            as_pipeline(transform)
-            or self._default_transform
-        )
+        pipeline = as_pipeline(transform) or self._default_transform
 
         apply_transform_pipeline(
             docs,
@@ -359,9 +339,7 @@ class AsyncDynavec:
 
             texts = embedding_texts(to_embed)
 
-            vectors = await self.embedder.aembed_documents(
-                texts
-            )
+            vectors = await self.embedder.aembed_documents(texts)
 
             assign_embeddings(
                 docs,
@@ -379,10 +357,7 @@ class AsyncDynavec:
 
     async def aupsert(
         self,
-        documents: Sequence[
-            Document | dict[str, Any]
-        ]
-        | None = None,
+        documents: Sequence[Document | dict[str, Any]] | None = None,
         *,
         namespace: str = "default",
         auto_metadata: bool = False,
@@ -391,9 +366,7 @@ class AsyncDynavec:
     ) -> UpsertResult:
         """Insert or overwrite documents asynchronously."""
         if ttl_seconds is not None and ttl_seconds <= 0:
-            raise ValueError(
-                f"ttl_seconds must be positive, got {ttl_seconds}."
-            )
+            raise ValueError(f"ttl_seconds must be positive, got {ttl_seconds}.")
 
         if not documents:
             return UpsertResult(
@@ -404,9 +377,7 @@ class AsyncDynavec:
         self._require_open()
 
         docs = [
-            document
-            if isinstance(document, Document)
-            else Document(**document)
+            document if isinstance(document, Document) else Document(**document)
             for document in documents
         ]
 

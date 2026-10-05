@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 # FitResult
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FitResult:
     """Result of an ``RRFWeightFitter.fit()`` call.
@@ -85,6 +86,7 @@ class FitResult:
 # RRFWeightFitter
 # ---------------------------------------------------------------------------
 
+
 class RRFWeightFitter:
     """Learn per-retriever RRF weights from labeled evaluation queries.
 
@@ -125,10 +127,7 @@ class RRFWeightFitter:
 
         for query_idx, labeled_query in enumerate(self.labeled_queries):
             # result_lists[retriever_idx][query_idx] → list[SearchResult]
-            per_retriever = [
-                self.result_lists[r][query_idx]
-                for r in range(len(self.result_lists))
-            ]
+            per_retriever = [self.result_lists[r][query_idx] for r in range(len(self.result_lists))]
 
             fused = reciprocal_rank_fusion(per_retriever, k=self.k, weights=weights)
             ranked_ids = [r.id for r in fused]
@@ -241,7 +240,9 @@ class RRFWeightFitter:
         best_w = _softmax(result.x)
         best_score = -float(result.fun)
 
-        return FitResult(weights=best_w, score=best_score, method="bayesian", n_evaluations=eval_count)
+        return FitResult(
+            weights=best_w, score=best_score, method="bayesian", n_evaluations=eval_count
+        )
 
     # -- public API ----------------------------------------------------------
 

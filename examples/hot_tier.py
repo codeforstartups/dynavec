@@ -22,7 +22,7 @@ cfg = DynavecConfig(
     region="us-east-1",
     auto_provision=True,
     # --- the hot tier ---
-    hot_tier=True,               # keep a hot working set in RAM
+    hot_tier=True,  # keep a hot working set in RAM
     hot_tier_max_vectors=200_000,  # global RAM safety cap
 )
 
@@ -30,12 +30,19 @@ db = Dynavec(cfg, embedder=OpenAIEmbedder(model="text-embedding-3-small"))
 
 db.upsert(
     [
-        Document(id="a", text="Mitochondria are the powerhouse of the cell.",
-                 metadata={"topic": "biology"}),
-        Document(id="b", text="Rockets reach orbit at roughly 28,000 km/h.",
-                 metadata={"topic": "space"}),
-        Document(id="c", text="Photosynthesis converts light into chemical energy.",
-                 metadata={"topic": "biology"}),
+        Document(
+            id="a",
+            text="Mitochondria are the powerhouse of the cell.",
+            metadata={"topic": "biology"},
+        ),
+        Document(
+            id="b", text="Rockets reach orbit at roughly 28,000 km/h.", metadata={"topic": "space"}
+        ),
+        Document(
+            id="c",
+            text="Photosynthesis converts light into chemical energy.",
+            metadata={"topic": "biology"},
+        ),
     ]
 )
 

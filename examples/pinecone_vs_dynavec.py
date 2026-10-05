@@ -64,8 +64,12 @@ def main() -> None:
     print("Indexing in dynavec (S3 Vectors + DynamoDB) ...")
     db = Dynavec(
         DynavecConfig(
-            vector_bucket="dynavec-vs-pinecone", index="cmp", table="dynavec_cmp",
-            dimension=DIM, region=REGION, auto_provision=True,
+            vector_bucket="dynavec-vs-pinecone",
+            index="cmp",
+            table="dynavec_cmp",
+            dimension=DIM,
+            region=REGION,
+            auto_provision=True,
         )
     )
     db.upsert([Document(id=i, text=t, vector=v) for (i, t), v in zip(CORPUS, doc_vecs)])
@@ -79,7 +83,9 @@ def main() -> None:
     existing = [i["name"] for i in pc.list_indexes()]
     if idx_name not in existing:
         pc.create_index(
-            name=idx_name, dimension=DIM, metric="cosine",
+            name=idx_name,
+            dimension=DIM,
+            metric="cosine",
             spec=ServerlessSpec(cloud="aws", region=REGION),
         )
     pindex = pc.Index(idx_name)
@@ -103,8 +109,10 @@ def main() -> None:
         print(f"{q[:38]:<40}{_overlap(dv, pr_ids):>10.2f}{dv_ms:>13.0f}{pr_ms:>14.0f}")
 
     db.close()
-    print("\nNote: 'agree@k' is the fraction of dynavec's top-k also in Pinecone's "
-          "top-k on identical embeddings — a practical apples-to-apples retrieval check.")
+    print(
+        "\nNote: 'agree@k' is the fraction of dynavec's top-k also in Pinecone's "
+        "top-k on identical embeddings — a practical apples-to-apples retrieval check."
+    )
 
 
 if __name__ == "__main__":

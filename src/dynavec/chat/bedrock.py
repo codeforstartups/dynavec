@@ -34,7 +34,9 @@ class BedrockChatModel(ChatModel):
         self.model = model
         self._client = boto3.client("bedrock-runtime", region_name=region_name)
 
-    def _convert_messages(self, messages: list[Message]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    def _convert_messages(
+        self, messages: list[Message]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         system_prompts: list[dict[str, Any]] = []
         bedrock_msgs: list[dict[str, Any]] = []
 
@@ -50,32 +52,35 @@ class BedrockChatModel(ChatModel):
 
             if msg.tool_calls:
                 for tc in msg.tool_calls:
-                    content_blocks.append({
-                        "toolUse": {
-                            "toolUseId": tc.id,
-                            "name": tc.name,
-                            "input": json.loads(tc.arguments) if tc.arguments else {}
+                    content_blocks.append(
+                        {
+                            "toolUse": {
+                                "toolUseId": tc.id,
+                                "name": tc.name,
+                                "input": json.loads(tc.arguments) if tc.arguments else {},
+                            }
                         }
-                    })
+                    )
 
             if msg.role == "tool" and msg.tool_call_id:
-                content_blocks.append({
-                    "toolResult": {
-                        "toolUseId": msg.tool_call_id,
-                        "content": [{"text": msg.content or ""}],
-                        "status": "success"
+                content_blocks.append(
+                    {
+                        "toolResult": {
+                            "toolUseId": msg.tool_call_id,
+                            "content": [{"text": msg.content or ""}],
+                            "status": "success",
+                        }
                     }
-                })
-                bedrock_msgs.append({
-                    "role": "user",
-                    "content": content_blocks
-                })
+                )
+                bedrock_msgs.append({"role": "user", "content": content_blocks})
                 continue
 
-            bedrock_msgs.append({
-                "role": "assistant" if msg.role == "assistant" else "user",
-                "content": content_blocks
-            })
+            bedrock_msgs.append(
+                {
+                    "role": "assistant" if msg.role == "assistant" else "user",
+                    "content": content_blocks,
+                }
+            )
 
         return system_prompts, bedrock_msgs
 
@@ -88,9 +93,7 @@ class BedrockChatModel(ChatModel):
                     "toolSpec": {
                         "name": t.name,
                         "description": t.description,
-                        "inputSchema": {
-                            "json": t.parameters
-                        }
+                        "inputSchema": {"json": t.parameters},
                     }
                 }
                 for t in tools
@@ -103,39 +106,33 @@ class BedrockChatModel(ChatModel):
         system, bedrock_msgs = self._convert_messages(messages)
         bedrock_tools = self._convert_tools(tools)
 
-        args: dict[str, Any] = {
-            "modelId": self.model,
-            "messages": bedrock_msgs,
-            **kwargs
-        }
+        args: dict[str, Any] = {"modelId": self.model, "messages": bedrock_msgs, **kwargs}
         if system:
             args["system"] = system
         if bedrock_tools:
             args["toolConfig"] = bedrock_tools
 
         resp = self._client.converse(**args)
-        
+
         output_msg = resp["output"]["message"]
         role = output_msg["role"]
-        
+
         text_content = ""
         tool_calls = []
-        
+
         for block in output_msg.get("content", []):
             if "text" in block:
                 text_content += block["text"]
             elif "toolUse" in block:
                 tu = block["toolUse"]
                 tool_calls.append(
-                    ToolCall(
-                        id=tu["toolUseId"],
-                        name=tu["name"],
-                        arguments=json.dumps(tu["input"])
-                    )
+                    ToolCall(id=tu["toolUseId"], name=tu["name"], arguments=json.dumps(tu["input"]))
                 )
 
         stop_reason = resp.get("stopReason")
-        out = Message(role=role, content=text_content if text_content else None, tool_calls=tool_calls)
+        out = Message(
+            role=role, content=text_content if text_content else None, tool_calls=tool_calls
+        )
         return ChatResult(message=out, finish_reason=stop_reason)
 
     def stream(
@@ -144,11 +141,7 @@ class BedrockChatModel(ChatModel):
         system, bedrock_msgs = self._convert_messages(messages)
         bedrock_tools = self._convert_tools(tools)
 
-        args: dict[str, Any] = {
-            "modelId": self.model,
-            "messages": bedrock_msgs,
-            **kwargs
-        }
+        args: dict[str, Any] = {"modelId": self.model, "messages": bedrock_msgs, **kwargs}
         if system:
             args["system"] = system
         if bedrock_tools:
@@ -167,10 +160,6 @@ class BedrockChatModel(ChatModel):
                 elif "toolUse" in delta:
                     yield ChatChunk(
                         tool_calls=[
-                            ToolCall(
-                                id="",
-                                name="",
-                                arguments=delta["toolUse"].get("input", "")
-                            )
+                            ToolCall(id="", name="", arguments=delta["toolUse"].get("input", ""))
                         ]
                     )

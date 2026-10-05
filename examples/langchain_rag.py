@@ -1,7 +1,7 @@
 """Use dynavec as a LangChain VectorStore / retriever.
 
-    pip install "dynavec[sentence-transformers,langchain]"
-    python examples/langchain_rag.py
+pip install "dynavec[sentence-transformers,langchain]"
+python examples/langchain_rag.py
 """
 
 from dynavec import Dynavec, DynavecConfig

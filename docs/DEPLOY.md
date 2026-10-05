@@ -90,10 +90,12 @@ python examples/openai_1536_retrieval.py
 Or load it in Python without exporting:
 
 ```python
-from dotenv import load_dotenv          # pip install python-dotenv
+from dotenv import load_dotenv  # pip install python-dotenv
+
 load_dotenv()
 from dynavec import Dynavec, DynavecConfig
-db = Dynavec(DynavecConfig(..., region="us-east-1"))   # boto3 picks up the env creds
+
+db = Dynavec(DynavecConfig(..., region="us-east-1"))  # boto3 picks up the env creds
 ```
 
 Or pass keys explicitly (e.g. multi-account) instead of the env chain:
@@ -101,6 +103,7 @@ Or pass keys explicitly (e.g. multi-account) instead of the env chain:
 ```python
 import os
 from dynavec import Dynavec, DynavecConfig, AWSCredentials
+
 creds = AWSCredentials(
     access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
     secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],

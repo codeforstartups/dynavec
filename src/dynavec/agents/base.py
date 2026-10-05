@@ -6,7 +6,7 @@ import inspect
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, overload
 
 from ..chat.base import Tool, ToolCall
 
@@ -28,9 +28,12 @@ class AgentResult:
     output: str
     steps: list[AgentStep] = field(default_factory=list)
     finished: bool = True
-    termination_reason: str = "completed"  # "completed", "max_steps_reached", "error"
+    termination_reason: str = (
+        "completed"  # "completed", "max_steps_reached", "error", "interrupted"
+    )
     total_steps: int = 0
     tool_calls_count: int = 0
+    interrupt_payload: dict[str, Any] | None = None
 
 
 @dataclass
@@ -116,11 +119,12 @@ class AgentTool:
         parameters: dict[str, Any] | None = None,
     ) -> None:
         self.fn = fn
-        self.name = name or fn.__name__
-        self.description = description or (fn.__doc__ or f"Execute {self.name}").strip()
-        self.parameters = (
-            parameters if parameters is not None else _generate_json_schema(fn)
+        # Extract name directly or fall back to function attribute
+        self.name = (
+            name or getattr(fn, "name", None) or getattr(fn, "__name__", None) or "unnamed_tool"
         )
+        self.description = description or (fn.__doc__ or f"Execute {self.name}").strip()
+        self.parameters = parameters if parameters is not None else _generate_json_schema(fn)
 
     def to_chat_tool(self) -> Tool:
         """Convert to a dynavec.chat.Tool schema."""
@@ -132,6 +136,8 @@ class AgentTool:
 
     def execute(self, arguments: dict[str, Any] | str | None = None) -> str:
         """Execute the wrapped function and return a string observation."""
+        from ..exceptions import NodeInterrupt
+
         parsed_args: dict[str, Any] = {}
         if isinstance(arguments, str):
             if arguments.strip():
@@ -155,9 +161,7 @@ class AgentTool:
                 result = self.fn()
             elif len(params) == 1 and list(params.keys())[0] not in parsed_args:
                 # If single param expected and keys don't match, pass the first val or raw dict
-                first_val = (
-                    next(iter(parsed_args.values())) if parsed_args else arguments
-                )
+                first_val = next(iter(parsed_args.values())) if parsed_args else arguments
                 result = self.fn(first_val)
             else:
                 # Filter only valid keyword arguments
@@ -167,6 +171,10 @@ class AgentTool:
             if isinstance(result, str):
                 return result
             return json.dumps(result, ensure_ascii=False)
+
+        except NodeInterrupt:
+            raise
+
         except Exception as exc:  # noqa: BLE001
             return f"Error executing tool {self.name!r}: {exc}"
 
@@ -174,19 +182,71 @@ class AgentTool:
         return self.fn(*args, **kwargs)
 
 
+
+
+
+
+
+
+
+
+
+@overload
+def tool(fn: Callable[..., Any], /) -> AgentTool: ...
+
+
+@overload
 def tool(
+    *,
     name: str | None = None,
     description: str | None = None,
     parameters: dict[str, Any] | None = None,
-) -> Callable[[Callable[..., Any]], AgentTool]:
-    """Decorator to convert a standard Python function into an AgentTool."""
+) -> Callable[[Callable[..., Any]], AgentTool]: ...
 
-    def decorator(fn: Callable[..., Any]) -> AgentTool:
+
+def tool(
+    fn_or_name: Callable[..., Any] | str | None = None,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    parameters: dict[str, Any] | None = None,
+) -> AgentTool | Callable[[Callable[..., Any]], AgentTool]:
+    """Decorator to convert a standard Python function into an AgentTool."""
+    custom_name = name if name is not None else (fn_or_name if isinstance(fn_or_name, str) else None)
+
+    if callable(fn_or_name):
+        fn = fn_or_name
+        tool_name = custom_name or getattr(fn, "__name__", "unnamed_tool")
         return AgentTool(
             fn=fn,
-            name=name,
+            name=tool_name,
+            description=description,
+            parameters=parameters,
+        )
+
+    def decorator(fn: Callable[..., Any]) -> AgentTool:
+        if isinstance(fn, AgentTool):
+            if custom_name:
+                fn.name = custom_name
+            if description:
+                fn.description = description
+            if parameters:
+                fn.parameters = parameters
+            return fn
+
+        tool_name = custom_name or getattr(fn, "__name__", "unnamed_tool")
+        return AgentTool(
+            fn=fn,
+            name=tool_name,
             description=description,
             parameters=parameters,
         )
 
     return decorator
+
+
+def interrupt(thread_id: str, node_id: str, payload: dict[str, Any] | None = None) -> None:
+    """Pause current run and wait for human input/approval."""
+    from ..exceptions import NodeInterrupt
+
+    raise NodeInterrupt(thread_id=thread_id, node_id=node_id, payload=payload)

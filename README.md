@@ -131,35 +131,41 @@ Replace `REGION` and `ACCOUNT_ID`. `dynamodb:Scan` is only needed for the GraphR
 
 ```python
 from dynavec import Dynavec, DynavecConfig, Document
-from dynavec.embeddings import OpenAIEmbedder   # or Gemini / Bedrock / SentenceTransformer
+from dynavec.embeddings import OpenAIEmbedder  # or Gemini / Bedrock / SentenceTransformer
 
 cfg = DynavecConfig(
-    vector_bucket="my-vectors",     # S3 vector bucket
-    index="docs",                   # vector index
-    table="dynavec_docs",           # DynamoDB table
+    vector_bucket="my-vectors",  # S3 vector bucket
+    index="docs",  # vector index
+    table="dynavec_docs",  # DynamoDB table
     dimension=1536,
     distance_metric="cosine",
     region="us-east-1",
-    auto_provision=True,            # create bucket + index + table if missing
+    auto_provision=True,  # create bucket + index + table if missing
 )
 
 db = Dynavec(cfg, embedder=OpenAIEmbedder(model="text-embedding-3-small"))
 
 db.upsert(
     [
-        Document(id="a", text="The mitochondria is the powerhouse of the cell.",
-                 metadata={"topic": "biology", "year": 2021}),
-        Document(id="b", text="Rockets reach orbit at roughly 28,000 km/h.",
-                 metadata={"topic": "space", "year": 2023}),
+        Document(
+            id="a",
+            text="The mitochondria is the powerhouse of the cell.",
+            metadata={"topic": "biology", "year": 2021},
+        ),
+        Document(
+            id="b",
+            text="Rockets reach orbit at roughly 28,000 km/h.",
+            metadata={"topic": "space", "year": 2023},
+        ),
     ],
-    auto_metadata=True,             # also attach hash/timestamp/word counts
+    auto_metadata=True,  # also attach hash/timestamp/word counts
 )
 
 hits = db.search(
     "how do cells make energy?",
     top_k=3,
-    filter={"topic": "biology"},    # S3 Vectors metadata pre-filter
-    rerank="mmr",                   # diversity-aware reranking
+    filter={"topic": "biology"},  # S3 Vectors metadata pre-filter
+    rerank="mmr",  # diversity-aware reranking
 )
 for h in hits:
     print(h.score, h.id, h.text)
@@ -190,10 +196,12 @@ Expire ephemeral documents, session memories, or cache entries automatically via
 
 ```python
 # Pass ttl_seconds on Document or upsert()
-db.upsert([
-    Document(id="session-1", text="Temporary session context", ttl_seconds=3600),
-    Document(id="cached-doc", text="Ephemeral cache data", ttl_seconds=86400),
-])
+db.upsert(
+    [
+        Document(id="session-1", text="Temporary session context", ttl_seconds=3600),
+        Document(id="cached-doc", text="Ephemeral cache data", ttl_seconds=86400),
+    ]
+)
 
 # Or set a default TTL across an entire batch
 ns = db.namespace("sessions")
@@ -259,10 +267,12 @@ from dynavec.integrations.tools import make_retriever_fn
 
 retrieve = make_retriever_fn(db, namespace="kb", top_k=2)
 
+
 @tool
 def search_knowledge_base(query: str) -> str:
     """Search the dynavec knowledge base for relevant passages."""
     return retrieve(query)
+
 
 agent = Agent(tools=[search_knowledge_base])
 agent("Where is dynavec vector data stored?")
@@ -426,7 +436,7 @@ from dynavec.dashboard import serve
 rec = TelemetryRecorder()
 db = Dynavec(cfg, embedder=emb, cache=SemanticCache(), telemetry=rec)
 # ... your app runs searches; the recorder fills automatically ...
-serve(rec, port=8779)          # JSON API at http://127.0.0.1:8779
+serve(rec, port=8779)  # JSON API at http://127.0.0.1:8779
 ```
 
 **2. Run the dashboard** (points at that API; falls back to sample data if unset):

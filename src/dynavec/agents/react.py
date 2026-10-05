@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable, Sequence
 from typing import Any
 
 from ..chat.base import ChatModel, Message, Tool
+from ..exceptions import NodeInterrupt
 from .base import AgentResult, AgentStep, AgentTool
 
 DEFAULT_REACT_SYSTEM_PROMPT = """You are a helpful and precise reasoning agent.
@@ -36,21 +38,52 @@ class ReActAgent:
 
         if tools:
             for t in tools:
-                agent_tool = t if isinstance(t, AgentTool) else AgentTool(t)
+                if isinstance(t, AgentTool):
+                    agent_tool = t
+                elif callable(t):
+                    agent_tool = AgentTool(t)
+                else:
+                    continue
                 self._tools_map[agent_tool.name] = agent_tool
                 self._chat_tools.append(agent_tool.to_chat_tool())
 
-    def run(self, goal: str, **kwargs: Any) -> AgentResult:
-        """Execute the ReAct loop synchronously until goal completion or max_steps."""
+    def run(self, goal: str, thread_id: str = "default", **kwargs: Any) -> AgentResult:
+        """Execute the ReAct loop synchronously until goal completion, max_steps, or interrupt."""
         messages: list[Message] = []
         if self.system_prompt:
             messages.append(Message(role="system", content=self.system_prompt))
         messages.append(Message(role="user", content=goal))
 
+        return self._execute_loop(messages=messages, thread_id=thread_id, start_step=1, **kwargs)
+
+    def resume(
+        self,
+        messages: list[Message],
+        human_decision: Any,
+        thread_id: str = "default",
+        start_step: int = 1,
+        **kwargs: Any,
+    ) -> AgentResult:
+        """Resume an interrupted run synchronously by injecting the human decision into context."""
+        decision_str = (
+            json.dumps(human_decision) if isinstance(human_decision, dict) else str(human_decision)
+        )
+        messages.append(Message(role="user", content=f"Human Decision / Input: {decision_str}"))
+        return self._execute_loop(
+            messages=messages, thread_id=thread_id, start_step=start_step, **kwargs
+        )
+
+    def _execute_loop(
+        self,
+        messages: list[Message],
+        thread_id: str,
+        start_step: int,
+        **kwargs: Any,
+    ) -> AgentResult:
         steps: list[AgentStep] = []
         total_tool_calls = 0
 
-        for step_idx in range(1, self.max_steps + 1):
+        for step_idx in range(start_step, self.max_steps + 1):
             chat_res = self.model.invoke(
                 messages,
                 tools=self._chat_tools if self._chat_tools else None,
@@ -60,7 +93,6 @@ class ReActAgent:
             messages.append(msg)
 
             if not msg.tool_calls:
-                # Final response reached without further tool calls
                 step = AgentStep(
                     step_number=step_idx,
                     thought=msg.content,
@@ -77,15 +109,32 @@ class ReActAgent:
                     tool_calls_count=total_tool_calls,
                 )
 
-            # Execute tool calls
             step_observations: list[str] = []
             for tc in msg.tool_calls:
                 total_tool_calls += 1
                 tool_instance = self._tools_map.get(tc.name)
-                if tool_instance is not None:
-                    obs = tool_instance.execute(tc.arguments)
-                else:
-                    obs = f"Error: Tool {tc.name!r} is not registered in available tools."
+
+                try:
+                    if tool_instance is not None:
+                        obs = tool_instance.execute(tc.arguments)
+                    else:
+                        obs = f"Error: Tool {tc.name!r} is not registered in available tools."
+                except NodeInterrupt as exc:
+                    return AgentResult(
+                        output=f"Execution interrupted at node {exc.node_id!r}",
+                        steps=steps,
+                        finished=False,
+                        termination_reason="interrupted",
+                        total_steps=step_idx,
+                        tool_calls_count=total_tool_calls,
+                        interrupt_payload={
+                            "thread_id": exc.thread_id,
+                            "node_id": exc.node_id,
+                            "payload": exc.payload,
+                            "messages": messages,
+                            "start_step": step_idx,
+                        },
+                    )
 
                 step_observations.append(obs)
                 messages.append(
@@ -104,7 +153,6 @@ class ReActAgent:
             )
             steps.append(step)
 
-        # Reached max steps without completing
         last_output = steps[-1].thought or (
             steps[-1].observations[-1] if steps[-1].observations else ""
         )
@@ -117,17 +165,45 @@ class ReActAgent:
             tool_calls_count=total_tool_calls,
         )
 
-    async def arun(self, goal: str, **kwargs: Any) -> AgentResult:
-        """Execute the ReAct loop asynchronously."""
+    async def arun(self, goal: str, thread_id: str = "default", **kwargs: Any) -> AgentResult:
+        """Execute the ReAct loop asynchronously until goal completion, max_steps, or interrupt."""
         messages: list[Message] = []
         if self.system_prompt:
             messages.append(Message(role="system", content=self.system_prompt))
         messages.append(Message(role="user", content=goal))
 
+        return await self._aexecute_loop(
+            messages=messages, thread_id=thread_id, start_step=1, **kwargs
+        )
+
+    async def aresume(
+        self,
+        messages: list[Message],
+        human_decision: Any,
+        thread_id: str = "default",
+        start_step: int = 1,
+        **kwargs: Any,
+    ) -> AgentResult:
+        """Resume an interrupted run asynchronously by injecting human decision into context."""
+        decision_str = (
+            json.dumps(human_decision) if isinstance(human_decision, dict) else str(human_decision)
+        )
+        messages.append(Message(role="user", content=f"Human Decision / Input: {decision_str}"))
+        return await self._aexecute_loop(
+            messages=messages, thread_id=thread_id, start_step=start_step, **kwargs
+        )
+
+    async def _aexecute_loop(
+        self,
+        messages: list[Message],
+        thread_id: str,
+        start_step: int,
+        **kwargs: Any,
+    ) -> AgentResult:
         steps: list[AgentStep] = []
         total_tool_calls = 0
 
-        for step_idx in range(1, self.max_steps + 1):
+        for step_idx in range(start_step, self.max_steps + 1):
             chat_res = await self.model.ainvoke(
                 messages,
                 tools=self._chat_tools if self._chat_tools else None,
@@ -157,10 +233,28 @@ class ReActAgent:
             for tc in msg.tool_calls:
                 total_tool_calls += 1
                 tool_instance = self._tools_map.get(tc.name)
-                if tool_instance is not None:
-                    obs = await asyncio.to_thread(tool_instance.execute, tc.arguments)
-                else:
-                    obs = f"Error: Tool {tc.name!r} is not registered in available tools."
+
+                try:
+                    if tool_instance is not None:
+                        obs = await asyncio.to_thread(tool_instance.execute, tc.arguments)
+                    else:
+                        obs = f"Error: Tool {tc.name!r} is not registered in available tools."
+                except NodeInterrupt as exc:
+                    return AgentResult(
+                        output=f"Execution interrupted at node {exc.node_id!r}",
+                        steps=steps,
+                        finished=False,
+                        termination_reason="interrupted",
+                        total_steps=step_idx,
+                        tool_calls_count=total_tool_calls,
+                        interrupt_payload={
+                            "thread_id": exc.thread_id,
+                            "node_id": exc.node_id,
+                            "payload": exc.payload,
+                            "messages": messages,
+                            "start_step": step_idx,
+                        },
+                    )
 
                 step_observations.append(obs)
                 messages.append(

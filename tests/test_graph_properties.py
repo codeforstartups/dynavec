@@ -165,4 +165,3 @@ def test_add_node_partial_update_preserves_unspecified_attributes(store):
     node_after_ntype = store.get_node("ns", "user")
     assert node_after_ntype["ntype"] == "Admin"
     assert node_after_ntype["props"] == {"age": Decimal("31"), "city": "NYC"}
-

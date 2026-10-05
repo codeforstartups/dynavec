@@ -1,7 +1,7 @@
 """Use dynavec as a DSPy retrieval module.
 
-    pip install "dynavec[sentence-transformers,dspy]"
-    python examples/dspy_retriever.py
+pip install "dynavec[sentence-transformers,dspy]"
+python examples/dspy_retriever.py
 """
 
 import dspy

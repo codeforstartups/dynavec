@@ -600,7 +600,9 @@ class BM25HybridRetriever:
             if hasattr(weights, "weights"):
                 weights = weights.weights
             if len(weights) != 2:
-                raise ValueError("weights must contain exactly 2 elements [dense_weight, sparse_weight]")
+                raise ValueError(
+                    "weights must contain exactly 2 elements [dense_weight, sparse_weight]"
+                )
             dense_weight, sparse_weight = float(weights[0]), float(weights[1])
 
         if dense_weight <= 0 or sparse_weight <= 0:
@@ -668,7 +670,9 @@ class BM25HybridRetriever:
             if hasattr(weights, "weights"):
                 weights = weights.weights
             if len(weights) != 2:
-                raise ValueError("weights must contain exactly 2 elements [dense_weight, sparse_weight]")
+                raise ValueError(
+                    "weights must contain exactly 2 elements [dense_weight, sparse_weight]"
+                )
             w_dense, w_sparse = float(weights[0]), float(weights[1])
 
         # Run dense vector search and sparse BM25 search in parallel

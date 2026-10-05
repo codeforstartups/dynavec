@@ -76,6 +76,7 @@ def test_as_pipeline_coercions():
     multi = as_pipeline([lambda c: c, lambda c: c])
     assert len(multi) == 2
 
+
 def test_retry_uses_retry_delay(monkeypatch):
     calls = {"n": 0}
     delays = []

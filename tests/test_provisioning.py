@@ -25,16 +25,10 @@ def test_ensure_table_creates_expected_key_schema():
 
         ensure_table(config, session)
 
-        table = session.client("dynamodb").describe_table(
-            TableName="test-table"
-        )["Table"]
+        table = session.client("dynamodb").describe_table(TableName="test-table")["Table"]
 
-        assert table["KeySchema"] == [
-            {"AttributeName": "pk", "KeyType": "HASH"}
-        ]
-        assert table["AttributeDefinitions"] == [
-            {"AttributeName": "pk", "AttributeType": "S"}
-        ]
+        assert table["KeySchema"] == [{"AttributeName": "pk", "KeyType": "HASH"}]
+        assert table["AttributeDefinitions"] == [{"AttributeName": "pk", "AttributeType": "S"}]
 
 
 def test_ensure_index_marks_text_mirror_non_filterable():
@@ -60,9 +54,7 @@ def test_ensure_index_marks_text_mirror_non_filterable():
         dataType="float32",
         dimension=4,
         distanceMetric="cosine",
-        metadataConfiguration={
-            "nonFilterableMetadataKeys": [TEXT_METADATA_KEY]
-        },
+        metadataConfiguration={"nonFilterableMetadataKeys": [TEXT_METADATA_KEY]},
     )
 
 

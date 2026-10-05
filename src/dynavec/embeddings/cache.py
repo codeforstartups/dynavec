@@ -93,7 +93,7 @@ class InMemoryCache(EmbeddingCache):
     def get(self, key: str) -> Vector | None:
         if key not in self._store:
             return None
-        self._store.move_to_end(key)   # mark as recently used
+        self._store.move_to_end(key)  # mark as recently used
         return self._store[key]
 
     def set(self, key: str, vector: Vector) -> None:
@@ -101,7 +101,7 @@ class InMemoryCache(EmbeddingCache):
             self._store.move_to_end(key)
         else:
             if self.max_size is not None and len(self._store) >= self.max_size:
-                self._store.popitem(last=False)   # evict LRU
+                self._store.popitem(last=False)  # evict LRU
             self._store[key] = vector
 
     def __len__(self) -> int:

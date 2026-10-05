@@ -90,7 +90,11 @@ class FakeS3(client_mod.S3VectorsStore):
             yield hits[i : i + chunk_size]
 
     def get_vectors(self, keys, return_metadata=False):
-        return {k: {"vector": self._store[k][0], "metadata": self._store[k][1]} for k in keys if k in self._store}
+        return {
+            k: {"vector": self._store[k][0], "metadata": self._store[k][1]}
+            for k in keys
+            if k in self._store
+        }
 
     def delete_vectors(self, keys):
         for k in keys:
@@ -128,9 +132,12 @@ class FakeDDB(client_mod.DynamoDBStore):
 
     def get_many(self, namespace, ids):
         return {
-            i: {"text": self._store[(namespace, i)]["text"],
-                "metadata": self._store[(namespace, i)]["metadata"]}
-            for i in ids if (namespace, i) in self._store
+            i: {
+                "text": self._store[(namespace, i)]["text"],
+                "metadata": self._store[(namespace, i)]["metadata"],
+            }
+            for i in ids
+            if (namespace, i) in self._store
         }
 
     def delete_many(self, namespace, ids):
@@ -229,6 +236,7 @@ def db(monkeypatch):
     )
     return Dynavec(cfg, embedder=HashEmbedder(8))
 
+
 @pytest.fixture
 def cross_encoder_db(monkeypatch):
     monkeypatch.setattr(client_mod, "S3VectorsStore", FakeS3)
@@ -243,6 +251,7 @@ def cross_encoder_db(monkeypatch):
         cross_encoder_model="toy-cross-encoder",
     )
     return Dynavec(cfg, embedder=HashEmbedder(8))
+
 
 def test_upsert_and_search_roundtrip(db):
     res = db.upsert(
@@ -277,6 +286,7 @@ def test_graph_shortest_path_respects_hop_cap(db):
 
     assert db.graph_shortest_path("a", "d", hops=2) == []
 
+
 def test_graph_shortest_path_returns_minimum_hops(db):
     db.graph_add_edge("a", "related_to", "c")
     db.graph_add_edge("c", "related_to", "e")
@@ -290,6 +300,7 @@ def test_graph_shortest_path_returns_minimum_hops(db):
         "b",
         "d",
     ]
+
 
 def test_search_explain_handles_empty_results(db):
     result = db.search("missing", explain=True)
@@ -405,6 +416,7 @@ def test_dimension_mismatch_raises(db):
     with pytest.raises(DimensionMismatchError):
         db.upsert([Document(id="x", vector=[0.1, 0.2])])  # wrong dim (2 != 8)
 
+
 class WrongOutputEmbedder(HashEmbedder):
     def embed_documents(self, texts):
         return [[0.1, 0.2] for _ in texts]
@@ -516,7 +528,7 @@ def test_ns_tag_present_in_s3(db):
     db.upsert([Document(id="1", text="hello")], namespace="ns9")
     # reach into the fake to confirm the namespace tag was written
     store = db._vectors._store
-    (_, meta), = (v for k, v in store.items())
+    ((_, meta),) = (v for k, v in store.items())
     assert meta[NS_METADATA_KEY] == "ns9"
 
 
@@ -526,7 +538,7 @@ def test_update_metadata_merge_preserves_vector(db):
     db.update("1", metadata={"rating": 5})
     after_meta = db.get(["1"])[0].metadata
     assert after_meta["cat"] == "food"  # preserved
-    assert after_meta["rating"] == 5    # added
+    assert after_meta["rating"] == 5  # added
     # vector unchanged because neither text nor vector was updated
     assert db._vectors._store["default#1"][0] == before
 
@@ -582,7 +594,10 @@ def test_concurrent_update_between_read_and_write_is_not_lost(db):
         snapshot = real_read(namespace, doc_id)
         # another writer commits after our read but before our write
         db._docs.put_versioned(
-            namespace, doc_id, snapshot["text"], {**snapshot["metadata"], "views": 2},
+            namespace,
+            doc_id,
+            snapshot["text"],
+            {**snapshot["metadata"], "views": 2},
             expected_version=snapshot["version"],
         )
         return snapshot
@@ -616,9 +631,7 @@ def test_update_upsert_if_missing_starts_at_version_one(db):
 
 
 def test_search_stream_yields_incrementally(db):
-    db.upsert(
-        [Document(id=str(i), text=f"apple item {i}") for i in range(5)]
-    )
+    db.upsert([Document(id=str(i), text=f"apple item {i}") for i in range(5)])
     gen = db.search_stream("apple", top_k=4)
     first = next(gen)
     assert first.text is not None
@@ -688,7 +701,10 @@ def test_search_many_explain_preserves_order_and_namespace(db, explain):
     ns = db.namespace("kb")
     ns.upsert([Document(id="1", text="apple"), Document(id="2", text="rocket")])
     batches = db.search_many(
-        ["rocket", "apple"], namespace="kb", top_k=1, explain=explain,
+        ["rocket", "apple"],
+        namespace="kb",
+        top_k=1,
+        explain=explain,
         normalize_scores=True,
     )
     assert len(batches) == 2
@@ -723,6 +739,7 @@ def test_graph_search_scopes_to_related_docs(db):
 
     hits = db.graph_search("apple", seed_entities=["fruit"], top_k=5)
     assert {h.id for h in hits} == {"d1", "d2"}  # d3 excluded by the graph
+
 
 def test_hybrid_graph_search_fuses_ann_and_graph_results(db):
     db.upsert(
@@ -888,10 +905,11 @@ def test_search_telemetry_marks_cache_hit(db):
     db._telemetry = rec
     db._cache = SemanticCache(threshold=0.99)
     db.upsert([Document(id="1", text="apple pie")])
-    db.search("apple pie", top_k=3)   # miss -> populates cache
-    db.search("apple pie", top_k=3)   # hit
+    db.search("apple pie", top_k=3)  # miss -> populates cache
+    db.search("apple pie", top_k=3)  # hit
     hits = [e.cache_hit for e in rec.events()]
     assert True in hits and False in hits
+
 
 def test_cross_encoder_rerank_on_toy_data(monkeypatch, cross_encoder_db):
     class FakeCrossEncoder:
@@ -902,10 +920,7 @@ def test_cross_encoder_rerank_on_toy_data(monkeypatch, cross_encoder_db):
             FakeCrossEncoder.instance = self
 
         def predict(self, pairs):
-            return [
-                0.95 if "target document" in document else 0.10
-                for _, document in pairs
-            ]
+            return [0.95 if "target document" in document else 0.10 for _, document in pairs]
 
     monkeypatch.setitem(
         sys.modules,
@@ -913,18 +928,20 @@ def test_cross_encoder_rerank_on_toy_data(monkeypatch, cross_encoder_db):
         SimpleNamespace(CrossEncoder=FakeCrossEncoder),
     )
 
-    cross_encoder_db.upsert([
-        Document(
-            id="d1",
-            text="ordinary document",
-            vector=[0.1] * 8,
-        ),
-        Document(
-            id="d2",
-            text="target document",
-            vector=[0.1] * 8,
-        ),
-    ])
+    cross_encoder_db.upsert(
+        [
+            Document(
+                id="d1",
+                text="ordinary document",
+                vector=[0.1] * 8,
+            ),
+            Document(
+                id="d2",
+                text="target document",
+                vector=[0.1] * 8,
+            ),
+        ]
+    )
 
     results = cross_encoder_db.search(
         "find the target",
@@ -937,18 +954,13 @@ def test_cross_encoder_rerank_on_toy_data(monkeypatch, cross_encoder_db):
     assert FakeCrossEncoder.instance.model_name == "toy-cross-encoder"
 
 
-def test_search_explain_records_cross_encoder_rerank_stage(
-    monkeypatch, cross_encoder_db
-):
+def test_search_explain_records_cross_encoder_rerank_stage(monkeypatch, cross_encoder_db):
     class FakeCrossEncoder:
         def __init__(self, model_name):
             self.model_name = model_name
 
         def predict(self, pairs):
-            return [
-                0.95 if "target document" in document else 0.10
-                for _, document in pairs
-            ]
+            return [0.95 if "target document" in document else 0.10 for _, document in pairs]
 
     monkeypatch.setitem(
         sys.modules,
@@ -956,18 +968,20 @@ def test_search_explain_records_cross_encoder_rerank_stage(
         SimpleNamespace(CrossEncoder=FakeCrossEncoder),
     )
 
-    cross_encoder_db.upsert([
-        Document(
-            id="d1",
-            text="ordinary document",
-            vector=[0.1] * 8,
-        ),
-        Document(
-            id="d2",
-            text="target document",
-            vector=[0.1] * 8,
-        ),
-    ])
+    cross_encoder_db.upsert(
+        [
+            Document(
+                id="d1",
+                text="ordinary document",
+                vector=[0.1] * 8,
+            ),
+            Document(
+                id="d2",
+                text="target document",
+                vector=[0.1] * 8,
+            ),
+        ]
+    )
 
     result = cross_encoder_db.search(
         "find the target",
@@ -987,13 +1001,15 @@ def test_search_explain_records_cross_encoder_rerank_stage(
 
 
 def test_cross_encoder_rerank_requires_text_query(cross_encoder_db):
-    cross_encoder_db.upsert([
-        Document(
-            id="d1",
-            text="some document",
-            vector=[0.1] * 8,
-        ),
-    ])
+    cross_encoder_db.upsert(
+        [
+            Document(
+                id="d1",
+                text="some document",
+                vector=[0.1] * 8,
+            ),
+        ]
+    )
 
     with pytest.raises(ConfigurationError, match="requires a text query"):
         cross_encoder_db.search(
@@ -1001,6 +1017,7 @@ def test_cross_encoder_rerank_requires_text_query(cross_encoder_db):
             top_k=1,
             rerank="cross-encoder",
         )
+
 
 def test_cross_encoder_rerank_requires_document_text(monkeypatch, cross_encoder_db):
     class FakeCrossEncoder:
@@ -1013,13 +1030,15 @@ def test_cross_encoder_rerank_requires_document_text(monkeypatch, cross_encoder_
         SimpleNamespace(CrossEncoder=FakeCrossEncoder),
     )
 
-    cross_encoder_db.upsert([
-        Document(
-            id="d1",
-            text=None,
-            vector=[0.1] * 8,
-        ),
-    ])
+    cross_encoder_db.upsert(
+        [
+            Document(
+                id="d1",
+                text=None,
+                vector=[0.1] * 8,
+            ),
+        ]
+    )
 
     with pytest.raises(ConfigurationError, match="requires document text"):
         cross_encoder_db.search(
@@ -1033,15 +1052,15 @@ def test_writes_invalidate_query_cache(db):
     db._cache = SemanticCache(threshold=0.99)
     db.upsert([Document(id="1", text="apple pie")], namespace="ns")
     db.upsert([Document(id="o1", text="apple pie")], namespace="other")
-    db.search("apple pie", top_k=3, namespace="ns")          # miss -> cached
-    db.search("apple pie", top_k=3, namespace="other")       # miss -> cached
+    db.search("apple pie", top_k=3, namespace="ns")  # miss -> cached
+    db.search("apple pie", top_k=3, namespace="other")  # miss -> cached
     assert db._cache.misses == 2
 
     # a write to "ns" evicts only that namespace's entries
     db.upsert([Document(id="2", text="apple pie tart")], namespace="ns")
-    db.search("apple pie", top_k=3, namespace="other")       # still cached -> hit
+    db.search("apple pie", top_k=3, namespace="other")  # still cached -> hit
     assert db._cache.hits == 1
-    res = db.search("apple pie", top_k=3, namespace="ns")    # evicted -> fresh
+    res = db.search("apple pie", top_k=3, namespace="ns")  # evicted -> fresh
     assert db._cache.misses == 3
     assert "2" in {r.id for r in res}
 
@@ -1058,14 +1077,17 @@ def test_writes_keep_cache_when_invalidation_disabled(monkeypatch):
     monkeypatch.setattr(client_mod, "S3VectorsStore", FakeS3)
     monkeypatch.setattr(client_mod, "DynamoDBStore", FakeDDB)
     cfg = DynavecConfig(
-        vector_bucket="b", index="i", table="t", dimension=8,
+        vector_bucket="b",
+        index="i",
+        table="t",
+        dimension=8,
         cache_invalidate_on_write=False,
     )
     db = Dynavec(cfg, embedder=HashEmbedder(8))
     db._cache = SemanticCache(threshold=0.99)
 
     db.upsert([Document(id="1", text="apple pie")], namespace="ns")
-    db.search("apple pie", top_k=3, namespace="ns")          # cached
+    db.search("apple pie", top_k=3, namespace="ns")  # cached
     db.upsert([Document(id="2", text="apple pie tart")], namespace="ns")
-    db.search("apple pie", top_k=3, namespace="ns")          # stale hit
+    db.search("apple pie", top_k=3, namespace="ns")  # stale hit
     assert db._cache.hits == 1

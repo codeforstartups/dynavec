@@ -30,9 +30,7 @@ class HFInferenceEmbedder(Embedder):
     ) -> None:
         """Initialize HFInferenceEmbedder."""
         self.model_name = model_name
-        self.api_key = (
-            api_key or os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
-        )
+        self.api_key = api_key or os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
         self.batch_size = batch_size
         self.dimension = dimension or _MODEL_DIMS.get(model_name, 384)
 
@@ -41,7 +39,9 @@ class HFInferenceEmbedder(Embedder):
                 "Hugging Face API token is required. Pass api_key or set HF_TOKEN environment variable."
             )
 
-        self.api_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{self.model_name}"
+        self.api_url = (
+            f"https://api-inference.huggingface.co/pipeline/feature-extraction/{self.model_name}"
+        )
         self.headers = {"Authorization": f"Bearer {self.api_key}"}
 
     def embed_documents(self, texts: Sequence[str]) -> list[Vector]:
@@ -62,13 +62,9 @@ class HFInferenceEmbedder(Embedder):
 
             if response.status_code != 200:
                 if response.status_code in (401, 403):
-                    raise ValueError(
-                        "Invalid Hugging Face API token or unauthorized request."
-                    )
+                    raise ValueError("Invalid Hugging Face API token or unauthorized request.")
                 elif response.status_code == 404:
-                    raise ValueError(
-                        f"Model '{self.model_name}' not found on Hugging Face Hub."
-                    )
+                    raise ValueError(f"Model '{self.model_name}' not found on Hugging Face Hub.")
                 else:
                     raise RuntimeError(
                         f"Hugging Face API request failed ({response.status_code}): {response.text}"

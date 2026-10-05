@@ -129,9 +129,7 @@ class FakeAnthropicMessages:
                     ),
                     SimpleNamespace(
                         type="content_block_delta",
-                        delta=SimpleNamespace(
-                            type="input_json_delta", partial_json='{"loc":"NY"}'
-                        ),
+                        delta=SimpleNamespace(type="input_json_delta", partial_json='{"loc":"NY"}'),
                     ),
                 ]
 

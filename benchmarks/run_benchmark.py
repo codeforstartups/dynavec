@@ -76,10 +76,7 @@ class DynavecBackend:
 
     def build(self, vectors, ids):
         self._id_to_index = {vid: i for i, vid in enumerate(ids)}
-        docs = [
-            self._Document(id=vid, vector=vectors[i].tolist())
-            for i, vid in enumerate(ids)
-        ]
+        docs = [self._Document(id=vid, vector=vectors[i].tolist()) for i, vid in enumerate(ids)]
         # upsert in batches so we don't build one giant list in memory
         B = 500
         for s in range(0, len(docs), B):
@@ -91,8 +88,10 @@ class DynavecBackend:
 
 
 def run(args) -> None:
-    print(f"Generating synthetic dataset: {args.n:,} × {args.dim}d, "
-          f"{args.queries} queries, k={args.k}")
+    print(
+        f"Generating synthetic dataset: {args.n:,} × {args.dim}d, "
+        f"{args.queries} queries, k={args.k}"
+    )
     ds = make_synthetic(n=args.n, dim=args.dim, n_queries=args.queries, k=args.k)
 
     if args.backend == "local":
@@ -122,18 +121,23 @@ def run(args) -> None:
     print(f"backend         : {args.backend}")
     print(f"dataset         : {args.n:,} vectors × {args.dim}d")
     print(f"recall@{args.k:<8}: {recall:.4f}")
-    print(f"latency (ms)    : p50={pct['p50']:.2f}  p95={pct['p95']:.2f}  "
-          f"p99={pct['p99']:.2f}  mean={pct['mean']:.2f}")
+    print(
+        f"latency (ms)    : p50={pct['p50']:.2f}  p95={pct['p95']:.2f}  "
+        f"p99={pct['p99']:.2f}  mean={pct['mean']:.2f}"
+    )
     print(f"build time      : {build_s:.2f}s")
     if args.backend == "local":
-        print("\nNote: local backend is exact NN (recall≈1.0). Use --backend "
-              "dynavec for real S3 Vectors recall & end-to-end latency.")
+        print(
+            "\nNote: local backend is exact NN (recall≈1.0). Use --backend "
+            "dynavec for real S3 Vectors recall & end-to-end latency."
+        )
     print("=========================================\n")
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--backend", choices=["local", "dynavec"], default="local")
     p.add_argument("--n", type=int, default=10_000, help="number of vectors")
     p.add_argument("--dim", type=int, default=384)

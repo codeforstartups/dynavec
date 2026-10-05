@@ -264,9 +264,7 @@ class ScalarQuantizer:
         if vectors.ndim != 2:
             raise ValueError("vectors must be a 2D array")
 
-        codes = np.round(
-            (vectors - mins) / scales - 128
-        )
+        codes = np.round((vectors - mins) / scales - 128)
 
         return np.asarray(np.clip(codes, -128, 127), dtype=np.int8)
 
@@ -276,8 +274,7 @@ class ScalarQuantizer:
         codes = np.asarray(codes, dtype=np.int8)
 
         return np.asarray(
-            (codes.astype(np.float32) + 128) * scales
-            + mins,
+            (codes.astype(np.float32) + 128) * scales + mins,
             dtype=np.float32,
         )
 
@@ -315,15 +312,11 @@ class OPQRotation:
             raise ValueError("vectors must be a 2D array")
 
         if x.shape[1] != self.dim:
-            raise ValueError(
-                f"Expected dimension={self.dim}, got {x.shape[1]}"
-            )
+            raise ValueError(f"Expected dimension={self.dim}, got {x.shape[1]}")
 
         rng = np.random.default_rng(self.seed)
 
-        random_matrix = rng.normal(
-            size=(self.dim, self.dim)
-        ).astype(np.float32)
+        random_matrix = rng.normal(size=(self.dim, self.dim)).astype(np.float32)
 
         q, _ = np.linalg.qr(random_matrix)
 
@@ -349,11 +342,8 @@ class OPQRotation:
 
     def _fitted_rotation(self) -> np.ndarray:
         if self._rotation is None:
-            raise RuntimeError(
-                "OPQRotation must be .fit() before use"
-            )
+            raise RuntimeError("OPQRotation must be .fit() before use")
         return self._rotation
-
 
     def _update_rotation(
         self,
@@ -402,9 +392,7 @@ class OptimizedProductQuantizer:
         self._dim = x.shape[1]
 
         if self._dim % self.m != 0:
-            raise ValueError(
-                f"m={self.m} must divide dimension={self._dim}"
-            )
+            raise ValueError(f"m={self.m} must divide dimension={self._dim}")
 
         self._opq = OPQRotation(
             dim=self._dim,
@@ -428,11 +416,7 @@ class OptimizedProductQuantizer:
             codes = self._pq.encode(rotated)
             reconstructed = self._pq.decode(codes)
 
-            error = float(
-                ((rotated - reconstructed) ** 2)
-                .sum(axis=1)
-                .mean()
-            )
+            error = float(((rotated - reconstructed) ** 2).sum(axis=1).mean())
             self._training_errors.append(error)
 
             self._opq._update_rotation(
@@ -464,9 +448,7 @@ class OptimizedProductQuantizer:
     ) -> np.ndarray:
         pq, opq = self._fitted_components()
 
-        rotated_query = opq.transform(
-            np.asarray(query, dtype=np.float32)
-        )
+        rotated_query = opq.transform(np.asarray(query, dtype=np.float32))
 
         return pq.asymmetric_distances(
             rotated_query,
@@ -476,15 +458,9 @@ class OptimizedProductQuantizer:
     def reconstruction_error(self, vectors: np.ndarray) -> float:
         x = np.asarray(vectors, dtype=np.float32)
 
-        reconstructed = self.decode(
-            self.encode(x)
-        )
+        reconstructed = self.decode(self.encode(x))
 
-        return float(
-            ((x - reconstructed) ** 2)
-            .sum(axis=1)
-            .mean()
-        )
+        return float(((x - reconstructed) ** 2).sum(axis=1).mean())
 
     @property
     def training_errors(self) -> list[float]:
@@ -493,7 +469,5 @@ class OptimizedProductQuantizer:
 
     def _fitted_components(self) -> tuple[ProductQuantizer, OPQRotation]:
         if self._pq is None or self._opq is None:
-            raise RuntimeError(
-                "OptimizedProductQuantizer must be .fit() before use"
-            )
+            raise RuntimeError("OptimizedProductQuantizer must be .fit() before use")
         return self._pq, self._opq

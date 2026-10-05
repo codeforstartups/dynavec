@@ -138,7 +138,9 @@ def test_put_versioned_conflict_leaves_item_untouched(moto_store):
         moto_store.put_versioned("tenant", "a", "loser", {"by": "stale"}, expected_version=1)
 
     assert (info.value.doc_id, info.value.namespace, info.value.expected_version) == (
-        "a", "tenant", 1,
+        "a",
+        "tenant",
+        1,
     )
     assert moto_store.get_versioned("tenant", "a")["metadata"] == {"by": "second"}
 

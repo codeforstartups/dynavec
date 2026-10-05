@@ -111,7 +111,9 @@ def test_client_from_env_embedder_resolution(monkeypatch):
     monkeypatch.setattr(gemini_mod, "GeminiEmbedder", lambda **kw: MagicMock(dimension=768))
     monkeypatch.setattr(voyage_mod, "VoyageEmbedder", lambda **kw: MagicMock(dimension=1024))
     monkeypatch.setattr(mistral_mod, "MistralEmbedder", lambda **kw: MagicMock(dimension=1024))
-    monkeypatch.setattr(st_mod, "SentenceTransformerEmbedder", lambda **kw: MagicMock(dimension=384))
+    monkeypatch.setattr(
+        st_mod, "SentenceTransformerEmbedder", lambda **kw: MagicMock(dimension=384)
+    )
 
     base_env = {
         "DYNAVEC_BUCKET": "b",
@@ -175,7 +177,7 @@ def test_mcp_server_search_tool(fake_mcp):
         rescore="dot",
         rerank="mmr",
     )
-    assert "[1] id: doc-1 (score: 0.9500 | metadata: {\"topic\": \"greeting\"})" in result_text
+    assert '[1] id: doc-1 (score: 0.9500 | metadata: {"topic": "greeting"})' in result_text
     assert "Hello world" in result_text
     assert "[2] id: doc-2 (score: 0.8200)" in result_text
 
@@ -197,7 +199,9 @@ def test_mcp_server_search_tool_empty_and_error(fake_mcp):
 def test_mcp_server_graph_search_tool(fake_mcp):
     mock_db = MagicMock()
     mock_db.graph_search.return_value = [
-        SearchResult(id="doc-graph", score=0.91, text="Graph entity content", metadata={"entity": "acme"}),
+        SearchResult(
+            id="doc-graph", score=0.91, text="Graph entity content", metadata={"entity": "acme"}
+        ),
     ]
 
     mcp = create_mcp_server(mock_db)

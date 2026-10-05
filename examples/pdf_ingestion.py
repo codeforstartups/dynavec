@@ -1,7 +1,7 @@
 """Ingest a PDF into dynavec (requires AWS credentials + S3 Vectors).
 
-    pip install "dynavec[ingest,sentence-transformers]"
-    python examples/pdf_ingestion.py path/to/document.pdf
+pip install "dynavec[ingest,sentence-transformers]"
+python examples/pdf_ingestion.py path/to/document.pdf
 """
 
 import sys
@@ -11,9 +11,7 @@ from dynavec.embeddings import SentenceTransformerEmbedder
 from dynavec.ingest import PDFSource, ingest
 
 if len(sys.argv) != 2:
-    raise SystemExit(
-        "usage: python examples/pdf_ingestion.py path/to/document.pdf"
-    )
+    raise SystemExit("usage: python examples/pdf_ingestion.py path/to/document.pdf")
 
 # Local embedding model — no external API key required.
 embedder = SentenceTransformerEmbedder(model="all-MiniLM-L6-v2")

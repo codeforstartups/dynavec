@@ -34,8 +34,12 @@ def _ok(label, detail=""):
 
 def verify() -> None:
     cfg = DynavecConfig(
-        vector_bucket=BUCKET, index=INDEX, table=TABLE,
-        dimension=DIM, distance_metric="cosine", region=REGION,
+        vector_bucket=BUCKET,
+        index=INDEX,
+        table=TABLE,
+        dimension=DIM,
+        distance_metric="cosine",
+        region=REGION,
         auto_provision=True,
     )
     print(f"Provisioning index {INDEX!r} in {REGION} ...")

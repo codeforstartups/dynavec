@@ -9,8 +9,8 @@ import numpy as np
 
 @dataclass
 class Dataset:
-    vectors: np.ndarray      # (N, dim) float32
-    queries: np.ndarray      # (Q, dim) float32
+    vectors: np.ndarray  # (N, dim) float32
+    queries: np.ndarray  # (Q, dim) float32
     ids: list[str]
     ground_truth: np.ndarray  # (Q, k) int indices into vectors (exact NN)
 
@@ -55,7 +55,7 @@ def _l2_normalize(x: np.ndarray) -> np.ndarray:
 
 def _exact_topk(vectors: np.ndarray, queries: np.ndarray, k: int) -> np.ndarray:
     # cosine similarity == dot product on L2-normalized vectors
-    sims = queries @ vectors.T                       # (Q, N)
+    sims = queries @ vectors.T  # (Q, N)
     return np.argpartition(-sims, kth=k - 1, axis=1)[:, :k]
 
 

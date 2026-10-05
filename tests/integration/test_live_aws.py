@@ -97,7 +97,7 @@ def test_provision_upsert_search_roundtrip(live_db):
     hits = _query_with_retry(live_db, vecs[0].tolist(), top_k=5)
     assert hits, "no results returned from live S3 Vectors index"
     assert hits[0].id == "v0"
-    assert hits[0].text == "document number 0"   # hydrated from DynamoDB
+    assert hits[0].text == "document number 0"  # hydrated from DynamoDB
 
     # metadata pre-filter must scope results
     even_hits = _query_with_retry(live_db, vecs[0].tolist(), top_k=10, filter={"even": True})
@@ -110,7 +110,9 @@ def test_update_and_delete(live_db):
 
     rng = np.random.default_rng(1)
     v = _unit(rng, 1, DIM)[0].tolist()
-    live_db.upsert([Document(id="u1", vector=v, text="original", metadata={"tag": "a"})], namespace="it")
+    live_db.upsert(
+        [Document(id="u1", vector=v, text="original", metadata={"tag": "a"})], namespace="it"
+    )
 
     live_db.update("u1", namespace="it", metadata={"tag": "b"}, merge_metadata=False)
     got = live_db.get(["u1"], namespace="it")[0]

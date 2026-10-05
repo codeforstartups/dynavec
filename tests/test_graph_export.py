@@ -55,9 +55,7 @@ def graph():
 
 def test_mermaid_export_renders_the_namespace_subgraph(graph):
     assert graph.graph_export("mermaid", "corp") == (
-        "graph LR\n"
-        "  acme -->|competes_with| globex\n"
-        "  globex -->|supplies| initech\n"
+        "graph LR\n  acme -->|competes_with| globex\n  globex -->|supplies| initech\n"
     )
 
 
@@ -84,10 +82,7 @@ def test_cycle_terminates_and_emits_each_edge_once():
     g.add_edge("ns", "a", "next", "b")  # duplicate adjacency entry
 
     assert g.graph_export("mermaid", "ns") == (
-        "graph LR\n"
-        "  a -->|next| b\n"
-        "  b -->|next| c\n"
-        "  c -->|next| a\n"
+        "graph LR\n  a -->|next| b\n  b -->|next| c\n  c -->|next| a\n"
     )
 
 
@@ -98,9 +93,7 @@ def test_cycle_terminates_when_walking_from_a_root():
     g.add_node("ns", "orphan")  # unreachable from "a", so absent
 
     assert g.graph_export("mermaid", "ns", roots=["a"]) == (
-        "graph LR\n"
-        "  a -->|next| b\n"
-        "  b -->|next| a\n"
+        "graph LR\n  a -->|next| b\n  b -->|next| a\n"
     )
 
 
@@ -108,11 +101,7 @@ def test_self_loop_terminates():
     g = FakeGraph()
     g.add_edge("ns", "a", "cites", "a")
 
-    assert g.graph_export("dot", "ns") == (
-        "digraph G {\n"
-        '  "a" -> "a" [label="cites"];\n'
-        "}\n"
-    )
+    assert g.graph_export("dot", "ns") == ('digraph G {\n  "a" -> "a" [label="cites"];\n}\n')
 
 
 # -------------------------------------------------------------------- escaping
@@ -156,11 +145,7 @@ def test_mermaid_alias_never_shadows_a_real_id():
     g = FakeGraph()
     g.add_edge("ns", "n0", "points_at", "zz top")  # "n0" is a legal bare id
 
-    assert g.graph_export("mermaid", "ns") == (
-        "graph LR\n"
-        '  n1["zz top"]\n'
-        "  n0 -->|points_at| n1\n"
-    )
+    assert g.graph_export("mermaid", "ns") == ('graph LR\n  n1["zz top"]\n  n0 -->|points_at| n1\n')
 
 
 def test_dot_escapes_backslashes():
@@ -189,16 +174,9 @@ def test_isolated_nodes_are_declared():
     g.add_node("ns", "lonely")
     g.add_edge("ns", "a", "next", "b")
 
-    assert g.graph_export("mermaid", "ns") == (
-        "graph LR\n"
-        "  lonely\n"
-        "  a -->|next| b\n"
-    )
+    assert g.graph_export("mermaid", "ns") == ("graph LR\n  lonely\n  a -->|next| b\n")
     assert g.graph_export("dot", "ns") == (
-        "digraph G {\n"
-        '  "lonely";\n'
-        '  "a" -> "b" [label="next"];\n'
-        "}\n"
+        'digraph G {\n  "lonely";\n  "a" -> "b" [label="next"];\n}\n'
     )
 
 
@@ -208,8 +186,7 @@ def test_relation_filter_keeps_only_matching_edges():
     g.add_edge("ns", "a", "owns", "c")
 
     assert g.graph_export("mermaid", "ns", roots=["a"], relation="next") == (
-        "graph LR\n"
-        "  a -->|next| b\n"
+        "graph LR\n  a -->|next| b\n"
     )
 
 

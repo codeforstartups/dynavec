@@ -43,9 +43,7 @@ class ScriptedChatModel(ChatModel):
         if self.call_count >= len(self.responses):
             # Default response if script exhausted
             return ChatResult(
-                message=Message(
-                    role="assistant", content="Scripted responses exhausted."
-                ),
+                message=Message(role="assistant", content="Scripted responses exhausted."),
                 finish_reason="stop",
             )
 
@@ -74,26 +72,26 @@ class ScriptedChatModel(ChatModel):
 def test_tool_decorator_and_schema_generation() -> None:
     """Verify @tool extracts docstrings, names, parameter types, and executes correctly."""
 
-    @tool(name="custom_add", description="Add two integers.")
-    def add(a: int, b: int = 0) -> int:
-        """Add two numbers."""
+    @tool
+    def custom_add(a: int, b: int = 0) -> int:
+        """Add two integers."""
         return a + b
 
-    assert isinstance(add, AgentTool)
-    assert add.name == "custom_add"
-    assert add.description == "Add two integers."
-    assert add.parameters["type"] == "object"
-    assert add.parameters["properties"]["a"]["type"] == "integer"
-    assert add.parameters["properties"]["b"]["type"] == "integer"
-    assert "a" in add.parameters.get("required", [])
-    assert "b" not in add.parameters.get("required", [])
+    assert isinstance(custom_add, AgentTool)
+    assert custom_add.name == "custom_add"
+    assert custom_add.description == "Add two integers."
+    assert custom_add.parameters["type"] == "object"
+    assert custom_add.parameters["properties"]["a"]["type"] == "integer"
+    assert custom_add.parameters["properties"]["b"]["type"] == "integer"
+    assert "a" in custom_add.parameters.get("required", [])
+    assert "b" not in custom_add.parameters.get("required", [])
 
     # Test execution with dict
-    assert add.execute({"a": 5, "b": 10}) == "15"
+    assert custom_add.execute({"a": 5, "b": 10}) == "15"
     # Test execution with JSON string
-    assert add.execute('{"a": 20, "b": 22}') == "42"
+    assert custom_add.execute('{"a": 20, "b": 22}') == "42"
     # Test direct call
-    assert add(3, 4) == 7
+    assert custom_add(3, 4) == 7
 
 
 def test_react_agent_two_tool_task() -> None:

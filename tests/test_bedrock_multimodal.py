@@ -237,4 +237,3 @@ def test_empty_string_text_is_sent(mock_boto_session):
     payload = json.loads(client.invoke_model.call_args[1]["body"])
     assert payload["inputText"] == ""
     assert "inputImage" in payload
-

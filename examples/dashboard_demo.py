@@ -65,7 +65,7 @@ class _FakeS3(cm.S3VectorsStore):
     def _matches(self, meta, flt):
         if not flt:
             return True
-        for clause in (flt["$and"] if "$and" in flt else [flt]):
+        for clause in flt["$and"] if "$and" in flt else [flt]:
             for k, v in clause.items():
                 if meta.get(k) != v:
                     return False
@@ -80,13 +80,19 @@ class _FakeS3(cm.S3VectorsStore):
         scored.sort(key=lambda x: x[1])
         return [{"key": k, "distance": d, "metadata": m} for k, d, m in scored[:top_k]]
 
-    def query_pages(self, query_vector, top_k, filter=None, return_metadata=True, return_distance=True):
+    def query_pages(
+        self, query_vector, top_k, filter=None, return_metadata=True, return_distance=True
+    ):
         hits = self.query(query_vector, top_k, filter)
         for i in range(0, len(hits), 2):
             yield hits[i : i + 2]
 
     def get_vectors(self, keys, return_metadata=False):
-        return {k: {"vector": self._store[k][0], "metadata": self._store[k][1]} for k in keys if k in self._store}
+        return {
+            k: {"vector": self._store[k][0], "metadata": self._store[k][1]}
+            for k in keys
+            if k in self._store
+        }
 
     def delete_vectors(self, keys):
         for k in keys:
@@ -112,9 +118,14 @@ class _FakeDDB(cm.DynamoDBStore):
 
 TOPICS = ["food", "space", "ai", "aws", "bio"]
 QUERIES = [
-    "apple pie recipe", "rocket to mars", "serverless vectors on aws",
-    "how do cells work", "transformer attention", "cheap vector database",
-    "dynamodb latency", "embedding models",
+    "apple pie recipe",
+    "rocket to mars",
+    "serverless vectors on aws",
+    "how do cells work",
+    "transformer attention",
+    "cheap vector database",
+    "dynamodb latency",
+    "embedding models",
 ]
 NAMESPACES = ["kb", "tenant-a", "tenant-b"]
 
@@ -145,8 +156,11 @@ def main() -> None:
     for ns in NAMESPACES:
         db.upsert(
             [
-                Document(id=f"{ns}-{i}", text=f"{random.choice(TOPICS)} document {i} about vectors",
-                         metadata={"topic": random.choice(TOPICS)})
+                Document(
+                    id=f"{ns}-{i}",
+                    text=f"{random.choice(TOPICS)} document {i} about vectors",
+                    metadata={"topic": random.choice(TOPICS)},
+                )
                 for i in range(40)
             ],
             namespace=ns,

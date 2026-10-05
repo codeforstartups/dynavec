@@ -262,7 +262,6 @@ class Dynavec:
             default_ttl_seconds=default_ttl_seconds,
         )
 
-
     def _write(
         self,
         namespace: str,

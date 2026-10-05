@@ -1,8 +1,10 @@
 """Example: Ingesting Word (.docx), PowerPoint (.pptx), and Excel (.xlsx) files into dynavec."""
 
 from pathlib import Path
+
 from dynavec import Dynavec, DynavecConfig
 from dynavec.ingest import DocxSource, PptxSource, XlsxSource, ingest
+
 
 def main():
     cfg = DynavecConfig(
@@ -31,6 +33,7 @@ def main():
     if xlsx_file.exists():
         xlsx_count = ingest(db, XlsxSource(xlsx_file), namespace="spreadsheets")
         print(f"Ingested {xlsx_count} chunks from {xlsx_file}")
+
 
 if __name__ == "__main__":
     main()

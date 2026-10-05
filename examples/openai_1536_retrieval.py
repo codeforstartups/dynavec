@@ -27,13 +27,21 @@ REGION = os.environ.get("AWS_REGION", "us-east-1")
 
 CORPUS = [
     ("d1", "The mitochondria is the powerhouse of the cell.", {"topic": "biology"}),
-    ("d2", "Photosynthesis converts sunlight into chemical energy in plants.", {"topic": "biology"}),
+    (
+        "d2",
+        "Photosynthesis converts sunlight into chemical energy in plants.",
+        {"topic": "biology"},
+    ),
     ("d3", "Rockets must reach ~28,000 km/h to achieve low Earth orbit.", {"topic": "space"}),
     ("d4", "A black hole's event horizon is the point of no return.", {"topic": "space"}),
     ("d5", "Transformers use self-attention to model long-range dependencies.", {"topic": "ai"}),
     ("d6", "Vector databases power retrieval-augmented generation for LLMs.", {"topic": "ai"}),
     ("d7", "DynamoDB offers single-digit-millisecond key-value lookups.", {"topic": "aws"}),
-    ("d8", "Amazon S3 Vectors provides serverless approximate nearest-neighbor search.", {"topic": "aws"}),
+    (
+        "d8",
+        "Amazon S3 Vectors provides serverless approximate nearest-neighbor search.",
+        {"topic": "aws"},
+    ),
 ]
 
 QUERIES = [
@@ -54,7 +62,7 @@ def main() -> None:
         dimension=1536,
         distance_metric="cosine",
         region=REGION,
-        auto_provision=True,   # creates bucket + index + table if missing
+        auto_provision=True,  # creates bucket + index + table if missing
     )
 
     print(f"Connecting to AWS ({REGION}) and provisioning resources ...")

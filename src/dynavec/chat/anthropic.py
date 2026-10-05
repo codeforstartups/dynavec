@@ -37,42 +37,45 @@ class AnthropicChatModel(ChatModel):
     def _convert_messages(self, messages: list[Message]) -> tuple[str, list[dict[str, Any]]]:
         system_prompt = ""
         anthropic_msgs = []
-        
+
         for msg in messages:
             if msg.role == "system":
                 system_prompt += (msg.content or "") + "\n"
                 continue
-                
+
             content_blocks: list[dict[str, Any]] = []
             if msg.content:
                 content_blocks.append({"type": "text", "text": msg.content})
-                
+
             if msg.tool_calls:
                 for tc in msg.tool_calls:
-                    content_blocks.append({
-                        "type": "tool_use",
-                        "id": tc.id,
-                        "name": tc.name,
-                        "input": json.loads(tc.arguments) if tc.arguments else {}
-                    })
-                    
+                    content_blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc.id,
+                            "name": tc.name,
+                            "input": json.loads(tc.arguments) if tc.arguments else {},
+                        }
+                    )
+
             if msg.role == "tool" and msg.tool_call_id:
-                content_blocks.append({
-                    "type": "tool_result",
-                    "tool_use_id": msg.tool_call_id,
-                    "content": msg.content or ""
-                })
-                anthropic_msgs.append({
-                    "role": "user",
-                    "content": content_blocks
-                })
+                content_blocks.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": msg.tool_call_id,
+                        "content": msg.content or "",
+                    }
+                )
+                anthropic_msgs.append({"role": "user", "content": content_blocks})
                 continue
 
-            anthropic_msgs.append({
-                "role": "assistant" if msg.role == "assistant" else "user",
-                "content": content_blocks
-            })
-            
+            anthropic_msgs.append(
+                {
+                    "role": "assistant" if msg.role == "assistant" else "user",
+                    "content": content_blocks,
+                }
+            )
+
         return system_prompt.strip(), anthropic_msgs
 
     def _convert_tools(self, tools: list[Tool] | None) -> list[dict[str, Any]] | None:
@@ -92,31 +95,34 @@ class AnthropicChatModel(ChatModel):
     ) -> ChatResult:
         system, anthropic_msgs = self._convert_messages(messages)
         anthropic_tools = self._convert_tools(tools)
-        
-        args: dict[str, Any] = {"model": self.model, "messages": anthropic_msgs, "max_tokens": 1024, **kwargs}
+
+        args: dict[str, Any] = {
+            "model": self.model,
+            "messages": anthropic_msgs,
+            "max_tokens": 1024,
+            **kwargs,
+        }
         if system:
             args["system"] = system
         if anthropic_tools:
             args["tools"] = anthropic_tools
 
         resp = self._client.messages.create(**args)
-        
+
         text_content = ""
         tool_calls = []
-        
+
         for block in resp.content:
             if block.type == "text":
                 text_content += block.text
             elif block.type == "tool_use":
                 tool_calls.append(
-                    ToolCall(
-                        id=block.id,
-                        name=block.name,
-                        arguments=json.dumps(block.input)
-                    )
+                    ToolCall(id=block.id, name=block.name, arguments=json.dumps(block.input))
                 )
 
-        out_msg = Message(role="assistant", content=text_content if text_content else None, tool_calls=tool_calls)
+        out_msg = Message(
+            role="assistant", content=text_content if text_content else None, tool_calls=tool_calls
+        )
         return ChatResult(message=out_msg, finish_reason=resp.stop_reason)
 
     def stream(
@@ -124,8 +130,13 @@ class AnthropicChatModel(ChatModel):
     ) -> Iterator[ChatChunk]:
         system, anthropic_msgs = self._convert_messages(messages)
         anthropic_tools = self._convert_tools(tools)
-        
-        args: dict[str, Any] = {"model": self.model, "messages": anthropic_msgs, "max_tokens": 1024, **kwargs}
+
+        args: dict[str, Any] = {
+            "model": self.model,
+            "messages": anthropic_msgs,
+            "max_tokens": 1024,
+            **kwargs,
+        }
         if system:
             args["system"] = system
         if anthropic_tools:

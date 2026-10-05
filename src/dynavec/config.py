@@ -158,15 +158,16 @@ class DynavecConfig:
         valid_log_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
         if self.log_level.upper() not in valid_log_levels:
             raise ValueError(f"log_level must be one of {valid_log_levels}")
-        
+
         if self.dimension > 4096:
             logger = logging.getLogger(__name__)
-            logger.warning("Amazon S3 Vectors currently supports a maximum embedding dimension of 4096. You have configured a dimension of %d. This may result in an API error during provisioning or writing data.", self.dimension)
+            logger.warning(
+                "Amazon S3 Vectors currently supports a maximum embedding dimension of 4096. You have configured a dimension of %d. This may result in an API error during provisioning or writing data.",
+                self.dimension,
+            )
 
         if self.put_rps is not None and self.put_rps <= 0:
             raise ValueError("put_rps must be positive")
 
         if self.query_rps is not None and self.query_rps <= 0:
             raise ValueError("query_rps must be positive")
-
-

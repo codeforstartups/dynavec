@@ -54,6 +54,20 @@ from .ingest import (
     XlsxSource,
     ingest,
 )
+from .logging import (
+    DynamoDBLogSink,
+    InMemoryLogSink,
+    LogSink,
+    RunLogger,
+    RunLogRecord,
+    StdoutSink,
+    get_current_correlation,
+    get_run_logger,
+    log_run_event,
+    node_context,
+    run_context,
+    set_default_run_logger,
+)
 from .models import (
     Document,
     ExplainedSearchResult,
@@ -130,6 +144,19 @@ __all__ = [
     "TransformPipeline",
     "TransformContext",
     "LambdaTransform",
+    # Logging & Observability (dynalogs)
+    "RunLogger",
+    "RunLogRecord",
+    "LogSink",
+    "StdoutSink",
+    "InMemoryLogSink",
+    "DynamoDBLogSink",
+    "run_context",
+    "node_context",
+    "get_current_correlation",
+    "get_run_logger",
+    "set_default_run_logger",
+    "log_run_event",
     # Ingestion
     "Record",
     "ingest",

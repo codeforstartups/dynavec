@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from ..checkpoint import (
+    BaseCheckpointer,
+    Checkpoint,
+    DynamoDBCheckpointer,
+    MemoryCheckpointer,
+)
 from .base import (
     AgentResult,
     AgentStep,
@@ -35,4 +41,8 @@ __all__ = [
     "mcp_tools_from_session",
     "mcp_tools_from_session_async",
     "tool",
+    "Checkpoint",
+    "BaseCheckpointer",
+    "MemoryCheckpointer",
+    "DynamoDBCheckpointer",
 ]

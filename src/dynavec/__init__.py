@@ -23,6 +23,12 @@ from __future__ import annotations
 from .async_client import AsyncDynavec
 from .bm25 import BM25Index
 from .cache import BaseCache, DynamoDBCache, RedisCache, SemanticCache, warm_cache
+from .checkpoint import (
+    BaseCheckpointer,
+    Checkpoint,
+    DynamoDBCheckpointer,
+    MemoryCheckpointer,
+)
 from .client import Dynavec
 from .config import DynavecConfig
 from .credentials import AWSCredentials
@@ -178,6 +184,11 @@ __all__ = [
     "get_run_logger",
     "set_default_run_logger",
     "log_run_event",
+    # Orchestration & Checkpointing (dynaflow)
+    "Checkpoint",
+    "BaseCheckpointer",
+    "MemoryCheckpointer",
+    "DynamoDBCheckpointer",
     # Ingestion
     "Record",
     "ingest",

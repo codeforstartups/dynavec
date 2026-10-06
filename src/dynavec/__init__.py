@@ -63,6 +63,25 @@ from .models import (
     UpsertResult,
 )
 from .namespace import NamespaceView
+from .nodes import (
+    ApprovalNode,
+    CodeNode,
+    Edge,
+    LLMNode,
+    LoopNode,
+    Node,
+    NodePort,
+    NodeRegistry,
+    NodeSchema,
+    PortType,
+    RetrieverNode,
+    RouterNode,
+    SimpleGraph,
+    SubGraphNode,
+    ToolNode,
+    WebhookNode,
+    node_registry,
+)
 from .quantization import (
     OPQRotation,
     OptimizedProductQuantizer,
@@ -153,4 +172,22 @@ __all__ = [
     "ItemTooLargeError",
     "ConflictError",
     "MissingDependencyError",
+    # Nodes & Graph
+    "Node",
+    "NodePort",
+    "NodeSchema",
+    "PortType",
+    "NodeRegistry",
+    "node_registry",
+    "Edge",
+    "SimpleGraph",
+    "RetrieverNode",
+    "LLMNode",
+    "ToolNode",
+    "RouterNode",
+    "CodeNode",
+    "ApprovalNode",
+    "LoopNode",
+    "WebhookNode",
+    "SubGraphNode",
 ]

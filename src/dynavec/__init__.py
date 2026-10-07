@@ -39,6 +39,7 @@ from .exceptions import (
 )
 from .fusion import FitResult, RRFWeightFitter
 from .graph import GraphStore
+from .graph_import import GraphImportResult
 from .hot import HotTier
 from .ingest import (
     CsvSource,
@@ -140,6 +141,7 @@ __all__ = [
     "OPQRotation",
     "OptimizedProductQuantizer",
     "GraphStore",
+    "GraphImportResult",
     "BaseCache",
     "SemanticCache",
     "DynamoDBCache",

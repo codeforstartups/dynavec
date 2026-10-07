@@ -65,6 +65,7 @@ from .exceptions import (
     NotFoundError,
 )
 from .graph import GraphStore
+from .graph_import import GraphImportResult
 from .hot import HotTier
 from .metadata import build_s3_filter
 from .metrics import normalize_scores as normalize_metric_scores
@@ -1231,6 +1232,35 @@ class Dynavec:
                 )
 
     # -------------------------------------------------------------- graph / ER
+    def graph_import(
+        self,
+        *,
+        nodes: Sequence[dict[str, Any]] | None = None,
+        edges: Sequence[dict[str, Any]] | None = None,
+        namespace: str = "default",
+        batch_size: int = 100,
+    ) -> GraphImportResult:
+        """Import graph records with grouped adjacency updates."""
+        return self.graph.import_graph(namespace, nodes=nodes, edges=edges, batch_size=batch_size)
+
+    def graph_import_file(
+        self,
+        *,
+        json_file: str | Path | None = None,
+        nodes_csv: str | Path | None = None,
+        edges_csv: str | Path | None = None,
+        namespace: str = "default",
+        batch_size: int = 100,
+    ) -> GraphImportResult:
+        """Import graph JSON or node/edge CSV files after complete validation."""
+        return self.graph.import_graph_file(
+            namespace,
+            json_file=json_file,
+            nodes_csv=nodes_csv,
+            edges_csv=edges_csv,
+            batch_size=batch_size,
+        )
+
     def graph_add_node(
         self,
         entity_id: str,

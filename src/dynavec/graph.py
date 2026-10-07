@@ -26,12 +26,16 @@ from __future__ import annotations
 
 import re
 from collections import deque
+from collections.abc import Sequence
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Literal, cast, overload
 
 from .config import DynavecConfig
+from .graph_import import GraphImportResult, _load_files, _prepare_import, _PreparedImport
 from .utils import (
     KEY_SEPARATOR,
+    chunked,
     decode_key_component,
     encode_key_component,
     is_retryable,
@@ -49,6 +53,7 @@ def _edges_changed_or_retryable(exc: Exception) -> bool:
     """
     code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
     return code == "ConditionalCheckFailedException" or is_retryable(exc)
+
 
 EXPORT_FORMATS = ("mermaid", "dot")
 
@@ -184,6 +189,61 @@ class GraphStore:
         )
 
     # --------------------------------------------------------------- mutations
+    def import_graph(
+        self,
+        ns: str,
+        *,
+        nodes: Sequence[dict[str, Any]] | None = None,
+        edges: Sequence[dict[str, Any]] | None = None,
+        batch_size: int = 100,
+    ) -> GraphImportResult:
+        """Prevalidate records, prepare unique nodes, and append grouped edges.
+
+        ``batch_size`` bounds edges per UpdateItem, not item size. Existing
+        metadata follows add_node semantics; duplicate edges remain duplicates.
+        Prevalidation needs memory proportional to the import. AWS failures can
+        leave partial writes; this operation is neither atomic nor idempotent.
+        """
+        return self._write_import(ns, _prepare_import(ns, nodes, edges, batch_size), batch_size)
+
+    def import_graph_file(
+        self,
+        ns: str,
+        *,
+        json_file: str | Path | None = None,
+        nodes_csv: str | Path | None = None,
+        edges_csv: str | Path | None = None,
+        batch_size: int = 100,
+    ) -> GraphImportResult:
+        """Load UTF-8 JSON or separate CSV files; validate both before writing.
+
+        Supply a JSON object with nodes/edges arrays, or either/both CSV files.
+        CSV props cells hold JSON objects. Errors include file/record context.
+        """
+        nodes, edges, node_contexts, edge_contexts = _load_files(json_file, nodes_csv, edges_csv)
+        prepared = _prepare_import(
+            ns, nodes, edges, batch_size, node_contexts=node_contexts, edge_contexts=edge_contexts
+        )
+        return self._write_import(ns, prepared, batch_size)
+
+    def _write_import(
+        self, ns: str, prepared: _PreparedImport, batch_size: int
+    ) -> GraphImportResult:
+        # add_node is safe to retry: it initializes lists only if absent and
+        # assigns the same prevalidated metadata on every attempt.
+        for entity_id, attrs in prepared.nodes.items():
+            self.add_node(ns, entity_id, attrs.get("ntype"), attrs.get("props"))
+        for src, edges in prepared.edges.items():
+            for batch in chunked(edges, batch_size):
+                # No application retry around appends or the multi-write import:
+                # an ambiguous failure may have already appended the chunk.
+                self._table.update_item(
+                    Key={"pk": self._node_pk(ns, src)},
+                    UpdateExpression="SET edges = list_append(if_not_exists(edges, :empty), :e)",
+                    ExpressionAttributeValues={":e": batch, ":empty": []},
+                )
+        return GraphImportResult(len(prepared.nodes), prepared.edge_count)
+
     @retry()
     def add_node(
         self, ns: str, entity_id: str, ntype: str | None = None, props: Props | None = None

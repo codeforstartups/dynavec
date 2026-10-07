@@ -4,10 +4,52 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 PortType = Literal["string", "number", "boolean", "array", "object", "any"]
+NodeStatus = Literal["pending", "running", "retrying", "succeeded", "failed", "skipped"]
+
+
+@dataclass
+class RetryPolicy:
+    """Configurable retry policy for node execution with exponential backoff and jitter."""
+
+    max_attempts: int = 3
+    base_delay: float = 0.05
+    max_delay: float = 2.0
+    jitter: bool = True
+    retry_on: tuple[type[Exception], ...] | Callable[[Exception], bool] | None = None
+
+    def should_retry(self, exc: Exception) -> bool:
+        """Evaluate if an exception is eligible for retry under this policy."""
+        if self.retry_on is None:
+            return True
+        if isinstance(self.retry_on, tuple):
+            return isinstance(exc, self.retry_on)
+        if callable(self.retry_on):
+            return bool(self.retry_on(exc))
+        return True
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize retry policy to dictionary."""
+        return {
+            "max_attempts": self.max_attempts,
+            "base_delay": self.base_delay,
+            "max_delay": self.max_delay,
+            "jitter": self.jitter,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RetryPolicy:
+        """Deserialize retry policy from dictionary."""
+        return cls(
+            max_attempts=data.get("max_attempts", 3),
+            base_delay=data.get("base_delay", 0.05),
+            max_delay=data.get("max_delay", 2.0),
+            jitter=data.get("jitter", True),
+        )
 
 
 @dataclass
@@ -78,9 +120,14 @@ class Node(ABC):
         self,
         node_id: str | None = None,
         config: dict[str, Any] | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
         self.id = node_id or f"{self.node_type}_{uuid.uuid4().hex[:8]}"
         self.config = dict(config or {})
+        self.retry_policy = retry_policy
+        self.status: NodeStatus = "pending"
+        self.attempts: int = 0
+        self.last_error: str | None = None
 
     @abstractmethod
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -88,13 +135,18 @@ class Node(ABC):
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize node to a ReactFlow-compatible node object."""
+        data: dict[str, Any] = {
+            "label": self.schema.label,
+            "config": self.config,
+            "category": self.schema.category,
+            "status": self.status,
+        }
+        if self.retry_policy is not None:
+            data["retry_policy"] = self.retry_policy.to_dict()
+
         return {
             "id": self.id,
             "type": self.node_type,
-            "data": {
-                "label": self.schema.label,
-                "config": self.config,
-                "category": self.schema.category,
-            },
+            "data": data,
             "position": {"x": 0, "y": 0},
         }

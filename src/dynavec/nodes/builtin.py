@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ..chat.base import ChatModel, Message
-from .base import Node, NodePort, NodeSchema
+from .base import Node, NodePort, NodeSchema, RetryPolicy
 from .registry import node_registry
 
 # --- 1. RetrieverNode ---
@@ -68,8 +68,9 @@ class RetrieverNode(Node):
         retriever_fn: Callable[..., Any] | None = None,
         node_id: str | None = None,
         config: dict[str, Any] | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
-        super().__init__(node_id=node_id, config=config)
+        super().__init__(node_id=node_id, config=config, retry_policy=retry_policy)
         self.retriever_fn = retriever_fn
 
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -163,8 +164,9 @@ class LLMNode(Node):
         model: ChatModel | Callable[[list[Message]], Any],
         node_id: str | None = None,
         config: dict[str, Any] | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
-        super().__init__(node_id=node_id, config=config)
+        super().__init__(node_id=node_id, config=config, retry_policy=retry_policy)
         self.model = model
 
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -249,8 +251,9 @@ class ToolNode(Node):
         tool: Callable[..., Any],
         node_id: str | None = None,
         config: dict[str, Any] | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
-        super().__init__(node_id=node_id, config=config)
+        super().__init__(node_id=node_id, config=config, retry_policy=retry_policy)
         self.tool = tool
 
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -335,8 +338,9 @@ class RouterNode(Node):
         route_fn: Callable[[Any], str] | None = None,
         node_id: str | None = None,
         config: dict[str, Any] | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
-        super().__init__(node_id=node_id, config=config)
+        super().__init__(node_id=node_id, config=config, retry_policy=retry_policy)
         self.route_fn = route_fn
 
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -391,8 +395,9 @@ class CodeNode(Node):
         code_fn: Callable[[dict[str, Any]], dict[str, Any]],
         node_id: str | None = None,
         config: dict[str, Any] | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
-        super().__init__(node_id=node_id, config=config)
+        super().__init__(node_id=node_id, config=config, retry_policy=retry_policy)
         self.code_fn = code_fn
 
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -460,6 +465,14 @@ class ApprovalNode(Node):
         },
     )
 
+    def __init__(
+        self,
+        node_id: str | None = None,
+        config: dict[str, Any] | None = None,
+        retry_policy: RetryPolicy | None = None,
+    ) -> None:
+        super().__init__(node_id=node_id, config=config, retry_policy=retry_policy)
+
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
         return {
             "approved": bool(inputs.get("approved", True)),
@@ -511,8 +524,9 @@ class LoopNode(Node):
         map_fn: Callable[[Any], Any] | None = None,
         node_id: str | None = None,
         config: dict[str, Any] | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
-        super().__init__(node_id=node_id, config=config)
+        super().__init__(node_id=node_id, config=config, retry_policy=retry_policy)
         self.map_fn = map_fn
 
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -571,6 +585,14 @@ class WebhookNode(Node):
         },
     )
 
+    def __init__(
+        self,
+        node_id: str | None = None,
+        config: dict[str, Any] | None = None,
+        retry_policy: RetryPolicy | None = None,
+    ) -> None:
+        super().__init__(node_id=node_id, config=config, retry_policy=retry_policy)
+
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
         return {"payload": inputs.get("payload", {})}
 
@@ -613,8 +635,9 @@ class SubGraphNode(Node):
         subgraph: Any = None,
         node_id: str | None = None,
         config: dict[str, Any] | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
-        super().__init__(node_id=node_id, config=config)
+        super().__init__(node_id=node_id, config=config, retry_policy=retry_policy)
         self.subgraph = subgraph
 
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:

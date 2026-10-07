@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import logging
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,7 @@ from .transforms import Transform, TransformPipeline
 from .utils import chunked
 
 Metadata = dict[str, Any]
+logger = logging.getLogger(__name__)
 
 
 def _normalize_front_matter(value: Any) -> Any:
@@ -496,12 +498,16 @@ class S3Source:
         suffix: str | tuple[str, ...] | None = None,
         boto_session: Any = None,
         s3_client: Any = None,
+        on_error: str = "raise",
     ) -> None:
+        if on_error not in ("raise", "skip"):
+            raise ValueError("on_error must be 'raise' or 'skip'")
         self.bucket = bucket
         self.prefix = prefix
         self.suffix = suffix
         self._session = boto_session
         self._client = s3_client
+        self.on_error = on_error
 
     def _get_client(self) -> Any:
         if self._client is not None:
@@ -529,10 +535,7 @@ class S3Source:
 
         # 1. Markdown
         if ext == ".md" or "text/markdown" in content_type:
-            try:
-                text = data.decode("utf-8-sig")
-            except UnicodeDecodeError:
-                return
+            text = data.decode("utf-8-sig")
             clean_text, front_meta = MarkdownSource._front_matter(text, Path(key))
             if clean_text.strip():
                 yield Record(
@@ -544,10 +547,7 @@ class S3Source:
 
         # 2. CSV
         if ext == ".csv" or "text/csv" in content_type:
-            try:
-                text = data.decode("utf-8-sig")
-            except UnicodeDecodeError:
-                return
+            text = data.decode("utf-8-sig")
             lines = text.splitlines()
             csv_reader = csv.reader(lines)
             try:
@@ -699,7 +699,17 @@ class S3Source:
                 body = obj_resp["Body"]
                 data = body.read() if hasattr(body, "read") else bytes(body)
 
-                yield from self._parse_object(key, data, content_type)
+                try:
+                    yield from self._parse_object(key, data, content_type)
+                except Exception as exc:
+                    if self.on_error == "skip":
+                        logger.warning(
+                            "Failed to parse S3 object %s: %s",
+                            key,
+                            exc,
+                        )
+                        continue
+                    raise
 
             if resp.get("IsTruncated"):
                 continuation_token = resp.get("NextContinuationToken")

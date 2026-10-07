@@ -6,9 +6,33 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from ..chat.base import ChatModel, Message
 from ..credentials import resolve_session
 from ..exceptions import MissingDependencyError
 from .base import BaseJudge
+
+
+class ChatModelJudge(BaseJudge):
+    """LLM judge backed by Dynavec's ChatModel abstraction.
+
+    This allows any chat model implementing the Dynavec model layer to be used
+    for evaluation without coupling metrics to a specific provider SDK.
+    """
+
+    def __init__(
+        self,
+        model: ChatModel,
+        **invoke_kwargs: Any,
+    ) -> None:
+        self.model = model
+        self.invoke_kwargs = invoke_kwargs
+
+    def judge(self, prompt: str) -> str:
+        result = self.model.invoke(
+            [Message(role="user", content=prompt)],
+            **self.invoke_kwargs,
+        )
+        return result.message.content or ""
 
 
 class OpenAIJudge(BaseJudge):

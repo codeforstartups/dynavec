@@ -8,9 +8,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from dynavec.chat.base import ChatModel, ChatResult, Message
 from dynavec.dashboard import _make_handler
 from dynavec.eval import (
     AnswerRelevanceResult,
+    ChatModelJudge,
+    ContextPrecisionResult,
+    ContextRecallResult,
     CustomJudge,
     EvalRunner,
     EvalSummary,
@@ -20,6 +24,8 @@ from dynavec.eval import (
     OpenAIJudge,
     RAGEvalResult,
     evaluate_answer_relevance,
+    evaluate_context_precision,
+    evaluate_context_recall,
     evaluate_faithfulness,
     evaluate_rag,
     extract_json,
@@ -68,6 +74,27 @@ class TestExtractJson:
 
 
 class TestJudges:
+    def test_chat_model_judge_uses_model_layer(self) -> None:
+        model = MagicMock(spec=ChatModel)
+        model.invoke.return_value = ChatResult(
+            message=Message(
+                role="assistant",
+                content='{"score": 0.91, "reasoning": "Model-layer judge"}',
+            )
+        )
+
+        judge = ChatModelJudge(model)
+        result = judge.judge_structured("evaluate this")
+
+        assert result["score"] == 0.91
+
+        model.invoke.assert_called_once()
+
+        messages = model.invoke.call_args.args[0]
+        assert len(messages) == 1
+        assert messages[0].role == "user"
+        assert messages[0].content == "evaluate this"
+
     def test_mock_judge_sequential_and_default(self) -> None:
         resp1 = {"claims": [{"claim": "c1", "supported": True}], "reasoning": "ok"}
         resp2 = {"score": 0.9, "reasoning": "relevant"}
@@ -289,7 +316,164 @@ class TestAnswerRelevanceMetric:
 # ===========================================================================
 
 
+class TestContextPrecisionMetric:
+    def test_rank_sensitive_context_precision(self) -> None:
+        judge = MockJudge(
+            default_response={
+                "contexts": [
+                    {
+                        "index": 1,
+                        "relevant": True,
+                        "reasoning": "Useful context.",
+                    },
+                    {
+                        "index": 2,
+                        "relevant": False,
+                        "reasoning": "Irrelevant context.",
+                    },
+                    {
+                        "index": 3,
+                        "relevant": True,
+                        "reasoning": "Useful context.",
+                    },
+                ],
+                "reasoning": "Two of three contexts are relevant.",
+            }
+        )
+
+        result = evaluate_context_precision(
+            query="Where is the Eiffel Tower?",
+            context=[
+                "The Eiffel Tower is located in Paris.",
+                "Python is a programming language.",
+                "Paris is the capital of France.",
+            ],
+            reference_answer="The Eiffel Tower is located in Paris, France.",
+            judge=judge,
+        )
+
+        assert isinstance(result, ContextPrecisionResult)
+        assert result.score == pytest.approx(0.8333)
+        assert result.relevant_count == 2
+        assert result.total_count == 3
+        assert result.contexts[0].relevant is True
+        assert result.contexts[1].relevant is False
+        assert result.contexts[2].relevant is True
+
+
+class TestContextRecallMetric:
+    def test_partial_context_recall(self) -> None:
+        judge = MockJudge(
+            default_response={
+                "claims": [
+                    {
+                        "claim": "The Eiffel Tower is located in Paris.",
+                        "supported": True,
+                        "reasoning": "The retrieved context states this directly.",
+                    },
+                    {
+                        "claim": "The Eiffel Tower was completed in 1889.",
+                        "supported": True,
+                        "reasoning": "The completion year appears in context.",
+                    },
+                    {
+                        "claim": "The Eiffel Tower was designed by Gustave Eiffel.",
+                        "supported": False,
+                        "reasoning": "The designer is not mentioned.",
+                    },
+                ],
+                "reasoning": "Two of three reference claims are supported.",
+            }
+        )
+
+        result = evaluate_context_recall(
+            query="Tell me about the Eiffel Tower.",
+            context=[
+                "The Eiffel Tower is located in Paris.",
+                "Construction was completed in 1889.",
+            ],
+            reference_answer=(
+                "The Eiffel Tower is located in Paris. "
+                "It was completed in 1889 and was designed by Gustave Eiffel."
+            ),
+            judge=judge,
+        )
+
+        assert isinstance(result, ContextRecallResult)
+        assert result.score == pytest.approx(0.6667)
+        assert result.supported_count == 2
+        assert result.total_count == 3
+        assert result.claims[0].supported is True
+        assert result.claims[2].supported is False
+
+
 class TestEvalRunner:
+    def test_eval_runner_batch_context_metrics(self) -> None:
+        judge = MockJudge(
+            responses=[
+                # Sample 1 context precision
+                {
+                    "contexts": [
+                        {"index": 1, "relevant": True},
+                        {"index": 2, "relevant": False},
+                    ]
+                },
+                # Sample 1 context recall
+                {
+                    "claims": [
+                        {"claim": "claim 1", "supported": True},
+                        {"claim": "claim 2", "supported": True},
+                    ]
+                },
+                # Sample 2 context precision
+                {
+                    "contexts": [
+                        {"index": 1, "relevant": False},
+                        {"index": 2, "relevant": True},
+                    ]
+                },
+                # Sample 2 context recall
+                {
+                    "claims": [
+                        {"claim": "claim 1", "supported": True},
+                        {"claim": "claim 2", "supported": False},
+                    ]
+                },
+            ]
+        )
+
+        runner = EvalRunner(judge=judge, pass_threshold=0.7)
+
+        dataset = [
+            {
+                "query": "Q1",
+                "context": ["C1 relevant", "C1 irrelevant"],
+                "answer": "A1",
+                "reference_answer": "Reference 1",
+            },
+            {
+                "query": "Q2",
+                "context": ["C2 irrelevant", "C2 relevant"],
+                "answer": "A2",
+                "reference_answer": "Reference 2",
+            },
+        ]
+
+        summary = runner.run(
+            dataset,
+            run_faithfulness=False,
+            run_answer_relevance=False,
+        )
+
+        assert summary.total_samples == 2
+        assert summary.mean_context_precision == pytest.approx(0.75)
+        assert summary.mean_context_recall == pytest.approx(0.75)
+        assert summary.pass_rate == 0.5
+
+        assert summary.results[0].reference_answer == "Reference 1"
+        assert summary.results[0].context_precision is not None
+        assert summary.results[0].context_recall is not None
+
     def test_evaluate_rag_combined(self) -> None:
         f_resp = {
             "claims": [{"claim": "Fact 1", "supported": True}],
@@ -315,6 +499,76 @@ class TestEvalRunner:
         d = rag_res.to_dict()
         assert d["query"] == "What is dynavec?"
         assert d["faithfulness"]["score"] == 1.0
+
+    def test_evaluate_rag_all_four_metrics(self) -> None:
+        faithfulness_response = {
+            "claims": [
+                {
+                    "claim": "The Eiffel Tower is in Paris.",
+                    "supported": True,
+                }
+            ]
+        }
+
+        relevance_response = {
+            "score": 0.9,
+            "reasoning": "Direct answer.",
+        }
+
+        precision_response = {
+            "contexts": [
+                {"index": 1, "relevant": True},
+                {"index": 2, "relevant": False},
+            ]
+        }
+
+        recall_response = {
+            "claims": [
+                {
+                    "claim": "The Eiffel Tower is in Paris.",
+                    "supported": True,
+                },
+                {
+                    "claim": "It was completed in 1889.",
+                    "supported": False,
+                },
+            ]
+        }
+
+        judge = MockJudge(
+            responses=[
+                faithfulness_response,
+                relevance_response,
+                precision_response,
+                recall_response,
+            ]
+        )
+
+        result = evaluate_rag(
+            query="Where is the Eiffel Tower?",
+            context=[
+                "The Eiffel Tower is located in Paris.",
+                "Python is a programming language.",
+            ],
+            answer="The Eiffel Tower is in Paris.",
+            reference_answer=("The Eiffel Tower is in Paris and was completed in 1889."),
+            judge=judge,
+        )
+
+        assert result.faithfulness is not None
+        assert result.faithfulness.score == 1.0
+
+        assert result.answer_relevance is not None
+        assert result.answer_relevance.score == 0.9
+
+        assert result.context_precision is not None
+        assert result.context_precision.score == 1.0
+
+        assert result.context_recall is not None
+        assert result.context_recall.score == 0.5
+
+        assert result.reference_answer is not None
+        assert len(judge.call_history) == 4
 
     def test_eval_runner_batch_dataset(self) -> None:
         # Sample 1: Faithful (1.0) & Relevant (0.9) -> Pass

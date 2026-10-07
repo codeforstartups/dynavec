@@ -100,6 +100,46 @@ class AnswerRelevanceResult:
 
 
 @dataclass
+class ContextRelevanceVerification:
+    """Relevance judgment for a single retrieved context chunk."""
+
+    context: str
+    relevant: bool
+    reasoning: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class ContextPrecisionResult:
+    """Result of a context precision evaluation."""
+
+    score: float
+    contexts: list[ContextRelevanceVerification] = field(default_factory=list)
+    relevant_count: int = 0
+    total_count: int = 0
+    reasoning: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class ContextRecallResult:
+    """Result of a context recall evaluation."""
+
+    score: float
+    claims: list[ClaimVerification] = field(default_factory=list)
+    supported_count: int = 0
+    total_count: int = 0
+    reasoning: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class RAGEvalResult:
     """Combined RAG evaluation result for a query, context, and answer."""
 
@@ -109,6 +149,9 @@ class RAGEvalResult:
     faithfulness: FaithfulnessResult | None = None
     answer_relevance: AnswerRelevanceResult | None = None
     latency_ms: float = 0.0
+    reference_answer: str | None = None
+    context_precision: ContextPrecisionResult | None = None
+    context_recall: ContextRecallResult | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

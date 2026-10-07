@@ -1,4 +1,4 @@
-"""Core RAG evaluation metrics: Faithfulness (hallucination detection) and Answer Relevance."""
+"""Core RAG evaluation metrics: faithfulness, answer relevance, context precision, and context recall."""
 
 from __future__ import annotations
 
@@ -9,6 +9,9 @@ from .base import (
     AnswerRelevanceResult,
     BaseJudge,
     ClaimVerification,
+    ContextPrecisionResult,
+    ContextRecallResult,
+    ContextRelevanceVerification,
     FaithfulnessResult,
     RAGEvalResult,
 )
@@ -61,6 +64,70 @@ Respond ONLY with a JSON object in this exact schema:
 {{
   "score": <float between 0.0 and 1.0>,
   "reasoning": "<concise explanation for the assigned score>"
+}}
+"""
+
+
+_CONTEXT_PRECISION_PROMPT_TEMPLATE = """You are an expert evaluator assessing CONTEXT PRECISION for a RAG system.
+
+Task:
+Evaluate each retrieved context chunk independently and determine whether it is useful for answering the user query according to the reference answer.
+
+A context is relevant when it contains information that helps support or produce the reference answer.
+A context is irrelevant when it does not help answer the query or contains unrelated information.
+
+Preserve the original context rank.
+
+User Query:
+{query}
+
+Reference Answer:
+{reference_answer}
+
+Retrieved Contexts:
+{contexts_text}
+
+Respond ONLY with a JSON object in this exact schema:
+{{
+  "contexts": [
+    {{
+      "index": 1,
+      "relevant": true,
+      "reasoning": "<why this context is or is not useful>"
+    }}
+  ],
+  "reasoning": "<overall summary of context precision>"
+}}
+"""
+
+
+_CONTEXT_RECALL_PROMPT_TEMPLATE = """You are an expert evaluator assessing CONTEXT RECALL for a RAG system.
+
+Task:
+1. Break the reference answer into discrete, atomic factual claims.
+2. For each claim, determine whether it is supported by the retrieved context.
+3. A claim is supported when the retrieved context contains enough information to establish that claim.
+4. Mark unsupported claims when the required information is missing from the retrieved context.
+
+Retrieved Context:
+{context_text}
+
+User Query:
+{query}
+
+Reference Answer:
+{reference_answer}
+
+Respond ONLY with a JSON object in this exact schema:
+{{
+  "claims": [
+    {{
+      "claim": "<atomic factual claim from the reference answer>",
+      "supported": true,
+      "reasoning": "<why the retrieved context does or does not support this claim>"
+    }}
+  ],
+  "reasoning": "<overall summary of context recall>"
 }}
 """
 
@@ -214,6 +281,190 @@ def evaluate_answer_relevance(
     )
 
 
+def evaluate_context_precision(
+    query: str,
+    context: str | Sequence[str],
+    reference_answer: str,
+    judge: BaseJudge,
+) -> ContextPrecisionResult:
+    """Evaluate whether relevant retrieved contexts are ranked ahead of irrelevant ones."""
+
+    if isinstance(context, str):
+        contexts = [context.strip()] if context.strip() else []
+    else:
+        contexts = [chunk.strip() for chunk in context if chunk.strip()]
+
+    if not contexts:
+        return ContextPrecisionResult(
+            score=0.0,
+            contexts=[],
+            relevant_count=0,
+            total_count=0,
+            reasoning="Empty context provided.",
+        )
+
+    if not reference_answer or not reference_answer.strip():
+        return ContextPrecisionResult(
+            score=0.0,
+            contexts=[
+                ContextRelevanceVerification(
+                    context=chunk,
+                    relevant=False,
+                    reasoning="No reference answer provided.",
+                )
+                for chunk in contexts
+            ],
+            relevant_count=0,
+            total_count=len(contexts),
+            reasoning="Empty reference answer provided.",
+        )
+
+    contexts_text = "\n\n".join(
+        f"[{index}] {chunk}" for index, chunk in enumerate(contexts, start=1)
+    )
+
+    prompt = _CONTEXT_PRECISION_PROMPT_TEMPLATE.format(
+        query=query.strip() or "N/A",
+        reference_answer=reference_answer.strip(),
+        contexts_text=contexts_text,
+    )
+
+    data = judge.judge_structured(prompt)
+    raw_contexts = data.get("contexts", [])
+    reasoning = str(data.get("reasoning", ""))
+
+    verdicts_by_index: dict[int, dict[str, object]] = {}
+
+    if isinstance(raw_contexts, list):
+        for position, item in enumerate(raw_contexts, start=1):
+            if not isinstance(item, dict):
+                continue
+
+            try:
+                index = int(item.get("index", position))
+            except (TypeError, ValueError):
+                index = position
+
+            if 1 <= index <= len(contexts):
+                verdicts_by_index[index] = item
+
+    verifications: list[ContextRelevanceVerification] = []
+    relevant_count = 0
+    precision_sum = 0.0
+
+    for rank, chunk in enumerate(contexts, start=1):
+        item = verdicts_by_index.get(rank, {})
+        relevant = item.get("relevant", False) is True
+        chunk_reasoning = str(item.get("reasoning", "")).strip()
+
+        if relevant:
+            relevant_count += 1
+            precision_sum += relevant_count / rank
+
+        verifications.append(
+            ContextRelevanceVerification(
+                context=chunk,
+                relevant=relevant,
+                reasoning=chunk_reasoning,
+            )
+        )
+
+    score = precision_sum / relevant_count if relevant_count > 0 else 0.0
+
+    return ContextPrecisionResult(
+        score=round(score, 4),
+        contexts=verifications,
+        relevant_count=relevant_count,
+        total_count=len(contexts),
+        reasoning=reasoning,
+    )
+
+
+def evaluate_context_recall(
+    query: str,
+    context: str | Sequence[str],
+    reference_answer: str,
+    judge: BaseJudge,
+) -> ContextRecallResult:
+    """Evaluate how much of the reference answer is supported by retrieved context."""
+
+    if not reference_answer or not reference_answer.strip():
+        return ContextRecallResult(
+            score=0.0,
+            claims=[],
+            supported_count=0,
+            total_count=0,
+            reasoning="Empty reference answer provided.",
+        )
+
+    if isinstance(context, str):
+        context_text = context.strip()
+    else:
+        context_text = "\n\n---\n\n".join(chunk.strip() for chunk in context if chunk.strip())
+
+    if not context_text:
+        return ContextRecallResult(
+            score=0.0,
+            claims=[
+                ClaimVerification(
+                    claim=reference_answer.strip(),
+                    supported=False,
+                    reasoning="No context provided to support the reference answer.",
+                )
+            ],
+            supported_count=0,
+            total_count=1,
+            reasoning="Empty context provided.",
+        )
+
+    prompt = _CONTEXT_RECALL_PROMPT_TEMPLATE.format(
+        context_text=context_text,
+        query=query.strip() or "N/A",
+        reference_answer=reference_answer.strip(),
+    )
+
+    data = judge.judge_structured(prompt)
+    raw_claims = data.get("claims", [])
+    reasoning = str(data.get("reasoning", ""))
+
+    verifications: list[ClaimVerification] = []
+    supported_count = 0
+
+    if isinstance(raw_claims, list):
+        for item in raw_claims:
+            if not isinstance(item, dict):
+                continue
+
+            claim = str(item.get("claim", "")).strip()
+            supported = item.get("supported", False) is True
+            claim_reasoning = str(item.get("reasoning", "")).strip()
+
+            if not claim:
+                continue
+
+            if supported:
+                supported_count += 1
+
+            verifications.append(
+                ClaimVerification(
+                    claim=claim,
+                    supported=supported,
+                    reasoning=claim_reasoning,
+                )
+            )
+
+    total_count = len(verifications)
+    score = supported_count / total_count if total_count > 0 else 0.0
+
+    return ContextRecallResult(
+        score=round(score, 4),
+        claims=verifications,
+        supported_count=supported_count,
+        total_count=total_count,
+        reasoning=reasoning,
+    )
+
+
 def evaluate_rag(
     query: str,
     context: str | Sequence[str],
@@ -221,8 +472,11 @@ def evaluate_rag(
     judge: BaseJudge,
     run_faithfulness: bool = True,
     run_answer_relevance: bool = True,
+    reference_answer: str | None = None,
+    run_context_precision: bool = True,
+    run_context_recall: bool = True,
 ) -> RAGEvalResult:
-    """Perform combined RAG evaluation (Faithfulness + Answer Relevance).
+    """Perform combined RAG evaluation across generation and context quality metrics.
 
     Parameters
     ----------
@@ -238,6 +492,12 @@ def evaluate_rag(
         Whether to evaluate faithfulness (default True).
     run_answer_relevance:
         Whether to evaluate answer relevance (default True).
+    reference_answer:
+        Optional labeled/reference answer required for context metrics.
+    run_context_precision:
+        Whether to evaluate context precision when a reference answer is provided.
+    run_context_recall:
+        Whether to evaluate context recall when a reference answer is provided.
 
     Returns
     -------
@@ -259,6 +519,30 @@ def evaluate_rag(
         else None
     )
 
+    has_reference = bool(reference_answer and reference_answer.strip())
+
+    context_precision_res = (
+        evaluate_context_precision(
+            query=query,
+            context=context,
+            reference_answer=reference_answer or "",
+            judge=judge,
+        )
+        if run_context_precision and has_reference
+        else None
+    )
+
+    context_recall_res = (
+        evaluate_context_recall(
+            query=query,
+            context=context,
+            reference_answer=reference_answer or "",
+            judge=judge,
+        )
+        if run_context_recall and has_reference
+        else None
+    )
+
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
 
     return RAGEvalResult(
@@ -268,4 +552,7 @@ def evaluate_rag(
         faithfulness=faithfulness_res,
         answer_relevance=relevance_res,
         latency_ms=round(elapsed_ms, 2),
+        reference_answer=reference_answer,
+        context_precision=context_precision_res,
+        context_recall=context_recall_res,
     )

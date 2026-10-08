@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from ..chat.base import ChatModel, Message, Tool, ToolCall
 from .base import AgentResult, AgentStep, AgentTool
 from .registry import ToolRegistry
+from .state import AgentState
 
 if TYPE_CHECKING:
     from ..checkpoint import BaseCheckpointer
@@ -93,9 +94,7 @@ class ReActAgent:
                 self._chat_tools.append(t.to_chat_tool())
         elif tools:
             for raw_tool in tools:
-                agent_tool = (
-                    raw_tool if isinstance(raw_tool, AgentTool) else AgentTool(raw_tool)
-                )
+                agent_tool = raw_tool if isinstance(raw_tool, AgentTool) else AgentTool(raw_tool)
                 self._tools_map[agent_tool.name] = agent_tool
                 self._chat_tools.append(agent_tool.to_chat_tool())
 
@@ -118,9 +117,7 @@ class ReActAgent:
             return await tool_instance.aexecute(tc.arguments)
         return f"Error: Tool {tc.name!r} is not registered in available tools."
 
-    def _process_tool_calls(
-        self, tool_calls: list[ToolCall], messages: list[Message]
-    ) -> list[str]:
+    def _process_tool_calls(self, tool_calls: list[ToolCall], messages: list[Message]) -> list[str]:
         step_observations: list[str] = []
         for tc in tool_calls:
             obs = self._dispatch_tool_call(tc)
@@ -150,12 +147,9 @@ class ReActAgent:
             )
         return step_observations
 
-    def _finalize_result(
-        self, steps: list[AgentStep], total_tool_calls: int
-    ) -> AgentResult:
+    def _finalize_result(self, steps: list[AgentStep], total_tool_calls: int) -> AgentResult:
         last_output = (
-            steps[-1].thought
-            or (steps[-1].observations[-1] if steps[-1].observations else "")
+            steps[-1].thought or (steps[-1].observations[-1] if steps[-1].observations else "")
             if steps
             else ""
         )
@@ -174,6 +168,7 @@ class ReActAgent:
         *,
         thread_id: str | None = None,
         resume_from: str | None = None,
+        state: AgentState | None = None,
         **kwargs: Any,
     ) -> AgentResult:
         """Execute the ReAct loop synchronously until goal completion or max_steps."""
@@ -371,9 +366,7 @@ class ReActAgent:
                 )
 
             total_tool_calls += len(msg.tool_calls)
-            step_observations = await self._aprocess_tool_calls(
-                list(msg.tool_calls), messages
-            )
+            step_observations = await self._aprocess_tool_calls(list(msg.tool_calls), messages)
 
             step = AgentStep(
                 step_number=step_idx,

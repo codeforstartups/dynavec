@@ -22,12 +22,19 @@ from .connectors import (
     mcp_tools_from_session,
     mcp_tools_from_session_async,
 )
+from .handoff import Handoff
 from .planner import Planner
 from .react import ReActAgent
 from .registry import ToolRegistry, default_registry
+from .state import AgentState
+from .supervisor import AgentLike, Supervisor
 
 __all__ = [
+    "AgentState",
+    "Handoff",
+    "Supervisor",
     "AgentResult",
+    "AgentLike",
     "AgentStep",
     "AgentTool",
     "Plan",

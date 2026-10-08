@@ -179,13 +179,21 @@ class ReActAgent:
 
         if self.checkpointer is not None and thread_id is not None:
             existing_cp = self.checkpointer.get(thread_id, resume_from)
+
             if existing_cp is not None:
-                state = existing_cp.state
-                if "messages" in state:
-                    messages = [_dict_to_message(m) for m in state["messages"]]
-                if "steps" in state:
-                    steps = [_dict_to_step(s) for s in state["steps"]]
-                total_tool_calls = int(state.get("total_tool_calls", 0))
+                checkpoint_state = existing_cp.state
+
+                if "messages" in checkpoint_state:
+                    messages = [
+                        _dict_to_message(m) for m in checkpoint_state["messages"]
+                    ]
+
+                if "steps" in checkpoint_state:
+                    steps = [
+                        _dict_to_step(s) for s in checkpoint_state["steps"]
+                    ]
+
+                total_tool_calls = int(checkpoint_state.get("total_tool_calls", 0))
                 start_step = existing_cp.step + 1
 
         if not messages:

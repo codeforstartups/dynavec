@@ -11,6 +11,7 @@ from .registry import ToolRegistry
 
 if TYPE_CHECKING:
     from ..checkpoint import BaseCheckpointer
+    from ..memory import BaseMemory
 
 DEFAULT_REACT_SYSTEM_PROMPT = """You are a helpful and precise reasoning agent.
 You solve tasks step-by-step using a ReAct (Reason + Act) approach.
@@ -76,6 +77,7 @@ class ReActAgent:
         system_prompt: str | None = None,
         max_steps: int = 10,
         checkpointer: BaseCheckpointer | None = None,
+        memory: BaseMemory | None = None,
     ) -> None:
         self.model = model
         self.system_prompt = (
@@ -83,6 +85,7 @@ class ReActAgent:
         )
         self.max_steps = max(1, max_steps)
         self.checkpointer = checkpointer
+        self.memory = memory
 
         self._tools_map: dict[str, AgentTool] = {}
         self._chat_tools: list[Tool] = []
@@ -93,9 +96,7 @@ class ReActAgent:
                 self._chat_tools.append(t.to_chat_tool())
         elif tools:
             for raw_tool in tools:
-                agent_tool = (
-                    raw_tool if isinstance(raw_tool, AgentTool) else AgentTool(raw_tool)
-                )
+                agent_tool = raw_tool if isinstance(raw_tool, AgentTool) else AgentTool(raw_tool)
                 self._tools_map[agent_tool.name] = agent_tool
                 self._chat_tools.append(agent_tool.to_chat_tool())
 
@@ -118,9 +119,7 @@ class ReActAgent:
             return await tool_instance.aexecute(tc.arguments)
         return f"Error: Tool {tc.name!r} is not registered in available tools."
 
-    def _process_tool_calls(
-        self, tool_calls: list[ToolCall], messages: list[Message]
-    ) -> list[str]:
+    def _process_tool_calls(self, tool_calls: list[ToolCall], messages: list[Message]) -> list[str]:
         step_observations: list[str] = []
         for tc in tool_calls:
             obs = self._dispatch_tool_call(tc)
@@ -150,12 +149,9 @@ class ReActAgent:
             )
         return step_observations
 
-    def _finalize_result(
-        self, steps: list[AgentStep], total_tool_calls: int
-    ) -> AgentResult:
+    def _finalize_result(self, steps: list[AgentStep], total_tool_calls: int) -> AgentResult:
         last_output = (
-            steps[-1].thought
-            or (steps[-1].observations[-1] if steps[-1].observations else "")
+            steps[-1].thought or (steps[-1].observations[-1] if steps[-1].observations else "")
             if steps
             else ""
         )
@@ -194,7 +190,21 @@ class ReActAgent:
                 start_step = existing_cp.step + 1
 
         if not messages:
-            messages = self._init_messages(goal)
+            if self.memory is not None and thread_id is not None:
+                existing = self.memory.get_messages(thread_id)
+                if not existing and self.system_prompt:
+                    self.memory.append(
+                        thread_id,
+                        Message(role="system", content=self.system_prompt),
+                    )
+                self.memory.append(
+                    thread_id,
+                    Message(role="user", content=goal),
+                )
+                messages = list(self.memory.get_messages(thread_id))
+            else:
+                messages = self._init_messages(goal)
+
             if self.checkpointer is not None and thread_id is not None:
                 self.checkpointer.put(
                     thread_id,
@@ -225,6 +235,12 @@ class ReActAgent:
                     observations=[],
                 )
                 steps.append(step)
+                out = msg.content or ""
+                if self.memory is not None and thread_id is not None:
+                    self.memory.append(
+                        thread_id,
+                        Message(role="assistant", content=out),
+                    )
                 if self.checkpointer is not None and thread_id is not None:
                     self.checkpointer.put(
                         thread_id,
@@ -233,14 +249,14 @@ class ReActAgent:
                             "messages": [_message_to_dict(m) for m in messages],
                             "steps": [_step_to_dict(s) for s in steps],
                             "total_tool_calls": total_tool_calls,
-                            "output": msg.content or "",
+                            "output": out,
                             "finished": True,
                         },
                         node_id=f"step_{step_idx}",
                         step=step_idx,
                     )
                 return AgentResult(
-                    output=msg.content or "",
+                    output=out,
                     steps=steps,
                     finished=True,
                     termination_reason="completed",
@@ -274,6 +290,11 @@ class ReActAgent:
                 )
 
         res = self._finalize_result(steps, total_tool_calls)
+        if self.memory is not None and thread_id is not None:
+            self.memory.append(
+                thread_id,
+                Message(role="assistant", content=res.output),
+            )
         if self.checkpointer is not None and thread_id is not None:
             self.checkpointer.put(
                 thread_id,
@@ -316,7 +337,20 @@ class ReActAgent:
                 start_step = existing_cp.step + 1
 
         if not messages:
-            messages = self._init_messages(goal)
+            if self.memory is not None and thread_id is not None:
+                existing = self.memory.get_messages(thread_id)
+                if not existing and self.system_prompt:
+                    self.memory.append(
+                        thread_id,
+                        Message(role="system", content=self.system_prompt),
+                    )
+                self.memory.append(
+                    thread_id,
+                    Message(role="user", content=goal),
+                )
+                messages = list(self.memory.get_messages(thread_id))
+            else:
+                messages = self._init_messages(goal)
             if self.checkpointer is not None and thread_id is not None:
                 self.checkpointer.put(
                     thread_id,
@@ -347,6 +381,12 @@ class ReActAgent:
                     observations=[],
                 )
                 steps.append(step)
+                out = msg.content or ""
+                if self.memory is not None and thread_id is not None:
+                    self.memory.append(
+                        thread_id,
+                        Message(role="assistant", content=out),
+                    )
                 if self.checkpointer is not None and thread_id is not None:
                     self.checkpointer.put(
                         thread_id,
@@ -355,14 +395,14 @@ class ReActAgent:
                             "messages": [_message_to_dict(m) for m in messages],
                             "steps": [_step_to_dict(s) for s in steps],
                             "total_tool_calls": total_tool_calls,
-                            "output": msg.content or "",
+                            "output": out,
                             "finished": True,
                         },
                         node_id=f"step_{step_idx}",
                         step=step_idx,
                     )
                 return AgentResult(
-                    output=msg.content or "",
+                    output=out,
                     steps=steps,
                     finished=True,
                     termination_reason="completed",
@@ -371,9 +411,7 @@ class ReActAgent:
                 )
 
             total_tool_calls += len(msg.tool_calls)
-            step_observations = await self._aprocess_tool_calls(
-                list(msg.tool_calls), messages
-            )
+            step_observations = await self._aprocess_tool_calls(list(msg.tool_calls), messages)
 
             step = AgentStep(
                 step_number=step_idx,
@@ -398,6 +436,11 @@ class ReActAgent:
                 )
 
         res = self._finalize_result(steps, total_tool_calls)
+        if self.memory is not None and thread_id is not None:
+            self.memory.append(
+                thread_id,
+                Message(role="assistant", content=res.output),
+            )
         if self.checkpointer is not None and thread_id is not None:
             self.checkpointer.put(
                 thread_id,

@@ -8,6 +8,15 @@ from ..checkpoint import (
     DynamoDBCheckpointer,
     MemoryCheckpointer,
 )
+from ..memory import (
+    BaseMemory,
+    DynamoDBMemoryStore,
+    InMemoryMemoryStore,
+    MemoryPolicy,
+    SummaryMemoryPolicy,
+    TokenBudgetMemoryPolicy,
+    WindowMemoryPolicy,
+)
 from .base import (
     AgentResult,
     AgentStep,
@@ -45,4 +54,11 @@ __all__ = [
     "BaseCheckpointer",
     "MemoryCheckpointer",
     "DynamoDBCheckpointer",
+    "BaseMemory",
+    "InMemoryMemoryStore",
+    "DynamoDBMemoryStore",
+    "MemoryPolicy",
+    "WindowMemoryPolicy",
+    "TokenBudgetMemoryPolicy",
+    "SummaryMemoryPolicy",
 ]

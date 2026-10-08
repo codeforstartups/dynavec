@@ -75,6 +75,15 @@ from .logging import (
     run_context,
     set_default_run_logger,
 )
+from .memory import (
+    BaseMemory,
+    DynamoDBMemoryStore,
+    InMemoryMemoryStore,
+    MemoryPolicy,
+    SummaryMemoryPolicy,
+    TokenBudgetMemoryPolicy,
+    WindowMemoryPolicy,
+)
 from .models import (
     Document,
     ExplainedSearchResult,
@@ -189,6 +198,14 @@ __all__ = [
     "BaseCheckpointer",
     "MemoryCheckpointer",
     "DynamoDBCheckpointer",
+    # Conversation Memory (dynaflow)
+    "BaseMemory",
+    "InMemoryMemoryStore",
+    "DynamoDBMemoryStore",
+    "MemoryPolicy",
+    "WindowMemoryPolicy",
+    "TokenBudgetMemoryPolicy",
+    "SummaryMemoryPolicy",
     # Ingestion
     "Record",
     "ingest",

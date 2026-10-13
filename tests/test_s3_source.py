@@ -1,6 +1,8 @@
 import io
 from unittest.mock import MagicMock
 
+import pytest
+
 from dynavec.ingest import S3Source, ingest
 
 
@@ -168,3 +170,154 @@ def test_s3_source_ingest_integration():
     assert doc.id == "s3://test-bucket/article.txt#chunk0"
     assert doc.metadata["source_id"] == "s3://test-bucket/article.txt"
     assert doc.metadata["source"] == "s3"
+
+
+def test_s3_source_raises_on_invalid_utf8_by_default():
+    client = MagicMock()
+
+    client.list_objects_v2.return_value = {
+        "Contents": [{"Key": "documents/broken.md"}],
+        "IsTruncated": False,
+    }
+
+    client.get_object.return_value = {
+        "ContentType": "text/markdown",
+        "Body": io.BytesIO(b"\xff\xfe\xfa"),
+    }
+
+    source = S3Source(
+        "test-bucket",
+        s3_client=client,
+    )
+
+    with pytest.raises(UnicodeDecodeError):
+        list(source)
+
+
+def test_s3_source_skips_invalid_object_when_on_error_skip():
+    client = MagicMock()
+
+    client.list_objects_v2.return_value = {
+        "Contents": [
+            {"Key": "documents/broken.md"},
+            {"Key": "documents/good.md"},
+        ],
+        "IsTruncated": False,
+    }
+
+    def mock_get_object(Bucket, Key):
+        if Key == "documents/broken.md":
+            return {
+                "ContentType": "text/markdown",
+                "Body": io.BytesIO(b"\xff\xfe\xfa"),
+            }
+
+        return {
+            "ContentType": "text/markdown",
+            "Body": io.BytesIO(b"# Valid document"),
+        }
+
+    client.get_object.side_effect = mock_get_object
+
+    source = S3Source(
+        "test-bucket",
+        s3_client=client,
+        on_error="skip",
+    )
+
+    records = list(source)
+
+    assert len(records) == 1
+    assert records[0].id == "s3://test-bucket/documents/good.md"
+    assert records[0].text == "# Valid document"
+
+
+def test_s3_source_rejects_invalid_on_error():
+    with pytest.raises(ValueError, match="on_error"):
+        S3Source(
+            "test-bucket",
+            on_error="invalid",
+        )
+
+
+def test_s3_source_logs_warning_when_skipping(caplog):
+    client = MagicMock()
+
+    client.list_objects_v2.return_value = {
+        "Contents": [{"Key": "documents/broken.md"}],
+        "IsTruncated": False,
+    }
+
+    client.get_object.return_value = {
+        "ContentType": "text/markdown",
+        "Body": io.BytesIO(b"\xff\xfe\xfa"),
+    }
+
+    source = S3Source(
+        "test-bucket",
+        s3_client=client,
+        on_error="skip",
+    )
+
+    records = list(source)
+
+    assert records == []
+    assert "documents/broken.md" in caplog.text
+
+
+def test_s3_source_does_not_skip_s3_get_object_errors():
+    client = MagicMock()
+
+    client.list_objects_v2.return_value = {
+        "Contents": [{"Key": "documents/guide.md"}],
+        "IsTruncated": False,
+    }
+
+    client.get_object.side_effect = RuntimeError("S3 access denied")
+
+    source = S3Source(
+        "test-bucket",
+        s3_client=client,
+        on_error="skip",
+    )
+
+    with pytest.raises(RuntimeError, match="S3 access denied"):
+        list(source)
+
+
+def test_s3_source_skips_invalid_markdown_front_matter(caplog):
+    client = MagicMock()
+
+    client.list_objects_v2.return_value = {
+        "Contents": [
+            {"Key": "documents/broken.md"},
+            {"Key": "documents/good.md"},
+        ],
+        "IsTruncated": False,
+    }
+
+    def mock_get_object(Bucket, Key):
+        if Key == "documents/broken.md":
+            return {
+                "ContentType": "text/markdown",
+                "Body": io.BytesIO(b"---\ntitle: [invalid\n---\nBroken document"),
+            }
+
+        return {
+            "ContentType": "text/markdown",
+            "Body": io.BytesIO(b"# Good document"),
+        }
+
+    client.get_object.side_effect = mock_get_object
+
+    source = S3Source(
+        "test-bucket",
+        s3_client=client,
+        on_error="skip",
+    )
+
+    records = list(source)
+
+    assert len(records) == 1
+    assert records[0].id == "s3://test-bucket/documents/good.md"
+    assert "documents/broken.md" in caplog.text

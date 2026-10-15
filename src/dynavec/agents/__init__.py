@@ -24,7 +24,6 @@ from .connectors import (
 )
 from .graph import (
     AgentGraph,
-    AgentState,
     BaseNode,
     Edge,
     FlowGraph,
@@ -40,36 +39,24 @@ from .graph import (
     append_reducer,
     default_reducer,
 )
+from .handoff import Handoff, HandoffRequest
 from .planner import Planner
 from .react import ReActAgent
 from .registry import ToolRegistry, default_registry
+from .state import AgentState
+from .supervisor import AgentLike, Supervisor
 
 __all__ = [
-    # Existing agent primitives
     "AgentResult",
+    "AgentLike",
     "AgentStep",
     "AgentTool",
-    "Plan",
-    "PlanStep",
-    "Planner",
-    "ReActAgent",
-    "tool",
-    # Tool registry & connectors
-    "ToolRegistry",
-    "create_http_tool",
-    "create_python_code_tool",
-    "default_registry",
-    "mcp_tools_from_session",
-    "mcp_tools_from_session_async",
-    # Checkpointer
-    "Checkpoint",
-    "BaseCheckpointer",
-    "MemoryCheckpointer",
-    "DynamoDBCheckpointer",
-    # Graph orchestration engine (#277 / #278)
     "AgentGraph",
     "AgentState",
     "BaseNode",
+    "BaseCheckpointer",
+    "Checkpoint",
+    "DynamoDBCheckpointer",
     "Edge",
     "FlowGraph",
     "FlowState",
@@ -79,8 +66,23 @@ __all__ = [
     "GraphResult",
     "GraphState",
     "GraphValidationError",
+    "Handoff",
+    "HandoffRequest",
     "MaxIterationsExceededError",
+    "MemoryCheckpointer",
     "NodeTrace",
+    "Plan",
+    "PlanStep",
+    "Planner",
+    "ReActAgent",
+    "Supervisor",
+    "ToolRegistry",
     "append_reducer",
+    "create_http_tool",
+    "create_python_code_tool",
     "default_reducer",
+    "default_registry",
+    "mcp_tools_from_session",
+    "mcp_tools_from_session_async",
+    "tool",
 ]

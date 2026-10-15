@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from dynavec.agents import (
+    AgentState,
     AgentTool,
     Plan,
     Planner,
@@ -43,9 +44,7 @@ class ScriptedChatModel(ChatModel):
         if self.call_count >= len(self.responses):
             # Default response if script exhausted
             return ChatResult(
-                message=Message(
-                    role="assistant", content="Scripted responses exhausted."
-                ),
+                message=Message(role="assistant", content="Scripted responses exhausted."),
                 finish_reason="stop",
             )
 
@@ -343,3 +342,67 @@ async def test_planner_async_aplan() -> None:
     assert len(plan.steps) == 2
     assert plan.steps[0].description == "Step A"
     assert plan.steps[1].description == "Step B"
+
+
+def test_react_agent_accepts_shared_state():
+    state = AgentState()
+
+    agent = ReActAgent(
+        model=ScriptedChatModel(
+            [
+                "Transaction analysis completed.",
+            ]
+        )
+    )
+
+    result = agent.run(
+        "Analyze transaction TX123.",
+        state=state,
+    )
+
+    assert result.output == "Transaction analysis completed."
+
+
+def test_react_agent_includes_shared_state_in_messages() -> None:
+    """Shared workflow context should be visible to the model."""
+    state = AgentState(
+        data={
+            "transaction_id": "TX123",
+            "decline_code": "51",
+        }
+    )
+    fake_model = ScriptedChatModel(["Transaction analysis completed."])
+    agent = ReActAgent(model=fake_model)
+
+    result = agent.run("Analyze transaction TX123.", state=state)
+
+    assert result.output == "Transaction analysis completed."
+    sent_messages = fake_model.received_messages[0]
+    all_content = "\n".join(message.content or "" for message in sent_messages)
+
+    assert "TX123" in all_content
+    assert "51" in all_content
+
+
+@pytest.mark.asyncio
+async def test_react_agent_async_includes_shared_state_in_messages() -> None:
+    state = AgentState(
+        data={
+            "transaction_id": "TX123",
+            "decline_code": "51",
+        }
+    )
+    fake_model = ScriptedChatModel(["Transaction analysis completed."])
+    agent = ReActAgent(model=fake_model)
+
+    result = await agent.arun(
+        "Analyze transaction TX123.",
+        state=state,
+    )
+
+    assert result.output == "Transaction analysis completed."
+    sent_messages = fake_model.received_messages[0]
+    all_content = "\n".join(message.content or "" for message in sent_messages)
+
+    assert "TX123" in all_content
+    assert "51" in all_content

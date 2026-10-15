@@ -39,7 +39,7 @@ from .graph import (
     append_reducer,
     default_reducer,
 )
-from .handoff import Handoff
+from .handoff import Handoff, HandoffRequest
 from .planner import Planner
 from .react import ReActAgent
 from .registry import ToolRegistry, default_registry
@@ -67,6 +67,7 @@ __all__ = [
     "GraphState",
     "GraphValidationError",
     "Handoff",
+    "HandoffRequest",
     "MaxIterationsExceededError",
     "MemoryCheckpointer",
     "NodeTrace",

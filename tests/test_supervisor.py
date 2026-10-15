@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from dynavec.agents import (
     AgentResult,
     AgentState,
+    Handoff,
     ReActAgent,
     Supervisor,
 )
@@ -164,3 +167,112 @@ def test_supervisor_preserves_state_between_specialists():
         "Transaction analyzed.",
         "Policy analyzed.",
     ]
+
+
+def test_supervisor_routes_only_to_selected_specialist():
+    calls: list[str] = []
+
+    class NamedAgent:
+        def __init__(self, name: str, output: str) -> None:
+            self.name = name
+            self.output = output
+
+        def run(self, goal: str, *, state: AgentState) -> AgentResult:
+            calls.append(self.name)
+            return AgentResult(output=self.output)
+
+    agents = {
+        "transaction": NamedAgent("transaction", "Declined with code 51."),
+        "policy": NamedAgent("policy", "Manual review required."),
+    }
+
+    supervisor = Supervisor(
+        agents=agents,
+        router=lambda goal, state: "transaction",
+    )
+
+    results = supervisor.run("Analyze transaction TX123.", state=AgentState())
+
+    assert calls == ["transaction"]
+    assert len(results) == 1
+    assert results[0].output == "Declined with code 51."
+
+
+def test_supervisor_rejects_unknown_agent_from_router():
+    class NamedAgent:
+        def run(self, goal: str, *, state: AgentState) -> AgentResult:
+            return AgentResult(output="Transaction analyzed.")
+
+    supervisor = Supervisor(
+        agents={"transaction": NamedAgent()},
+        router=lambda goal, state: "unknown",
+    )
+
+    with pytest.raises(ValueError, match="Router selected unknown agent"):
+        supervisor.run("Analyze transaction TX123.", state=AgentState())
+
+
+def test_supervisor_aggregates_only_routed_specialist():
+    calls: list[str] = []
+
+    class NamedAgent:
+        def __init__(self, name: str, output: str) -> None:
+            self.name = name
+            self.output = output
+
+        def run(self, goal: str, *, state: AgentState) -> AgentResult:
+            calls.append(self.name)
+            return AgentResult(output=self.output)
+
+    supervisor = Supervisor(
+        agents={
+            "transaction": NamedAgent("transaction", "Declined with code 51."),
+            "policy": NamedAgent("policy", "Manual review required."),
+        },
+        router=lambda goal, state: "policy",
+    )
+
+    result = supervisor.run_and_aggregate(
+        "Review this transaction.",
+        state=AgentState(),
+    )
+
+    assert calls == ["policy"]
+    assert result.output == "Manual review required."
+
+
+def test_supervisor_handoff_routes_to_named_specialist_with_shared_state():
+    state = AgentState(data={"transaction_id": "TX123"})
+    calls = []
+
+    class FakeAgent:
+        def __init__(self, output):
+            self.output = output
+
+        def run(self, goal, *, state):
+            calls.append((goal, state))
+            state.data["policy_review"] = "decline_code_51"
+            return AgentResult(output=self.output)
+
+    transaction_agent = FakeAgent("Transaction identified")
+    policy_agent = FakeAgent("Policy review completed")
+
+    supervisor = Supervisor(
+        {
+            "transaction": transaction_agent,
+            "policy": policy_agent,
+        }
+    )
+
+    request = Handoff()(
+        "policy",
+        "Review transaction TX123 using the transaction findings.",
+    )
+
+    result = supervisor.handoff(request, state=state)
+
+    assert result.output == "Policy review completed"
+    assert len(calls) == 1
+    assert calls[0][0] == ("Review transaction TX123 using the transaction findings.")
+    assert calls[0][1] is state
+    assert state.data["policy_review"] == "decline_code_51"

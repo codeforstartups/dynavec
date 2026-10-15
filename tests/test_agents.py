@@ -361,3 +361,48 @@ def test_react_agent_accepts_shared_state():
     )
 
     assert result.output == "Transaction analysis completed."
+
+
+def test_react_agent_includes_shared_state_in_messages() -> None:
+    """Shared workflow context should be visible to the model."""
+    state = AgentState(
+        data={
+            "transaction_id": "TX123",
+            "decline_code": "51",
+        }
+    )
+    fake_model = ScriptedChatModel(["Transaction analysis completed."])
+    agent = ReActAgent(model=fake_model)
+
+    result = agent.run("Analyze transaction TX123.", state=state)
+
+    assert result.output == "Transaction analysis completed."
+    sent_messages = fake_model.received_messages[0]
+    all_content = "\n".join(message.content or "" for message in sent_messages)
+
+    assert "TX123" in all_content
+    assert "51" in all_content
+
+
+@pytest.mark.asyncio
+async def test_react_agent_async_includes_shared_state_in_messages() -> None:
+    state = AgentState(
+        data={
+            "transaction_id": "TX123",
+            "decline_code": "51",
+        }
+    )
+    fake_model = ScriptedChatModel(["Transaction analysis completed."])
+    agent = ReActAgent(model=fake_model)
+
+    result = await agent.arun(
+        "Analyze transaction TX123.",
+        state=state,
+    )
+
+    assert result.output == "Transaction analysis completed."
+    sent_messages = fake_model.received_messages[0]
+    all_content = "\n".join(message.content or "" for message in sent_messages)
+
+    assert "TX123" in all_content
+    assert "51" in all_content

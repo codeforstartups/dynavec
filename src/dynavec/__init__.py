@@ -33,6 +33,7 @@ from .client import Dynavec
 from .config import DynavecConfig
 from .credentials import AWSCredentials
 from .exceptions import (
+    AccessDeniedError,
     ConfigurationError,
     ConflictError,
     DimensionMismatchError,
@@ -42,6 +43,7 @@ from .exceptions import (
     MissingDependencyError,
     NotFoundError,
     ProvisioningError,
+    ValidationError,
 )
 from .fusion import FitResult, RRFWeightFitter
 from .graph import GraphStore
@@ -212,6 +214,8 @@ __all__ = [
     "EmbeddingError",
     "DimensionMismatchError",
     "NotFoundError",
+    "AccessDeniedError",
+    "ValidationError",
     "ItemTooLargeError",
     "ConflictError",
     "MissingDependencyError",

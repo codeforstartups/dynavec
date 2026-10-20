@@ -27,6 +27,14 @@ class NotFoundError(DynavecError):
     """Raised when a namespace, index, or document does not exist."""
 
 
+class AccessDeniedError(DynavecError):
+    """Raised when access to an AWS resource is denied."""
+
+
+class ValidationError(DynavecError):
+    """Raised when AWS rejects an invalid request."""
+
+
 class ItemTooLargeError(DynavecError):
     """Raised when a document would exceed DynamoDB's 400 KB item size limit."""
 

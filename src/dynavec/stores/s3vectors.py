@@ -19,6 +19,7 @@ import numpy as np
 from ..config import DynavecConfig
 from ..logging import log_store_event
 from ..utils import TokenBucket, retry
+from ._s3vectors_errors import translate_client_errors
 
 Metadata = dict[str, Any]
 
@@ -59,21 +60,23 @@ class S3VectorsStore:
         self._logger = logging.getLogger("dynavec.stores.s3vectors")
 
     def get_index(self) -> dict[str, Any]:
-        result: dict[str, Any] = self._client.get_index(
-            vectorBucketName=self._config.vector_bucket,
-            indexName=self._config.index,
-        )
+        with translate_client_errors():
+            result: dict[str, Any] = self._client.get_index(
+                vectorBucketName=self._config.vector_bucket,
+                indexName=self._config.index,
+            )
         return result
 
     @retry()
     def _put_batch(self, payload: list[dict[str, Any]]) -> None:
         if self._put_limiter is not None:
             self._put_limiter.acquire()
-        self._client.put_vectors(
-            vectorBucketName=self._config.vector_bucket,
-            indexName=self._config.index,
-            vectors=payload,
-        )
+        with translate_client_errors():
+            self._client.put_vectors(
+                vectorBucketName=self._config.vector_bucket,
+                indexName=self._config.index,
+                vectors=payload,
+            )
 
 
     def put_vectors(
@@ -227,23 +230,25 @@ class S3VectorsStore:
             return_distance,
         )
 
-        paginator = self._client.get_paginator("query_vectors")
         yielded = 0
         buffer: list[dict[str, Any]] = []
 
-        page_iterator = iter(
-            paginator.paginate(
-                PaginationConfig={"MaxItems": top_k},
-                **kwargs,
+        with translate_client_errors():
+            paginator = self._client.get_paginator("query_vectors")
+            page_iterator = iter(
+                paginator.paginate(
+                    PaginationConfig={"MaxItems": top_k},
+                    **kwargs,
+                )
             )
-        )
 
         while True:
             if self._query_limiter is not None:
                 self._query_limiter.acquire()
 
             try:
-                page = next(page_iterator)
+                with translate_client_errors():
+                    page = next(page_iterator)
             except StopIteration:
                 break
 
@@ -322,11 +327,12 @@ class S3VectorsStore:
         if page_size is not None:
             pagination_config["PageSize"] = page_size
 
-        paginator = self._client.get_paginator("list_vectors")
-        for page in paginator.paginate(PaginationConfig=pagination_config, **kwargs):
-            vectors = page.get("vectors", [])
-            if vectors:
-                yield vectors
+        with translate_client_errors():
+            paginator = self._client.get_paginator("list_vectors")
+            for page in paginator.paginate(PaginationConfig=pagination_config, **kwargs):
+                vectors = page.get("vectors", [])
+                if vectors:
+                    yield vectors
 
     @retry()
     def get_vectors(
@@ -336,13 +342,14 @@ class S3VectorsStore:
         out: dict[str, dict[str, Any]] = {}
         for start in range(0, len(keys), _GET_LIMIT):
             chunk = keys[start : start + _GET_LIMIT]
-            resp = self._client.get_vectors(
-                vectorBucketName=self._config.vector_bucket,
-                indexName=self._config.index,
-                keys=chunk,
-                returnData=True,
-                returnMetadata=return_metadata,
-            )
+            with translate_client_errors():
+                resp = self._client.get_vectors(
+                    vectorBucketName=self._config.vector_bucket,
+                    indexName=self._config.index,
+                    keys=chunk,
+                    returnData=True,
+                    returnMetadata=return_metadata,
+                )
             for v in resp.get("vectors", []):
                 out[v["key"]] = {
                     "vector": v.get("data", {}).get("float32"),
@@ -365,11 +372,12 @@ class S3VectorsStore:
             return
         for start in range(0, len(keys), _PUT_LIMIT):
             chunk = keys[start : start + _PUT_LIMIT]
-            self._client.delete_vectors(
-                vectorBucketName=self._config.vector_bucket,
-                indexName=self._config.index,
-                keys=chunk,
-            )
+            with translate_client_errors():
+                self._client.delete_vectors(
+                    vectorBucketName=self._config.vector_bucket,
+                    indexName=self._config.index,
+                    keys=chunk,
+                )
         log_store_event(
             self._logger,
             "s3vectors.delete_vectors",

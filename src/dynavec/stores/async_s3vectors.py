@@ -12,6 +12,7 @@ from typing import Any
 from ..config import DynavecConfig
 from ..logging import log_store_event
 from ..utils import TokenBucket, async_retry
+from ._s3vectors_errors import translate_client_errors
 from .s3vectors import _GET_LIMIT, _MAX_TOP_K, _PUT_LIMIT, Metadata, _f32
 
 
@@ -98,11 +99,12 @@ class AsyncS3VectorsStore:
             await self._put_limiter.acquire_async()
 
         client = self._require_client()
-        await client.put_vectors(
-            vectorBucketName=self._config.vector_bucket,
-            indexName=self._config.index,
-            vectors=payload,
-        )
+        with translate_client_errors():
+            await client.put_vectors(
+                vectorBucketName=self._config.vector_bucket,
+                indexName=self._config.index,
+                vectors=payload,
+            )
 
     async def put_vectors(
         self,
@@ -283,22 +285,24 @@ class AsyncS3VectorsStore:
         )
 
         client = self._require_client()
-        paginator = client.get_paginator("query_vectors")
 
         yielded = 0
         buffer: list[dict[str, Any]] = []
 
-        page_iterator = paginator.paginate(
-            PaginationConfig={"MaxItems": top_k},
-            **kwargs,
-        ).__aiter__()
+        with translate_client_errors():
+            paginator = client.get_paginator("query_vectors")
+            page_iterator = paginator.paginate(
+                PaginationConfig={"MaxItems": top_k},
+                **kwargs,
+            ).__aiter__()
 
         while True:
             if self._query_limiter is not None:
                 await self._query_limiter.acquire_async()
 
             try:
-                page = await page_iterator.__anext__()
+                with translate_client_errors():
+                    page = await page_iterator.__anext__()
             except StopAsyncIteration:
                 break
 
@@ -364,13 +368,14 @@ class AsyncS3VectorsStore:
         for start in range(0, len(keys), _GET_LIMIT):
             chunk = keys[start : start + _GET_LIMIT]
 
-            response = await client.get_vectors(
-                vectorBucketName=self._config.vector_bucket,
-                indexName=self._config.index,
-                keys=chunk,
-                returnData=True,
-                returnMetadata=return_metadata,
-            )
+            with translate_client_errors():
+                response = await client.get_vectors(
+                    vectorBucketName=self._config.vector_bucket,
+                    indexName=self._config.index,
+                    keys=chunk,
+                    returnData=True,
+                    returnMetadata=return_metadata,
+                )
 
             for vector in response.get("vectors", []):
                 out[vector["key"]] = {

@@ -66,25 +66,26 @@
 .nav, main, footer { position: relative; z-index: 1; }
 
 :root {
+  /* warm "ember on charcoal" palette */
   --bg:        #ffffff;
-  --surface:   #fafafa;
-  --subtle:    #f3f3f3;
+  --surface:   #faf6f0;
+  --subtle:    #f3ede5;
 
-  --fg:        #0d0d0d;
-  --fg-2:      #3a3a3a;
-  --fg-3:      #6a6a6a;
-  --fg-4:      #9a9a9a;
+  --fg:        #16110d;
+  --fg-2:      #3d342c;
+  --fg-3:      #6e635a;
+  --fg-4:      #a0958b;
 
-  --border:    #e8e8e8;
-  --border-md: #cecece;
+  --border:    #ece5db;
+  --border-md: #d8cec1;
 
   --accent:    #e8623b;
-  --accent-dk: #c44820;
-  --accent-bg: #fff3ef;
+  --accent-dk: #c2471f;
+  --accent-bg: #fff1ea;
 
-  --dark:      #0d0d0d;
-  --dark-fg:   #f0f0f0;
-  --dark-sub:  #6a6a6a;
+  --dark:      #0f0b08;
+  --dark-fg:   #f6efe8;
+  --dark-sub:  #8f8377;
 
   --sans: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;

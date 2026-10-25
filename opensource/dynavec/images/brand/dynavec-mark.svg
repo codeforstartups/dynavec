@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="dynavec">
+  <defs>
+    <linearGradient id="dv-g" x1="8" y1="4" x2="58" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF9A5C"/>
+      <stop offset=".55" stop-color="#E8623B"/>
+      <stop offset="1" stop-color="#B83A1C"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="17" fill="url(#dv-g)"/>
+  <path d="M19 20 L45 20" stroke="#fff" stroke-opacity=".45" stroke-width="3" stroke-linecap="round"/>
+  <path d="M19 20 L32 45 L45 20" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="19" cy="20" r="5" fill="#fff"/>
+  <circle cx="45" cy="20" r="5" fill="#fff"/>
+  <circle cx="32" cy="45" r="7" fill="#fff"/>
+  <circle cx="32" cy="45" r="2.8" fill="#E8623B"/>
+</svg>

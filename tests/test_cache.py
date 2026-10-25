@@ -231,7 +231,35 @@ def test_dynamodb_cache_rejects_negative_ttl_jitter():
 
     with pytest.raises(ValueError, match="ttl_jitter_seconds must be non-negative"):
         DynamoDBCache(cfg, ttl_jitter_seconds=-1)
+def test_redis_cache_uses_url_to_create_client():
+    import redis
 
+    fake_client = object()
+
+    with patch.object(redis.Redis, "from_url", return_value=fake_client) as from_url:
+        cache = RedisCache(
+            url="redis://example:6379/1",
+            ttl_seconds=120,
+        )
+
+    assert cache._r is fake_client
+    assert cache.ttl_seconds == 120
+    from_url.assert_called_once_with("redis://example:6379/1")
+
+
+def test_redis_cache_prefers_injected_client():
+    import redis
+
+    fake_client = object()
+
+    with patch.object(redis.Redis, "from_url") as from_url:
+        cache = RedisCache(
+            url="redis://example:6379/1",
+            client=fake_client,
+        )
+
+    assert cache._r is fake_client
+    from_url.assert_not_called()
 
 def test_redis_cache_stats():
     class FakeRedis:

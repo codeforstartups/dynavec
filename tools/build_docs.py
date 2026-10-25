@@ -7,7 +7,10 @@ Outputs into opensource/dynavec/docs/. Pages share ../styles.css + docs.css/js.
 
 from __future__ import annotations
 
+import html
+import json
 import os
+import re
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "opensource", "dynavec", "docs")
 
@@ -105,16 +108,48 @@ OPENAI_API_KEY=sk-...        # or GOOGLE_API_KEY / COHERE_API_KEY"""
 # ---- page bodies (slug -> (title, subtitle, html)) ----
 PAGES: dict[str, tuple[str, str, str]] = {}
 
-PAGES["index"] = ("dynavec documentation",
-    "A serverless hybrid vector database that runs inside your own AWS account.",
+ICONS = {
+    "db": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>',
+    "flow": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.2 7.4 10.6 16M16.8 7.4 13.4 16M7.5 6h9"/></svg>',
+    "logs": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h10M7 10h12M5 14h8M9 18h11"/></svg>',
+    "evals": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 20v-6M11 20V9M17 20v-9M3 20h18"/></svg>',
+    "download": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+    "rocket": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15c-1 1-1.5 3.5-1.5 5.5 2 0 4.5-.5 5.5-1.5M9 12a12 12 0 0 1 11-8 12 12 0 0 1-8 11l-3-3Z"/><circle cx="15" cy="9" r="1.5"/></svg>',
+    "sliders": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+}
+
+
+def lcard(href: str, icon: str, title: str, text: str, status: str = "", cta: str = "Get started") -> str:
+    pill = f'<span class="dpill dpill--{status.lower().replace(" ", "-")}">{status}</span>' if status else ""
+    return (f'<a class="lcard" href="{href}"><span class="lcard__ico">{ICONS[icon]}</span>{pill}'
+            f'<h3>{title}</h3><p>{text}</p><span class="lcard__cta">{cta} &rsaquo;</span></a>')
+
+
+PAGES["index"] = ("The agent stack in your AWS account",
+    "Open-source, serverless memory, orchestration, observability and evaluation &mdash; one Python library.",
     """
-<p>dynavec fuses <a href="https://aws.amazon.com/dynamodb/">Amazon DynamoDB</a> (single-digit-millisecond
-metadata &amp; document store) with <a href="https://aws.amazon.com/s3/features/vectors/">Amazon S3 Vectors</a>
-(billion-scale serverless ANN) into one Python client — a drop-in alternative to Pinecone, Qdrant, Milvus,
-Weaviate, and OpenSearch that bills only when you use it.</p>
-<div class="callout">New here? Start with <a href="installation.html">Installation</a> then the
-<a href="quickstart.html">Quickstart</a>. Every feature has its own page in the sidebar.</div>
-<h2>Explore by feature</h2>
+<p>dynavec starts as a hybrid vector database that fuses <a href="https://aws.amazon.com/dynamodb/">Amazon DynamoDB</a>
+(single-digit-millisecond document store) with <a href="https://aws.amazon.com/s3/features/vectors/">Amazon S3 Vectors</a>
+(billion-scale serverless ANN), and grows into agents, traces and evals. Everything runs in <strong>your</strong> AWS
+account and bills only when you use it &mdash; no external control plane.</p>
+<h2 class="plain">Agent lifecycle</h2>
+<div class="lcards">
+""" + lcard("quickstart.html", "db", "Remember &middot; dynavec",
+            "Store and search memory: hybrid BM25 + ANN search, GraphRAG, hot tier and caching.", "Available") + """
+""" + lcard("ecosystem.html", "flow", "Build &middot; dynaflow",
+            "Compose agents: chat models, ReAct and planner, tool registry with MCP, supervisor routing.", "In progress") + """
+""" + lcard("dashboard.html", "logs", "Observe &middot; dynalogs",
+            "Structured per-run and per-node logs with secret redaction, plus a telemetry dashboard.", "Early") + """
+""" + lcard("metrics-and-rerank.html", "evals", "Measure &middot; dynaevals",
+            "Score retrieval and answers with recall@k, MRR, nDCG and LLM-judged quality.", "Partial") + """
+</div>
+<h2 class="plain">Start here</h2>
+<div class="lcards lcards--3">
+""" + lcard("installation.html", "download", "Installation", "pip or uv, plus optional embedder and framework extras.", cta="Install") + """
+""" + lcard("quickstart.html", "rocket", "Quickstart", "Your first upsert and semantic search in a few lines.", cta="Start") + """
+""" + lcard("configuration.html", "sliders", "Configuration", "Every DynavecConfig option, with sensible defaults.", cta="Configure") + """
+</div>
+<h2 class="plain">Guides</h2>
 <div class="docgrid">
   <a href="embeddings.html"><h3>Embeddings</h3><p>Pluggable, bring-your-own-key: OpenAI, Gemini, Cohere, Bedrock, local.</p></a>
   <a href="search.html"><h3>Search</h3><p>Semantic search with metadata pre-filtering and document hydration.</p></a>
@@ -1195,32 +1230,43 @@ TEMPLATE = """<!doctype html>
   <title>%(title)s · dynavec docs</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="../styles.css" />
   <link rel="stylesheet" href="docs.css" />
 </head>
-<body>
-  <header class="nav">
-    <div class="wrap nav__inner">
-      <a class="brand" href="../index.html">
-        <svg class="brand__mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-          <rect x="1" y="1" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"/>
-          <line x1="1" y1="11" x2="21" y2="11" stroke="currentColor" stroke-width="1.5"/>
-          <line x1="11" y1="1" x2="11" y2="21" stroke="currentColor" stroke-width="1.5"/>
-          <circle cx="6" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/>
-        </svg>
-        <span class="brand__name">dynavec</span>
+<body class="docs">
+  <header class="dnav">
+    <div class="dnav__inner">
+      <a class="dnav__brand" href="index.html" aria-label="dynavec docs home">
+        <img src="../images/brand/dynavec-mark.svg" alt="" width="28" height="28" />
+        <span>dyna<b>vec</b></span><em>Docs</em>
       </a>
-      <nav class="nav__links" aria-label="Primary">
-        <a href="../index.html#why">Why</a>
-        <a href="../index.html#benchmarks">Benchmarks</a>
-        <a href="index.html">Docs</a>
-      </nav>
-      <a class="btn btn--ghost star" href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">
-        <span aria-hidden="true">&#9733;</span> Star <span class="star__count" data-stars>&mdash;</span>
-      </a>
+      <a class="dnav__home" href="../index.html">Home</a>
+      <button class="dsearch" type="button" aria-label="Search the docs" aria-haspopup="dialog">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        <span>Search docs&hellip;</span><kbd>&#8984;K</kbd>
+      </button>
+      <div class="dnav__actions">
+        <a class="dbtn dbtn--ghost" href="https://github.com/codeforstartups/dynavec" target="_blank" rel="noopener">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/></svg>
+          GitHub
+        </a>
+        <a class="dbtn dbtn--primary" href="quickstart.html">Get started &rsaquo;</a>
+      </div>
     </div>
   </header>
+
+  <div class="dsearch__dialog" role="dialog" aria-modal="true" aria-label="Search docs" hidden>
+    <div class="dsearch__panel">
+      <div class="dsearch__field">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        <input type="search" placeholder="Search pages and sections" aria-label="Search query" autocomplete="off" />
+        <kbd>esc</kbd>
+      </div>
+      <ul class="dsearch__results" role="listbox"></ul>
+    </div>
+  </div>
 
   <div class="docshell">
     %(side)s
@@ -1231,12 +1277,38 @@ TEMPLATE = """<!doctype html>
       %(body)s
       %(next)s
     </main>
+    <aside class="toc" aria-label="On this page"></aside>
   </div>
 
+  <script src="search-index.js"></script>
   <script src="docs.js"></script>
 </body>
 </html>
 """
+
+
+def _text(fragment: str) -> str:
+    return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", fragment)).split())
+
+
+def heading_id(inner: str) -> str:
+    """Slug used for h2 anchors; docs.js applies the same rule to h2s without an id."""
+    return re.sub(r"[^a-z0-9]+", "-", _text(inner).lower()).strip("-")
+
+
+def search_index() -> str:
+    """Client-side search data: one entry per page plus one per h2 section."""
+    groups = {slug: group for group, items in NAV for slug, _ in items}
+    entries = []
+    for slug, (title, sub, body) in PAGES.items():
+        page_title = TITLES.get(slug, _text(title))
+        entries.append({"u": f"{slug}.html", "t": page_title, "g": groups.get(slug, ""),
+                        "d": _text(sub), "x": _text(body)[:600]})
+        for attrs, inner in re.findall(r"<h2([^>]*)>(.*?)</h2>", body, flags=re.S):
+            m = re.search(r'id="([^"]+)"', attrs)
+            anchor = m.group(1) if m else heading_id(inner)
+            entries.append({"u": f"{slug}.html#{anchor}", "t": _text(inner), "g": page_title, "d": "", "x": ""})
+    return "/* generated by tools/build_docs.py */\nwindow.DV_SEARCH = " + json.dumps(entries, ensure_ascii=False) + ";\n"
 
 
 def main() -> None:
@@ -1244,7 +1316,9 @@ def main() -> None:
     for slug in PAGES:
         with open(os.path.join(OUT, slug + ".html"), "w", encoding="utf-8") as f:
             f.write(render(slug))
-    print(f"Wrote {len(PAGES)} docs pages to {os.path.normpath(OUT)}")
+    with open(os.path.join(OUT, "search-index.js"), "w", encoding="utf-8") as f:
+        f.write(search_index())
+    print(f"Wrote {len(PAGES)} docs pages + search index to {os.path.normpath(OUT)}")
 
 
 if __name__ == "__main__":

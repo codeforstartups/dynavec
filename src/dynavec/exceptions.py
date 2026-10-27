@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class DynavecError(Exception):
     """Base class for all dynavec errors."""
@@ -25,14 +27,6 @@ class DimensionMismatchError(DynavecError):
 
 class NotFoundError(DynavecError):
     """Raised when a namespace, index, or document does not exist."""
-
-
-class AccessDeniedError(DynavecError):
-    """Raised when access to an AWS resource is denied."""
-
-
-class ValidationError(DynavecError):
-    """Raised when AWS rejects an invalid request."""
 
 
 class ItemTooLargeError(DynavecError):
@@ -76,3 +70,40 @@ class MissingDependencyError(DynavecError):
         self.feature = feature
         self.package = package
         self.extra = extra
+
+
+class NodeInterrupt(DynavecError):
+    """Raised when an agent execution node pauses waiting for human approval or input."""
+
+    def __init__(
+        self, thread_id: str, node_id: str, payload: dict[str, Any] | None = None
+    ) -> None:
+        super().__init__(
+            f"Execution interrupted at node {node_id!r} for thread {thread_id!r}. "
+            "Awaiting human input."
+        )
+        self.thread_id = thread_id
+        self.node_id = node_id
+        self.payload = payload or {}
+
+
+class ApprovalTimeoutError(DynavecError):
+    """Raised when a pending human approval expires before a decision is submitted."""
+
+    def __init__(self, thread_id: str, node_id: str, timeout_seconds: int) -> None:
+        super().__init__(
+            f"Approval request at node {node_id!r} for thread {thread_id!r} "
+            f"timed out after {timeout_seconds} seconds."
+        )
+        self.thread_id = thread_id
+        self.node_id = node_id
+        self.timeout_seconds = timeout_seconds
+
+
+
+class AccessDeniedError(DynavecError):
+    """Raised when AWS IAM permissions or authentication fails."""
+
+
+class ValidationError(DynavecError):
+    """Raised when input parameter validation fails."""

@@ -14,6 +14,7 @@ from .state import AgentState
 
 if TYPE_CHECKING:
     from ..checkpoint import BaseCheckpointer
+    from ..memory import BaseMemory
 
 DEFAULT_REACT_SYSTEM_PROMPT = """You are a helpful and precise reasoning agent.
 You solve tasks step-by-step using a ReAct (Reason + Act) approach.
@@ -103,6 +104,7 @@ class ReActAgent:
         system_prompt: str | None = None,
         max_steps: int = 10,
         checkpointer: BaseCheckpointer | None = None,
+        memory: BaseMemory | None = None,
     ) -> None:
         self.model = model
         self.system_prompt = (
@@ -110,6 +112,7 @@ class ReActAgent:
         )
         self.max_steps = max(1, max_steps)
         self.checkpointer = checkpointer
+        self.memory = memory
 
         self._tools_map: dict[str, AgentTool] = {}
         self._chat_tools: list[Tool] = []
@@ -182,6 +185,20 @@ class ReActAgent:
                 )
             )
         return step_observations
+
+    # ------------------------------------------------------------------ memory
+    def _new_turn(self, goal: str, thread_id: str | None, state: AgentState | None) -> list[Message]:
+        """Messages for a new run: prior conversation from memory, then this goal."""
+        fresh = self._init_messages(goal, state)
+        if self.memory is None or thread_id is None:
+            return fresh
+        history = self.memory.get_messages(thread_id)
+        # The system prompt is stored once, on the thread's first turn.
+        return list(self.memory.append(thread_id, fresh if not history else fresh[-1:]))
+
+    def _remember(self, thread_id: str | None, output: str) -> None:
+        if self.memory is not None and thread_id is not None:
+            self.memory.append(thread_id, Message(role="assistant", content=output))
 
     def _finalize_result(self, steps: list[AgentStep], total_tool_calls: int) -> AgentResult:
         last_output = (
@@ -342,6 +359,7 @@ class ReActAgent:
 
             if not msg.tool_calls:
                 steps.append(AgentStep(step_number=step_idx, thought=msg.content))
+                self._remember(thread_id, msg.content or "")
                 self._save(
                     thread_id, goal, messages, steps, total_tool_calls,
                     node_id=f"step_{step_idx}", step=step_idx,
@@ -378,6 +396,7 @@ class ReActAgent:
             )
 
         res = self._finalize_result(steps, total_tool_calls)
+        self._remember(thread_id, res.output)
         self._save(
             thread_id, goal, messages, steps, total_tool_calls,
             node_id="max_steps_reached", step=self.max_steps,
@@ -406,6 +425,7 @@ class ReActAgent:
 
             if not msg.tool_calls:
                 steps.append(AgentStep(step_number=step_idx, thought=msg.content))
+                self._remember(thread_id, msg.content or "")
                 self._save(
                     thread_id, goal, messages, steps, total_tool_calls,
                     node_id=f"step_{step_idx}", step=step_idx,
@@ -444,6 +464,7 @@ class ReActAgent:
             )
 
         res = self._finalize_result(steps, total_tool_calls)
+        self._remember(thread_id, res.output)
         self._save(
             thread_id, goal, messages, steps, total_tool_calls,
             node_id="max_steps_reached", step=self.max_steps,
@@ -463,8 +484,11 @@ class ReActAgent:
                 f"Thread {thread_id!r} is paused waiting for human input; "
                 "call resume(thread_id=..., human_decision=...) instead of run()."
             )
+        if cp_state and cp_state.get("finished"):
+            # A completed run is not resumable: a new run on the thread is a new turn.
+            messages, steps, total_tool_calls, start_step = [], [], 0, 1
         if not messages:
-            messages = self._init_messages(goal, state)
+            messages = self._new_turn(goal, thread_id, state)
             self._save(thread_id, goal, messages, [], 0, node_id="init", step=0)
         return messages, steps, total_tool_calls, start_step
 

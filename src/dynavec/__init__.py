@@ -77,6 +77,15 @@ from .logging import (
     run_context,
     set_default_run_logger,
 )
+from .memory import (
+    BaseMemory,
+    DynamoDBMemoryStore,
+    InMemoryMemoryStore,
+    MemoryPolicy,
+    SummaryMemoryPolicy,
+    TokenBudgetMemoryPolicy,
+    WindowMemoryPolicy,
+)
 from .models import (
     Document,
     ExplainedSearchResult,
@@ -136,6 +145,14 @@ from .transforms import LambdaTransform, TransformContext, TransformPipeline
 __version__ = "0.7.0"
 
 __all__ = [
+    # Conversation memory (dynaflow)
+    "BaseMemory",
+    "DynamoDBMemoryStore",
+    "InMemoryMemoryStore",
+    "MemoryPolicy",
+    "SummaryMemoryPolicy",
+    "TokenBudgetMemoryPolicy",
+    "WindowMemoryPolicy",
     "Dynavec",
     "AsyncDynavec",
     "DynavecConfig",

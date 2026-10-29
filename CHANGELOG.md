@@ -11,6 +11,13 @@ All notable changes to dynavec are documented here. This project adheres to
   `AgentResult.interrupt_payload`). `resume()` / `aresume()` re-run the paused tool and
   `interrupt()` returns the human decision. With a checkpointer, a paused run resumes from
   `thread_id` alone in a new process.
+- **Conversation memory** (#290) — `InMemoryMemoryStore` / `DynamoDBMemoryStore` with window,
+  token-budget and summary policies, plus a per-thread scratchpad. `ReActAgent(memory=...)`
+  loads earlier turns for a `thread_id` and records each final answer.
+
+### Changed
+- `ReActAgent.run()` on a thread whose last checkpoint is a finished run now starts a new
+  turn instead of reloading the completed conversation.
 
 ## [0.7.0] - 2026-10-01
 

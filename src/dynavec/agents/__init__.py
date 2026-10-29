@@ -9,6 +9,15 @@ from ..checkpoint import (
     MemoryCheckpointer,
 )
 from ..exceptions import NodeInterrupt
+from ..memory import (
+    BaseMemory,
+    DynamoDBMemoryStore,
+    InMemoryMemoryStore,
+    MemoryPolicy,
+    SummaryMemoryPolicy,
+    TokenBudgetMemoryPolicy,
+    WindowMemoryPolicy,
+)
 from .base import (
     AgentResult,
     AgentStep,
@@ -49,6 +58,13 @@ from .state import AgentState
 from .supervisor import AgentLike, Supervisor
 
 __all__ = [
+    "BaseMemory",
+    "DynamoDBMemoryStore",
+    "InMemoryMemoryStore",
+    "MemoryPolicy",
+    "SummaryMemoryPolicy",
+    "TokenBudgetMemoryPolicy",
+    "WindowMemoryPolicy",
     "AgentResult",
     "AgentLike",
     "AgentStep",

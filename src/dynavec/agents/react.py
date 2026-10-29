@@ -7,7 +7,8 @@ from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
 from ..chat.base import ChatModel, Message, Tool, ToolCall
-from .base import AgentResult, AgentStep, AgentTool
+from ..exceptions import NodeInterrupt
+from .base import AgentResult, AgentStep, AgentTool, resume_with
 from .registry import ToolRegistry
 from .state import AgentState
 
@@ -66,6 +67,30 @@ def _dict_to_step(d: dict[str, Any]) -> AgentStep:
         tool_calls=tcs,
         observations=list(d.get("observations") or []),
     )
+
+
+def _pending_tool_calls(messages: list[Message]) -> list[ToolCall]:
+    """Tool calls in the last assistant message that have no tool reply yet."""
+    for i in range(len(messages) - 1, -1, -1):
+        msg = messages[i]
+        if msg.role == "assistant":
+            answered = {m.tool_call_id for m in messages[i + 1 :] if m.role == "tool"}
+            return [tc for tc in msg.tool_calls if tc.id not in answered]
+    return []
+
+
+def _completed_step(messages: list[Message], step_number: int) -> AgentStep:
+    """Build the AgentStep for the last assistant tool batch once all calls are answered."""
+    for i in range(len(messages) - 1, -1, -1):
+        msg = messages[i]
+        if msg.role == "assistant":
+            return AgentStep(
+                step_number=step_number,
+                thought=msg.content,
+                tool_calls=list(msg.tool_calls),
+                observations=[m.content or "" for m in messages[i + 1 :] if m.role == "tool"],
+            )
+    return AgentStep(step_number=step_number)
 
 
 class ReActAgent:
@@ -173,57 +198,139 @@ class ReActAgent:
             tool_calls_count=total_tool_calls,
         )
 
-    def run(
+    # ------------------------------------------------------------------ checkpoints
+    def _save(
         self,
+        thread_id: str | None,
         goal: str,
+        messages: list[Message],
+        steps: list[AgentStep],
+        total_tool_calls: int,
         *,
-        thread_id: str | None = None,
-        resume_from: str | None = None,
-        state: AgentState | None = None,
-        **kwargs: Any,
-    ) -> AgentResult:
-        """Execute the ReAct loop synchronously until goal completion or max_steps."""
+        node_id: str,
+        step: int,
+        **extra: Any,
+    ) -> None:
+        if self.checkpointer is None or thread_id is None:
+            return
+        self.checkpointer.put(
+            thread_id,
+            state={
+                "goal": goal,
+                "messages": [_message_to_dict(m) for m in messages],
+                "steps": [_step_to_dict(s) for s in steps],
+                "total_tool_calls": total_tool_calls,
+                **extra,
+            },
+            node_id=node_id,
+            step=step,
+        )
+
+    def _restore(
+        self, thread_id: str | None, resume_from: str | None
+    ) -> tuple[list[Message], list[AgentStep], int, int, dict[str, Any] | None]:
+        """Load (messages, steps, total_tool_calls, start_step, state) from a checkpoint."""
+        if self.checkpointer is None or thread_id is None:
+            return [], [], 0, 1, None
+        existing_cp = self.checkpointer.get(thread_id, resume_from)
+        if existing_cp is None:
+            return [], [], 0, 1, None
+        state = existing_cp.state
         messages: list[Message] = []
         steps: list[AgentStep] = []
         total_tool_calls = 0
-        start_step = 1
+        if state is not None:
+            messages = [_dict_to_message(m) for m in state.get("messages", [])]
+            steps = [_dict_to_step(s) for s in state.get("steps", [])]
+            total_tool_calls = int(state.get("total_tool_calls", 0))
+        return messages, steps, total_tool_calls, existing_cp.step + 1, state
 
-        if self.checkpointer is not None and thread_id is not None:
-            existing_cp = self.checkpointer.get(thread_id, resume_from)
+    # ------------------------------------------------------------------ interrupts
+    def _interrupted(
+        self,
+        exc: NodeInterrupt,
+        goal: str,
+        thread_id: str | None,
+        messages: list[Message],
+        steps: list[AgentStep],
+        total_tool_calls: int,
+        step_idx: int,
+    ) -> AgentResult:
+        self._save(
+            thread_id,
+            goal,
+            messages,
+            steps,
+            total_tool_calls,
+            node_id="interrupt",
+            step=step_idx,
+            finished=False,
+            interrupted={"node_id": exc.node_id, "payload": exc.payload, "step": step_idx},
+        )
+        return AgentResult(
+            output=f"Interrupted at {exc.node_id!r}: awaiting human input.",
+            steps=list(steps),
+            finished=False,
+            termination_reason="interrupted",
+            total_steps=step_idx,
+            tool_calls_count=total_tool_calls,
+            interrupt_payload={
+                "thread_id": thread_id,
+                "node_id": exc.node_id,
+                "payload": exc.payload,
+                "messages": list(messages),
+                "steps": list(steps),
+                "total_tool_calls": total_tool_calls,
+                "start_step": step_idx,
+            },
+        )
 
-            if existing_cp is not None:
-                checkpoint_state = existing_cp.state
-                if checkpoint_state is not None:
-                    if "messages" in checkpoint_state:
-                        messages = [
-                            _dict_to_message(m)
-                            for m in checkpoint_state["messages"]
-                        ]
-                    if "steps" in checkpoint_state:
-                        steps = [
-                            _dict_to_step(s)
-                            for s in checkpoint_state["steps"]
-                        ]
-                    total_tool_calls = int(
-                        checkpoint_state.get("total_tool_calls", 0)
-                    )
-                start_step = existing_cp.step + 1
-
-        if not messages:
-            messages = self._init_messages(goal, state)
-            if self.checkpointer is not None and thread_id is not None:
-                self.checkpointer.put(
-                    thread_id,
-                    state={
-                        "goal": goal,
-                        "messages": [_message_to_dict(m) for m in messages],
-                        "steps": [],
-                        "total_tool_calls": 0,
-                    },
-                    node_id="init",
-                    step=0,
+    def _prepare_resume(
+        self,
+        messages: list[Message] | None,
+        start_step: int | None,
+        thread_id: str | None,
+        steps: list[AgentStep] | None,
+        total_tool_calls: int | None,
+    ) -> tuple[str, list[Message], list[AgentStep], int, int, list[ToolCall]]:
+        if messages is None:
+            if self.checkpointer is None or thread_id is None:
+                raise ValueError(
+                    "resume() needs the interrupted run's messages, or a checkpointer and thread_id."
                 )
+            cp = self.checkpointer.get(thread_id)
+            state = (cp.state if cp is not None else None) or {}
+            paused = state.get("interrupted")
+            if not paused:
+                raise ValueError(f"Thread {thread_id!r} has no paused run to resume.")
+            run_messages = [_dict_to_message(m) for m in state.get("messages", [])]
+            run_steps = [_dict_to_step(s) for s in state.get("steps", [])]
+            total = int(state.get("total_tool_calls", 0))
+            start = int(paused["step"])
+            goal = str(state.get("goal") or "")
+        else:
+            run_messages = list(messages)
+            run_steps = list(steps or [])
+            total = int(total_tool_calls or 0)
+            start = start_step if start_step is not None else len(run_steps) + 1
+            goal = next((m.content or "" for m in run_messages if m.role == "user"), "")
 
+        pending = _pending_tool_calls(run_messages)
+        if not pending:
+            raise ValueError("Nothing to resume: no tool call is waiting for a human decision.")
+        return goal, run_messages, run_steps, total, start, pending
+
+    # ------------------------------------------------------------------ loops
+    def _loop(
+        self,
+        goal: str,
+        thread_id: str | None,
+        messages: list[Message],
+        steps: list[AgentStep],
+        total_tool_calls: int,
+        start_step: int,
+        kwargs: dict[str, Any],
+    ) -> AgentResult:
         for step_idx in range(start_step, self.max_steps + 1):
             chat_res = self.model.invoke(
                 messages,
@@ -234,27 +341,12 @@ class ReActAgent:
             messages.append(msg)
 
             if not msg.tool_calls:
-                step = AgentStep(
-                    step_number=step_idx,
-                    thought=msg.content,
-                    tool_calls=[],
-                    observations=[],
+                steps.append(AgentStep(step_number=step_idx, thought=msg.content))
+                self._save(
+                    thread_id, goal, messages, steps, total_tool_calls,
+                    node_id=f"step_{step_idx}", step=step_idx,
+                    output=msg.content or "", finished=True,
                 )
-                steps.append(step)
-                if self.checkpointer is not None and thread_id is not None:
-                    self.checkpointer.put(
-                        thread_id,
-                        state={
-                            "goal": goal,
-                            "messages": [_message_to_dict(m) for m in messages],
-                            "steps": [_step_to_dict(s) for s in steps],
-                            "total_tool_calls": total_tool_calls,
-                            "output": msg.content or "",
-                            "finished": True,
-                        },
-                        node_id=f"step_{step_idx}",
-                        step=step_idx,
-                    )
                 return AgentResult(
                     output=msg.content or "",
                     steps=steps,
@@ -265,46 +357,129 @@ class ReActAgent:
                 )
 
             total_tool_calls += len(msg.tool_calls)
-            step_observations = self._process_tool_calls(list(msg.tool_calls), messages)
-
-            step = AgentStep(
-                step_number=step_idx,
-                thought=msg.content,
-                tool_calls=list(msg.tool_calls),
-                observations=step_observations,
-            )
-            steps.append(step)
-
-            if self.checkpointer is not None and thread_id is not None:
-                self.checkpointer.put(
-                    thread_id,
-                    state={
-                        "goal": goal,
-                        "messages": [_message_to_dict(m) for m in messages],
-                        "steps": [_step_to_dict(s) for s in steps],
-                        "total_tool_calls": total_tool_calls,
-                        "finished": False,
-                    },
-                    node_id=f"step_{step_idx}",
-                    step=step_idx,
+            try:
+                step_observations = self._process_tool_calls(list(msg.tool_calls), messages)
+            except NodeInterrupt as exc:
+                return self._interrupted(
+                    exc, goal, thread_id, messages, steps, total_tool_calls, step_idx
                 )
 
-        res = self._finalize_result(steps, total_tool_calls)
-        if self.checkpointer is not None and thread_id is not None:
-            self.checkpointer.put(
-                thread_id,
-                state={
-                    "goal": goal,
-                    "messages": [_message_to_dict(m) for m in messages],
-                    "steps": [_step_to_dict(s) for s in steps],
-                    "total_tool_calls": total_tool_calls,
-                    "output": res.output,
-                    "finished": False,
-                },
-                node_id="max_steps_reached",
-                step=self.max_steps,
+            steps.append(
+                AgentStep(
+                    step_number=step_idx,
+                    thought=msg.content,
+                    tool_calls=list(msg.tool_calls),
+                    observations=step_observations,
+                )
             )
+            self._save(
+                thread_id, goal, messages, steps, total_tool_calls,
+                node_id=f"step_{step_idx}", step=step_idx, finished=False,
+            )
+
+        res = self._finalize_result(steps, total_tool_calls)
+        self._save(
+            thread_id, goal, messages, steps, total_tool_calls,
+            node_id="max_steps_reached", step=self.max_steps,
+            output=res.output, finished=False,
+        )
         return res
+
+    async def _aloop(
+        self,
+        goal: str,
+        thread_id: str | None,
+        messages: list[Message],
+        steps: list[AgentStep],
+        total_tool_calls: int,
+        start_step: int,
+        kwargs: dict[str, Any],
+    ) -> AgentResult:
+        for step_idx in range(start_step, self.max_steps + 1):
+            chat_res = await self.model.ainvoke(
+                messages,
+                tools=self._chat_tools if self._chat_tools else None,
+                **kwargs,
+            )
+            msg = chat_res.message
+            messages.append(msg)
+
+            if not msg.tool_calls:
+                steps.append(AgentStep(step_number=step_idx, thought=msg.content))
+                self._save(
+                    thread_id, goal, messages, steps, total_tool_calls,
+                    node_id=f"step_{step_idx}", step=step_idx,
+                    output=msg.content or "", finished=True,
+                )
+                return AgentResult(
+                    output=msg.content or "",
+                    steps=steps,
+                    finished=True,
+                    termination_reason="completed",
+                    total_steps=step_idx,
+                    tool_calls_count=total_tool_calls,
+                )
+
+            total_tool_calls += len(msg.tool_calls)
+            try:
+                step_observations = await self._aprocess_tool_calls(
+                    list(msg.tool_calls), messages
+                )
+            except NodeInterrupt as exc:
+                return self._interrupted(
+                    exc, goal, thread_id, messages, steps, total_tool_calls, step_idx
+                )
+
+            steps.append(
+                AgentStep(
+                    step_number=step_idx,
+                    thought=msg.content,
+                    tool_calls=list(msg.tool_calls),
+                    observations=step_observations,
+                )
+            )
+            self._save(
+                thread_id, goal, messages, steps, total_tool_calls,
+                node_id=f"step_{step_idx}", step=step_idx, finished=False,
+            )
+
+        res = self._finalize_result(steps, total_tool_calls)
+        self._save(
+            thread_id, goal, messages, steps, total_tool_calls,
+            node_id="max_steps_reached", step=self.max_steps,
+            output=res.output, finished=False,
+        )
+        return res
+
+    # ------------------------------------------------------------------ public API
+    def _start(
+        self, goal: str, thread_id: str | None, resume_from: str | None, state: AgentState | None
+    ) -> tuple[list[Message], list[AgentStep], int, int]:
+        messages, steps, total_tool_calls, start_step, cp_state = self._restore(
+            thread_id, resume_from
+        )
+        if cp_state and cp_state.get("interrupted"):
+            raise ValueError(
+                f"Thread {thread_id!r} is paused waiting for human input; "
+                "call resume(thread_id=..., human_decision=...) instead of run()."
+            )
+        if not messages:
+            messages = self._init_messages(goal, state)
+            self._save(thread_id, goal, messages, [], 0, node_id="init", step=0)
+        return messages, steps, total_tool_calls, start_step
+
+    def run(
+        self,
+        goal: str,
+        *,
+        thread_id: str | None = None,
+        resume_from: str | None = None,
+        state: AgentState | None = None,
+        **kwargs: Any,
+    ) -> AgentResult:
+        """Execute the ReAct loop until it completes, hits max_steps, or a tool interrupts."""
+        messages, steps, total, start = self._start(goal, thread_id, resume_from, state)
+        return self._loop(goal, thread_id, messages, steps, total, start, kwargs)
 
     async def arun(
         self,
@@ -316,124 +491,71 @@ class ReActAgent:
         **kwargs: Any,
     ) -> AgentResult:
         """Execute the ReAct loop asynchronously."""
-        messages: list[Message] = []
-        steps: list[AgentStep] = []
-        total_tool_calls = 0
-        start_step = 1
+        messages, steps, total, start = self._start(goal, thread_id, resume_from, state)
+        return await self._aloop(goal, thread_id, messages, steps, total, start, kwargs)
 
-        if self.checkpointer is not None and thread_id is not None:
-            existing_cp = self.checkpointer.get(thread_id, resume_from)
-            if existing_cp is not None:
-                checkpoint_state = existing_cp.state
-                if checkpoint_state is not None:
-                    if "messages" in checkpoint_state:
-                        messages = [
-                            _dict_to_message(m)
-                            for m in checkpoint_state["messages"]
-                        ]
-                    if "steps" in checkpoint_state:
-                        steps = [
-                            _dict_to_step(s)
-                            for s in checkpoint_state["steps"]
-                        ]
-                    total_tool_calls = int(
-                        checkpoint_state.get("total_tool_calls", 0)
-                    )
-                start_step = existing_cp.step + 1
+    def resume(
+        self,
+        messages: list[Message] | None = None,
+        human_decision: Any = None,
+        *,
+        start_step: int | None = None,
+        thread_id: str | None = None,
+        steps: list[AgentStep] | None = None,
+        total_tool_calls: int | None = None,
+        **kwargs: Any,
+    ) -> AgentResult:
+        """Continue an interrupted run with the human's decision.
 
-        if not messages:
-            messages = self._init_messages(goal, state)
-            if self.checkpointer is not None and thread_id is not None:
-                self.checkpointer.put(
-                    thread_id,
-                    state={
-                        "goal": goal,
-                        "messages": [_message_to_dict(m) for m in messages],
-                        "steps": [],
-                        "total_tool_calls": 0,
-                    },
-                    node_id="init",
-                    step=0,
-                )
+        Pass the ``messages`` / ``start_step`` (and optionally ``steps``,
+        ``total_tool_calls``) from ``AgentResult.interrupt_payload``, or just
+        ``thread_id`` when the agent has a checkpointer. The paused tool is re-run and its
+        :func:`~dynavec.agents.interrupt` call returns ``human_decision``.
+        """
+        goal, messages, steps, total, start, pending = self._prepare_resume(
+            messages, start_step, thread_id, steps, total_tool_calls
+        )
+        try:
+            with resume_with(human_decision):
+                obs = self._dispatch_tool_call(pending[0])
+            messages.append(Message(role="tool", content=obs, tool_call_id=pending[0].id))
+            self._process_tool_calls(pending[1:], messages)
+        except NodeInterrupt as exc:
+            return self._interrupted(exc, goal, thread_id, messages, steps, total, start)
 
-        for step_idx in range(start_step, self.max_steps + 1):
-            chat_res = await self.model.ainvoke(
-                messages,
-                tools=self._chat_tools if self._chat_tools else None,
-                **kwargs,
-            )
-            msg = chat_res.message
-            messages.append(msg)
+        steps.append(_completed_step(messages, start))
+        self._save(
+            thread_id, goal, messages, steps, total,
+            node_id=f"step_{start}", step=start, finished=False,
+        )
+        return self._loop(goal, thread_id, messages, steps, total, start + 1, kwargs)
 
-            if not msg.tool_calls:
-                step = AgentStep(
-                    step_number=step_idx,
-                    thought=msg.content,
-                    tool_calls=[],
-                    observations=[],
-                )
-                steps.append(step)
-                if self.checkpointer is not None and thread_id is not None:
-                    self.checkpointer.put(
-                        thread_id,
-                        state={
-                            "goal": goal,
-                            "messages": [_message_to_dict(m) for m in messages],
-                            "steps": [_step_to_dict(s) for s in steps],
-                            "total_tool_calls": total_tool_calls,
-                            "output": msg.content or "",
-                            "finished": True,
-                        },
-                        node_id=f"step_{step_idx}",
-                        step=step_idx,
-                    )
-                return AgentResult(
-                    output=msg.content or "",
-                    steps=steps,
-                    finished=True,
-                    termination_reason="completed",
-                    total_steps=step_idx,
-                    tool_calls_count=total_tool_calls,
-                )
+    async def aresume(
+        self,
+        messages: list[Message] | None = None,
+        human_decision: Any = None,
+        *,
+        start_step: int | None = None,
+        thread_id: str | None = None,
+        steps: list[AgentStep] | None = None,
+        total_tool_calls: int | None = None,
+        **kwargs: Any,
+    ) -> AgentResult:
+        """Asynchronous :meth:`resume`."""
+        goal, messages, steps, total, start, pending = self._prepare_resume(
+            messages, start_step, thread_id, steps, total_tool_calls
+        )
+        try:
+            with resume_with(human_decision):
+                obs = await self._adispatch_tool_call(pending[0])
+            messages.append(Message(role="tool", content=obs, tool_call_id=pending[0].id))
+            await self._aprocess_tool_calls(pending[1:], messages)
+        except NodeInterrupt as exc:
+            return self._interrupted(exc, goal, thread_id, messages, steps, total, start)
 
-            total_tool_calls += len(msg.tool_calls)
-            step_observations = await self._aprocess_tool_calls(list(msg.tool_calls), messages)
-
-            step = AgentStep(
-                step_number=step_idx,
-                thought=msg.content,
-                tool_calls=list(msg.tool_calls),
-                observations=step_observations,
-            )
-            steps.append(step)
-
-            if self.checkpointer is not None and thread_id is not None:
-                self.checkpointer.put(
-                    thread_id,
-                    state={
-                        "goal": goal,
-                        "messages": [_message_to_dict(m) for m in messages],
-                        "steps": [_step_to_dict(s) for s in steps],
-                        "total_tool_calls": total_tool_calls,
-                        "finished": False,
-                    },
-                    node_id=f"step_{step_idx}",
-                    step=step_idx,
-                )
-
-        res = self._finalize_result(steps, total_tool_calls)
-        if self.checkpointer is not None and thread_id is not None:
-            self.checkpointer.put(
-                thread_id,
-                state={
-                    "goal": goal,
-                    "messages": [_message_to_dict(m) for m in messages],
-                    "steps": [_step_to_dict(s) for s in steps],
-                    "total_tool_calls": total_tool_calls,
-                    "output": res.output,
-                    "finished": False,
-                },
-                node_id="max_steps_reached",
-                step=self.max_steps,
-            )
-        return res
+        steps.append(_completed_step(messages, start))
+        self._save(
+            thread_id, goal, messages, steps, total,
+            node_id=f"step_{start}", step=start, finished=False,
+        )
+        return await self._aloop(goal, thread_id, messages, steps, total, start + 1, kwargs)

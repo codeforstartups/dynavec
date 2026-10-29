@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class DynavecError(Exception):
     """Base class for all dynavec errors."""
@@ -76,3 +78,17 @@ class MissingDependencyError(DynavecError):
         self.feature = feature
         self.package = package
         self.extra = extra
+
+
+class NodeInterrupt(DynavecError):
+    """Raised inside a tool (via :func:`dynavec.agents.interrupt`) to pause an agent run.
+
+    The agent catches it and returns an ``AgentResult`` with
+    ``termination_reason="interrupted"``; ``ReActAgent.resume`` continues the run with
+    the human's decision.
+    """
+
+    def __init__(self, node_id: str, payload: Any = None) -> None:
+        super().__init__(f"Execution interrupted at {node_id!r}; awaiting human input.")
+        self.node_id = node_id
+        self.payload = payload

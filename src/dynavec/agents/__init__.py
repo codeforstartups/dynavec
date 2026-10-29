@@ -8,12 +8,14 @@ from ..checkpoint import (
     DynamoDBCheckpointer,
     MemoryCheckpointer,
 )
+from ..exceptions import NodeInterrupt
 from .base import (
     AgentResult,
     AgentStep,
     AgentTool,
     Plan,
     PlanStep,
+    interrupt,
     tool,
 )
 from .connectors import (
@@ -70,6 +72,7 @@ __all__ = [
     "HandoffRequest",
     "MaxIterationsExceededError",
     "MemoryCheckpointer",
+    "NodeInterrupt",
     "NodeTrace",
     "Plan",
     "PlanStep",
@@ -82,6 +85,7 @@ __all__ = [
     "create_python_code_tool",
     "default_reducer",
     "default_registry",
+    "interrupt",
     "mcp_tools_from_session",
     "mcp_tools_from_session_async",
     "tool",

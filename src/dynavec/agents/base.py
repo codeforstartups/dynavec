@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import inspect
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
 from ..chat.base import Tool, ToolCall
+from ..exceptions import NodeInterrupt
 
 
 @dataclass
@@ -28,9 +31,12 @@ class AgentResult:
     output: str
     steps: list[AgentStep] = field(default_factory=list)
     finished: bool = True
-    termination_reason: str = "completed"  # "completed", "max_steps_reached", "error"
+    termination_reason: str = "completed"  # "completed", "max_steps_reached", "interrupted"
     total_steps: int = 0
     tool_calls_count: int = 0
+    # Set when termination_reason == "interrupted": node_id, payload, and what
+    # ReActAgent.resume needs (messages, steps, total_tool_calls, start_step).
+    interrupt_payload: dict[str, Any] | None = None
 
 
 @dataclass
@@ -191,6 +197,8 @@ class AgentTool:
             if isinstance(result, str):
                 return result
             return json.dumps(result, ensure_ascii=False)
+        except NodeInterrupt:
+            raise
         except Exception as exc:  # noqa: BLE001
             return f"Error executing tool {self.name!r}: {exc}"
 
@@ -209,6 +217,8 @@ class AgentTool:
             if isinstance(result, str):
                 return result
             return json.dumps(result, ensure_ascii=False)
+        except NodeInterrupt:
+            raise
         except Exception as exc:  # noqa: BLE001
             return f"Error executing tool {self.name!r}: {exc}"
 
@@ -234,3 +244,34 @@ def tool(
         )
 
     return decorator
+
+
+_UNSET: Any = object()
+_RESUME_VALUE: ContextVar[Any] = ContextVar("dynavec_resume_value", default=_UNSET)
+
+
+def interrupt(node_id: str, payload: Any = None) -> Any:
+    """Pause the agent run for human input, or return the human's decision on resume.
+
+    Call this inside a tool. On the first run it raises :class:`NodeInterrupt`, and the
+    agent returns ``termination_reason="interrupted"`` with ``payload`` in
+    ``AgentResult.interrupt_payload``. ``ReActAgent.resume(..., human_decision=...)``
+    re-runs the paused tool, and this call then returns ``human_decision``.
+
+    Code in the tool before ``interrupt()`` runs again on resume, so keep side effects
+    after it.
+    """
+    value = _RESUME_VALUE.get()
+    if value is not _UNSET:
+        return value
+    raise NodeInterrupt(node_id, payload)
+
+
+@contextmanager
+def resume_with(decision: Any) -> Iterator[None]:
+    """Make :func:`interrupt` return ``decision`` while re-running a paused tool."""
+    token = _RESUME_VALUE.set(decision)
+    try:
+        yield
+    finally:
+        _RESUME_VALUE.reset(token)

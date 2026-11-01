@@ -1,4 +1,5 @@
 """Tests for the Haystack integration."""
+
 # ruff: noqa: E402
 import pytest
 
@@ -85,6 +86,7 @@ def test_write_documents_with_embedding():
     assert dynavec_document.metadata == {"category": "account"}
     assert dynavec_document.vector == [0.1, 0.2, 0.3]
 
+
 def test_write_documents_overwrite_existing():
     client = _FakeClient()
     store = DynavecDocumentStore(client, namespace="kb")
@@ -95,9 +97,7 @@ def test_write_documents_overwrite_existing():
         meta={"category": "account"},
     )
 
-    client.get = lambda ids, **kwargs: [
-        type("Result", (), {"id": "doc-1"})()
-    ]
+    client.get = lambda ids, **kwargs: [type("Result", (), {"id": "doc-1"})()]
 
     count = store.write_documents(
         [document],
@@ -113,41 +113,43 @@ def test_write_documents_overwrite_existing():
     assert documents[0].text == "Updated password instructions"
     assert kwargs == {"namespace": "kb"}
 
+
 def test_filter_documents():
     client = _FakeClient()
     store = DynavecDocumentStore(client, namespace="kb")
 
-    client.list_vectors = lambda **kwargs: iter([
-        type(
-            "Result",
-            (),
-            {
-                "id": "doc-1",
-                "text": "Password reset",
-                "metadata": {"category": "account"},
-                "vector": None,
-            },
-        )(),
-        type(
-            "Result",
-            (),
-            {
-                "id": "doc-2",
-                "text": "Home loan details",
-                "metadata": {"category": "loan"},
-                "vector": None,
-            },
-        )(),
-    ])
-
-    documents = store.filter_documents(
-        filters={"category": "account"}
+    client.list_vectors = lambda **kwargs: iter(
+        [
+            type(
+                "Result",
+                (),
+                {
+                    "id": "doc-1",
+                    "text": "Password reset",
+                    "metadata": {"category": "account"},
+                    "vector": None,
+                },
+            )(),
+            type(
+                "Result",
+                (),
+                {
+                    "id": "doc-2",
+                    "text": "Home loan details",
+                    "metadata": {"category": "loan"},
+                    "vector": None,
+                },
+            )(),
+        ]
     )
+
+    documents = store.filter_documents(filters={"category": "account"})
 
     assert len(documents) == 1
     assert documents[0].id == "doc-1"
     assert documents[0].content == "Password reset"
     assert documents[0].meta == {"category": "account"}
+
 
 def test_retriever():
     client = _FakeClient()
@@ -168,6 +170,7 @@ def test_retriever():
     assert len(result["documents"]) == 1
     assert result["documents"][0].id == "doc-1"
     assert result["documents"][0].content == "Password reset instructions"
+
 
 def test_retriever_passes_top_k_and_filters():
     client = _FakeClient()
@@ -199,6 +202,7 @@ def test_retriever_passes_top_k_and_filters():
     assert call["namespace"] == "support"
     assert call["filter"] == {"category": "support"}
 
+
 def test_retriever_overrides_default_top_k():
     client = _FakeClient()
     client.search_calls = []
@@ -217,6 +221,7 @@ def test_retriever_overrides_default_top_k():
     )
 
     assert client.search_calls[0]["top_k"] == 3
+
 
 def test_retriever_with_filters():
     client = _FakeClient()
@@ -270,6 +275,7 @@ def test_retriever_converts_haystack_filter():
 
     assert client.search_calls[0]["filter"] == {"category": "support"}
 
+
 def test_document_store_serialization():
     client = _FakeClient()
     store = DynavecDocumentStore(client, namespace="kb")
@@ -279,6 +285,7 @@ def test_document_store_serialization():
     assert data["type"] == "dynavec.integrations.haystack.DynavecDocumentStore"
     assert data["init_parameters"]["namespace"] == "kb"
     assert "config" in data["init_parameters"]
+
 
 def test_document_store_from_dict(monkeypatch):
     client = _FakeClient()
@@ -295,32 +302,35 @@ def test_document_store_from_dict(monkeypatch):
 
     assert restored.namespace == "kb"
 
+
 def test_filter_documents_with_haystack_filter():
     client = _FakeClient()
     store = DynavecDocumentStore(client, namespace="kb")
 
-    client.list_vectors = lambda **kwargs: iter([
-        type(
-            "Result",
-            (),
-            {
-                "id": "doc-1",
-                "text": "Password reset",
-                "metadata": {"category": "account"},
-                "vector": None,
-            },
-        )(),
-        type(
-            "Result",
-            (),
-            {
-                "id": "doc-2",
-                "text": "Home loan details",
-                "metadata": {"category": "loan"},
-                "vector": None,
-            },
-        )(),
-    ])
+    client.list_vectors = lambda **kwargs: iter(
+        [
+            type(
+                "Result",
+                (),
+                {
+                    "id": "doc-1",
+                    "text": "Password reset",
+                    "metadata": {"category": "account"},
+                    "vector": None,
+                },
+            )(),
+            type(
+                "Result",
+                (),
+                {
+                    "id": "doc-2",
+                    "text": "Home loan details",
+                    "metadata": {"category": "loan"},
+                    "vector": None,
+                },
+            )(),
+        ]
+    )
 
     documents = store.filter_documents(
         filters={

@@ -111,7 +111,7 @@ class ReActAgent:
         user_content = goal
         if state is not None and state.data:
             shared_context = json.dumps(state.data, default=str, sort_keys=True)
-            user_content = f"{goal}\n\n" f"Shared workflow context (JSON):\n{shared_context}"
+            user_content = f"{goal}\n\nShared workflow context (JSON):\n{shared_context}"
 
         messages.append(Message(role="user", content=user_content))
         return messages
@@ -195,18 +195,10 @@ class ReActAgent:
                 checkpoint_state = existing_cp.state
                 if checkpoint_state is not None:
                     if "messages" in checkpoint_state:
-                        messages = [
-                            _dict_to_message(m)
-                            for m in checkpoint_state["messages"]
-                        ]
+                        messages = [_dict_to_message(m) for m in checkpoint_state["messages"]]
                     if "steps" in checkpoint_state:
-                        steps = [
-                            _dict_to_step(s)
-                            for s in checkpoint_state["steps"]
-                        ]
-                    total_tool_calls = int(
-                        checkpoint_state.get("total_tool_calls", 0)
-                    )
+                        steps = [_dict_to_step(s) for s in checkpoint_state["steps"]]
+                    total_tool_calls = int(checkpoint_state.get("total_tool_calls", 0))
                 start_step = existing_cp.step + 1
 
         if not messages:
@@ -327,18 +319,10 @@ class ReActAgent:
                 checkpoint_state = existing_cp.state
                 if checkpoint_state is not None:
                     if "messages" in checkpoint_state:
-                        messages = [
-                            _dict_to_message(m)
-                            for m in checkpoint_state["messages"]
-                        ]
+                        messages = [_dict_to_message(m) for m in checkpoint_state["messages"]]
                     if "steps" in checkpoint_state:
-                        steps = [
-                            _dict_to_step(s)
-                            for s in checkpoint_state["steps"]
-                        ]
-                    total_tool_calls = int(
-                        checkpoint_state.get("total_tool_calls", 0)
-                    )
+                        steps = [_dict_to_step(s) for s in checkpoint_state["steps"]]
+                    total_tool_calls = int(checkpoint_state.get("total_tool_calls", 0))
                 start_step = existing_cp.step + 1
 
         if not messages:

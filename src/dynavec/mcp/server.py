@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+import uuid
 from collections.abc import Mapping
 from typing import Any, cast
 
@@ -13,6 +14,7 @@ from ..client import Dynavec
 from ..config import DistanceMetric, DynavecConfig
 from ..embeddings.base import Embedder
 from ..exceptions import ConfigurationError, MissingDependencyError
+from ..models import Document
 
 
 def _resolve_embedder(env: Mapping[str, str]) -> Embedder | None:
@@ -37,7 +39,9 @@ def _resolve_embedder(env: Mapping[str, str]) -> Embedder | None:
     if embedder_type == "openai":
         from ..embeddings.openai import OpenAIEmbedder
 
-        return OpenAIEmbedder(model=model or "text-embedding-3-small", api_key=env.get("OPENAI_API_KEY"))
+        return OpenAIEmbedder(
+            model=model or "text-embedding-3-small", api_key=env.get("OPENAI_API_KEY")
+        )
     if embedder_type == "gemini":
         from ..embeddings.gemini import GeminiEmbedder
 
@@ -124,7 +128,11 @@ def _format_hits(hits: list[Any], query: str, context_label: str = "") -> str:
     return "\n".join(lines).strip()
 
 
-def create_mcp_server(db: Dynavec | None = None, name: str = "dynavec") -> Any:
+def create_mcp_server(
+    db: Dynavec | None = None,
+    name: str = "dynavec",
+    enable_write: bool = False,
+) -> Any:
     """Create and configure a FastMCP server exposing dynavec search and graph search tools."""
     try:
         from mcp.server.fastmcp import FastMCP
@@ -135,6 +143,100 @@ def create_mcp_server(db: Dynavec | None = None, name: str = "dynavec") -> Any:
 
     def _get_db() -> Dynavec:
         return db if db is not None else client_from_env()
+
+    def dynavec_remember(
+        text: str,
+        doc_id: str | None = None,
+        namespace: str = "default",
+        metadata_json: str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> str:
+        """Store a memory document in the Dynavec database."""
+        try:
+            if not text.strip():
+                return "Error remembering document: text cannot be empty"
+
+            metadata: dict[str, Any] = {}
+
+            if metadata_json:
+                try:
+                    parsed: object = json.loads(metadata_json)
+
+                    if not isinstance(parsed, dict):
+                        return "Error parsing metadata_json: expected a JSON object"
+
+                    metadata = cast(dict[str, Any], parsed)
+
+                except (json.JSONDecodeError, TypeError) as exc:
+                    return f"Error parsing metadata_json: {exc}"
+
+            document_id = doc_id or str(uuid.uuid4())
+
+            document = Document(
+                id=document_id,
+                text=text,
+                metadata=metadata,
+                ttl_seconds=ttl_seconds,
+            )
+
+            client = _get_db()
+
+            client.upsert(
+                [document],
+                namespace=namespace,
+                ttl_seconds=ttl_seconds,
+            )
+
+            return f"Successfully remembered document '{document_id}'."
+
+        except Exception as exc:
+            return f"Error remembering document: {exc}"
+
+    def dynavec_get(
+        ids: list[str],
+        namespace: str = "default",
+    ) -> str:
+        """Retrieve stored memory documents by their IDs."""
+        try:
+            if not ids:
+                return "Error retrieving documents: ids cannot be empty"
+
+            client = _get_db()
+            documents = client.get(ids, namespace)
+
+            if not documents:
+                return "No documents found."
+
+            lines = []
+
+            for document in documents:
+                lines.append(
+                    f"ID: {document.id}\n"
+                    f"Text: {document.text or ''}\n"
+                    f"Metadata: {json.dumps(document.metadata, default=str)}"
+                )
+
+            return "\n\n".join(lines)
+
+        except Exception as exc:
+            return f"Error retrieving documents: {exc}"
+
+    def dynavec_forget(
+        ids: list[str],
+        namespace: str = "default",
+    ) -> str:
+        """Delete stored memory documents by their IDs."""
+        try:
+            if not ids:
+                return "Error deleting documents: ids cannot be empty"
+
+            client = _get_db()
+            client.delete(ids, namespace)
+
+            return f"Successfully deleted {len(ids)} document(s) from namespace '{namespace}'."
+
+        except Exception as exc:
+            return f"Error deleting documents: {exc}"
 
     def dynavec_search(
         query: str,
@@ -214,14 +316,23 @@ def create_mcp_server(db: Dynavec | None = None, name: str = "dynavec") -> Any:
         )
         return _format_hits(hits, query, f" (seeds: {seed_entities}, hops: {hops})")
 
+    # Register existing MCP tools
     mcp.tool()(dynavec_search)
     mcp.tool()(dynavec_graph_search)
+
+    if enable_write:
+        mcp.tool()(dynavec_remember)
+        mcp.tool()(dynavec_get)
+        mcp.tool()(dynavec_forget)
+
     return mcp
 
 
 def main(argv: list[str] | None = None) -> int:
     """Run the FastMCP server with stdio or SSE transport."""
-    parser = argparse.ArgumentParser(prog="dynavec mcp", description="Run the dynavec FastMCP server.")
+    parser = argparse.ArgumentParser(
+        prog="dynavec mcp", description="Run the dynavec FastMCP server."
+    )
     parser.add_argument(
         "--transport",
         choices=["stdio", "sse"],
@@ -234,9 +345,15 @@ def main(argv: list[str] | None = None) -> int:
         default=8000,
         help="Port for SSE transport (default: 8000)",
     )
+    parser.add_argument(
+        "--enable-write",
+        action="store_true",
+        help="Enable memory write and management tools",
+    )
     args = parser.parse_args(argv)
 
-    server = create_mcp_server()
+    server = create_mcp_server(enable_write=args.enable_write)
+
     if args.transport == "sse":
         server.settings.port = args.port
         server.run(transport="sse")

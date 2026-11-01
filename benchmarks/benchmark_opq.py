@@ -1,4 +1,3 @@
-
 """Benchmark PQ vs OPQ + PQ."""
 
 from __future__ import annotations
@@ -63,9 +62,7 @@ def recall_at_k(
         truth_set = set(truth[:k])
         prediction_set = set(prediction[:k])
 
-        recalls.append(
-            len(truth_set & prediction_set) / k
-        )
+        recalls.append(len(truth_set & prediction_set) / k)
 
     return float(np.mean(recalls))
 
@@ -115,9 +112,7 @@ def benchmark_quantizer(
         k=10,
     )
 
-    reconstruction_error = quantizer.reconstruction_error(
-        database
-    )
+    reconstruction_error = quantizer.reconstruction_error(database)
 
     print(f"Fit time          : {fit_time:.4f}s")
     print(f"Encode time       : {encode_time:.4f}s")
@@ -147,13 +142,9 @@ def main() -> None:
     m = 8
     nbits = 8
 
-    database = rng.normal(
-        size=(num_database, dimension)
-    ).astype(np.float32)
+    database = rng.normal(size=(num_database, dimension)).astype(np.float32)
 
-    queries = rng.normal(
-        size=(num_queries, dimension)
-    ).astype(np.float32)
+    queries = rng.normal(size=(num_queries, dimension)).astype(np.float32)
 
     print("=== PQ vs OPQ + PQ Benchmark ===")
     print(f"Database : {num_database} vectors")
@@ -223,25 +214,13 @@ def main() -> None:
 
     print("\n=== Comparison ===")
 
-    recall_improvement = (
-        opq_results["recall_10"]
-        - pq_results["recall_10"]
-    )
+    recall_improvement = opq_results["recall_10"] - pq_results["recall_10"]
 
-    error_improvement = (
-        pq_results["reconstruction_error"]
-        - opq_results["reconstruction_error"]
-    )
+    error_improvement = pq_results["reconstruction_error"] - opq_results["reconstruction_error"]
 
-    print(
-        f"Recall@10 improvement : "
-        f"{recall_improvement:+.4f}"
-    )
+    print(f"Recall@10 improvement : {recall_improvement:+.4f}")
 
-    print(
-        f"Reconstruction improvement: "
-        f"{error_improvement:+.6f}"
-    )
+    print(f"Reconstruction improvement: {error_improvement:+.6f}")
 
 
 if __name__ == "__main__":

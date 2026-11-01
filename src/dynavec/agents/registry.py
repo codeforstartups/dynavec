@@ -70,9 +70,7 @@ class ToolRegistry:
             return f"Error: Tool {name!r} is not registered."
         return t.execute(arguments)
 
-    async def aexecute(
-        self, name: str, arguments: dict[str, Any] | str | None = None
-    ) -> str:
+    async def aexecute(self, name: str, arguments: dict[str, Any] | str | None = None) -> str:
         """Execute a tool by name asynchronously."""
         t = self.get(name)
         if not t:
@@ -97,5 +95,6 @@ class ToolRegistry:
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._tools)
+
 
 default_registry = ToolRegistry()

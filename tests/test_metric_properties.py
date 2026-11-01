@@ -197,7 +197,9 @@ def test_euclidean_and_manhattan_distance_monotonicity(vec_pair, scale_a, delta)
     for metric in ("euclidean", "manhattan"):
         scores = score(q, mat, metric)
         # Closer candidate (near) must have strictly higher similarity score than farther candidate
-        assert scores[0] > scores[1], f"Metric {metric} failed monotonicity: {scores[0]} <= {scores[1]}"
+        assert scores[0] > scores[1], (
+            f"Metric {metric} failed monotonicity: {scores[0]} <= {scores[1]}"
+        )
 
 
 @given(
@@ -297,7 +299,9 @@ def test_normalize_scores_bounds_and_order_preservation(scores):
     scores=arrays(
         dtype=np.float32,
         shape=st.integers(min_value=2, max_value=20),
-        elements=st.floats(min_value=-100.0, max_value=100.0, allow_nan=False, allow_infinity=False),
+        elements=st.floats(
+            min_value=-100.0, max_value=100.0, allow_nan=False, allow_infinity=False
+        ),
     ),
     scale=st.floats(min_value=0.1, max_value=50.0, allow_nan=False, allow_infinity=False),
     shift=st.floats(min_value=-50.0, max_value=50.0, allow_nan=False, allow_infinity=False),

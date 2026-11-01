@@ -119,9 +119,7 @@ class AgentTool:
         self.fn = fn
         self.name = name or fn.__name__
         self.description = description or (fn.__doc__ or f"Execute {self.name}").strip()
-        self.parameters = (
-            parameters if parameters is not None else _generate_json_schema(fn)
-        )
+        self.parameters = parameters if parameters is not None else _generate_json_schema(fn)
         self.tags = tags or []
 
     def to_chat_tool(self) -> Tool:
@@ -174,14 +172,15 @@ class AgentTool:
         try:
             parsed_args = self._parse_arguments(arguments)
             kwargs = self._prepare_call(parsed_args)
-            
+
             if inspect.iscoroutinefunction(self.fn):
                 import asyncio
+
                 try:
                     loop = asyncio.get_running_loop()
                 except RuntimeError:
                     loop = None
-                    
+
                 if loop and loop.is_running():
                     return f"Error: Cannot execute async tool {self.name!r} synchronously in a running event loop."
                 result = asyncio.run(self.fn(**kwargs))
@@ -199,11 +198,12 @@ class AgentTool:
         try:
             parsed_args = self._parse_arguments(arguments)
             kwargs = self._prepare_call(parsed_args)
-            
+
             if inspect.iscoroutinefunction(self.fn):
                 result = await self.fn(**kwargs)
             else:
                 import asyncio
+
                 result = await asyncio.to_thread(self.fn, **kwargs)
 
             if isinstance(result, str):

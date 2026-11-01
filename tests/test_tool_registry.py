@@ -120,22 +120,22 @@ def test_python_code_tool() -> None:
 def test_mcp_adapter() -> None:
     """Test adapting an MCP session to dynaflow tools."""
     mock_session = MagicMock()
-    
+
     # Mock list_tools
     class MockTool:
         name = "mcp_math"
         description = "MCP math"
         inputSchema = {"type": "object", "properties": {"a": {"type": "integer"}}}
-    
+
     mock_listing = MagicMock()
     mock_listing.tools = [MockTool()]
     mock_session.list_tools.return_value = mock_listing
-    
+
     # Mock call_tool
     class MockResult:
         content = [{"text": "success: 42"}]
         isError = False
-    
+
     mock_session.call_tool.return_value = MockResult()
 
     tools = mcp_tools_from_session(mock_session, tags=["mcp"])
@@ -143,7 +143,7 @@ def test_mcp_adapter() -> None:
     assert tools[0].name == "mcp_math"
     assert tools[0].description == "MCP math"
     assert "mcp" in tools[0].tags
-    
+
     # Execute
     res = tools[0].execute({"a": 42})
     assert res == "success: 42"

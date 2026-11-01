@@ -38,9 +38,7 @@ class AsyncOnlyEmbedder(Embedder):
         self,
         text: str,
     ) -> list[float]:
-        raise AssertionError(
-            "AsyncDynavec must not call sync embed_query()."
-        )
+        raise AssertionError("AsyncDynavec must not call sync embed_query().")
 
     async def aembed_query(
         self,
@@ -53,9 +51,7 @@ class AsyncOnlyEmbedder(Embedder):
         self,
         texts: list[str],
     ) -> list[list[float]]:
-        raise AssertionError(
-            "AsyncDynavec must not call sync embed_documents()."
-        )
+        raise AssertionError("AsyncDynavec must not call sync embed_documents().")
 
     async def aembed_documents(
         self,
@@ -63,19 +59,14 @@ class AsyncOnlyEmbedder(Embedder):
     ) -> list[list[float]]:
         self.async_calls.append(texts)
 
-        return [
-            [1.0, 2.0, 3.0, 4.0]
-            for _ in texts
-        ]
+        return [[1.0, 2.0, 3.0, 4.0] for _ in texts]
 
 
 class FakeVectorStore:
     def __init__(self) -> None:
         self.entered = False
         self.exited = False
-        self.put_calls: list[
-            tuple[list[tuple[str, list[float], dict[str, Any]]], int]
-        ] = []
+        self.put_calls: list[tuple[list[tuple[str, list[float], dict[str, Any]]], int]] = []
         self.query_results: list[dict[str, Any]] = []
         self.query_calls: list[dict[str, Any]] = []
         self.query_page_results: list[list[dict[str, Any]]] = []
@@ -115,14 +106,10 @@ class FakeVectorStore:
 
     async def put_vectors(
         self,
-        vectors: list[
-            tuple[str, list[float], dict[str, Any]]
-        ],
+        vectors: list[tuple[str, list[float], dict[str, Any]]],
         max_workers: int = 8,
     ) -> None:
-        self.put_calls.append(
-            (vectors, max_workers)
-        )
+        self.put_calls.append((vectors, max_workers))
 
     async def query_pages(
         self,
@@ -179,11 +166,7 @@ class FakeDocumentStore:
             )
         )
 
-        return {
-            doc_id: self.documents[doc_id]
-            for doc_id in ids
-            if doc_id in self.documents
-        }
+        return {doc_id: self.documents[doc_id] for doc_id in ids if doc_id in self.documents}
 
     async def __aenter__(
         self,
@@ -210,9 +193,7 @@ class FakeDocumentStore:
             ]
         ],
     ) -> None:
-        self.put_calls.append(
-            (namespace, items)
-        )
+        self.put_calls.append((namespace, items))
 
 
 def _install_fake_stores(
@@ -299,9 +280,7 @@ async def test_aupsert_requires_open_client() -> None:
 
 async def test_aupsert_uses_async_embedding_and_writes_both_stores() -> None:
     embedder = AsyncOnlyEmbedder()
-    client, vectors, documents = _client(
-        embedder=embedder
-    )
+    client, vectors, documents = _client(embedder=embedder)
 
     async with client:
         result = await client.aupsert(
@@ -320,9 +299,7 @@ async def test_aupsert_uses_async_embedding_and_writes_both_stores() -> None:
     assert result.count == 1
     assert result.ids == ["a"]
 
-    assert embedder.async_calls == [
-        ["hello"]
-    ]
+    assert embedder.async_calls == [["hello"]]
 
     assert len(vectors.put_calls) == 1
     assert len(documents.put_calls) == 1
@@ -337,9 +314,7 @@ async def test_aupsert_uses_async_embedding_and_writes_both_stores() -> None:
         4.0,
     ]
 
-    namespace, document_payload = (
-        documents.put_calls[0]
-    )
+    namespace, document_payload = documents.put_calls[0]
 
     assert namespace == "tenant"
     assert document_payload[0][0] == "a"
@@ -422,9 +397,7 @@ async def test_aupsert_runs_s3_and_dynamodb_writes_concurrently() -> None:
     s3_started = asyncio.Event()
     ddb_started = asyncio.Event()
 
-    class CoordinatedVectors(
-        FakeVectorStore
-    ):
+    class CoordinatedVectors(FakeVectorStore):
         async def put_vectors(
             self,
             vectors: list[
@@ -443,9 +416,7 @@ async def test_aupsert_runs_s3_and_dynamodb_writes_concurrently() -> None:
                 timeout=1,
             )
 
-    class CoordinatedDocuments(
-        FakeDocumentStore
-    ):
+    class CoordinatedDocuments(FakeDocumentStore):
         async def put_many(
             self,
             namespace: str,
@@ -503,15 +474,11 @@ async def test_aupsert_runs_s3_and_dynamodb_writes_concurrently() -> None:
 async def test_partial_enter_failure_closes_first_store() -> None:
     vectors = FakeVectorStore()
 
-    class FailingDocumentStore(
-        FakeDocumentStore
-    ):
+    class FailingDocumentStore(FakeDocumentStore):
         async def __aenter__(
             self,
         ) -> FailingDocumentStore:
-            raise RuntimeError(
-                "DynamoDB open failed"
-            )
+            raise RuntimeError("DynamoDB open failed")
 
     client = AsyncDynavec(
         _config(),

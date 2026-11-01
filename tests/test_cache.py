@@ -44,7 +44,7 @@ def test_dissimilar_miss():
 def test_namespace_and_topk_scoping():
     c = SemanticCache(threshold=0.5)
     c.put("ns1", [1.0, 0.0], 5, None, _res("a"))
-    assert c.get("ns2", [1.0, 0.0], 5, None) is None   # different namespace
+    assert c.get("ns2", [1.0, 0.0], 5, None) is None  # different namespace
     assert c.get("ns1", [1.0, 0.0], 10, None) is None  # different top_k
 
 
@@ -216,9 +216,10 @@ def test_dynamodb_cache_ttl_jitter():
         ttl_jitter_seconds=30,
     )
 
-    with patch("dynavec.cache.time.time", return_value=1_000), patch(
-        "dynavec.cache.random.randint", side_effect=[0, 30]
-    ) as randint:
+    with (
+        patch("dynavec.cache.time.time", return_value=1_000),
+        patch("dynavec.cache.random.randint", side_effect=[0, 30]) as randint,
+    ):
         cache.put("ns", [1.0, 0.0], 5, None, _res("a"))
         cache.put("ns", [0.0, 1.0], 5, None, _res("b"))
 

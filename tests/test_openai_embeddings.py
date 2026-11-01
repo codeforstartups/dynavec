@@ -1,4 +1,5 @@
 """Tests for the OpenAI embedder retry behavior."""
+
 from types import SimpleNamespace
 
 import pytest
@@ -32,9 +33,7 @@ class _FakeClient:
 
 
 @pytest.mark.parametrize("dimensions", [None, 2])
-def test_openai_embedder_retries_rate_limit_and_respects_retry_after(
-    monkeypatch, dimensions
-):
+def test_openai_embedder_retries_rate_limit_and_respects_retry_after(monkeypatch, dimensions):
     class RateLimitError(Exception):
         status_code = 429
 
@@ -64,6 +63,7 @@ def test_openai_embedder_retries_rate_limit_and_respects_retry_after(
         expected_request["dimensions"] = dimensions
     assert fake_client.embeddings.requests == [expected_request, expected_request]
 
+
 def test_openai_embedder_retries_server_error(monkeypatch):
     class ServerError(Exception):
         status_code = 500
@@ -80,6 +80,7 @@ def test_openai_embedder_retries_server_error(monkeypatch):
     assert result == [[0.1, 0.2, 0.3]]
     assert fake_client.embeddings.calls == 2
     assert len(delays) == 1
+
 
 def test_openai_embedder_does_not_retry_client_error(monkeypatch):
     class ClientError(Exception):
@@ -98,6 +99,7 @@ def test_openai_embedder_does_not_retry_client_error(monkeypatch):
 
     assert fake_client.embeddings.calls == 1
     assert delays == []
+
 
 def _make_embedder(error):
     fake_client = _FakeClient(error)

@@ -108,6 +108,7 @@ def db(monkeypatch):
 # Tokenizer tests
 # ---------------------------------------------------------------------------
 
+
 def test_default_tokenize_basic():
     tokens = default_tokenize("The quick brown fox jumps over the lazy dog.")
     # Stopwords ("the", "over") filtered out
@@ -149,6 +150,7 @@ def test_default_tokenize_empty_and_special():
 # ---------------------------------------------------------------------------
 # BM25Index tests
 # ---------------------------------------------------------------------------
+
 
 def test_bm25_index_validation():
     with pytest.raises(ValueError, match="k1 must be non-negative"):
@@ -245,12 +247,15 @@ def test_bm25_index_empty_query():
 # BM25Retriever tests
 # ---------------------------------------------------------------------------
 
+
 def test_bm25_retriever_basic(db):
     retriever = BM25Retriever(db)
-    retriever.index_documents([
-        Document(id="doc1", text="Dell XPS-13-9310 laptop"),
-        Document(id="doc2", text="Lenovo ThinkPad laptop"),
-    ])
+    retriever.index_documents(
+        [
+            Document(id="doc1", text="Dell XPS-13-9310 laptop"),
+            Document(id="doc2", text="Lenovo ThinkPad laptop"),
+        ]
+    )
 
     results = retriever.search("XPS-13-9310")
     assert len(results) >= 1
@@ -266,10 +271,12 @@ def test_bm25_retriever_basic(db):
 @pytest.mark.asyncio
 async def test_bm25_retriever_async(db):
     retriever = BM25Retriever(db)
-    retriever.index_documents([
-        Document(id="d1", text="ConnectionResetError encountered"),
-        Document(id="d2", text="HTTP 500 internal server error"),
-    ])
+    retriever.index_documents(
+        [
+            Document(id="d1", text="ConnectionResetError encountered"),
+            Document(id="d2", text="HTTP 500 internal server error"),
+        ]
+    )
 
     results = await retriever.asearch("ConnectionResetError")
     assert len(results) == 1
@@ -289,6 +296,7 @@ def test_bm25_retriever_populate_from_store(db):
 # ---------------------------------------------------------------------------
 # BM25HybridRetriever tests
 # ---------------------------------------------------------------------------
+
 
 def test_hybrid_retriever_initialization_and_weights(db):
     retriever = BM25HybridRetriever(db, dense_weight=1.2, sparse_weight=0.6)
@@ -346,6 +354,7 @@ async def test_hybrid_retriever_asearch(db):
 # ---------------------------------------------------------------------------
 # Client & NamespaceView Ergonomics tests
 # ---------------------------------------------------------------------------
+
 
 def test_client_retriever_ergonomics(db):
     # as_bm25_retriever

@@ -1,4 +1,5 @@
 """Haystack integration for Dynavec."""
+
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -38,8 +39,11 @@ def _convert_filter(
             return {field: filters["value"]}
 
     return filters
+
+
 class DynavecDocumentStore:
     """Haystack DocumentStore backed by Dynavec."""
+
     def __init__(self, client: Dynavec, namespace: str = "default") -> None:
         self.client = client
         self.namespace = namespace
@@ -53,6 +57,7 @@ class DynavecDocumentStore:
                 hydrate=False,
             )
         )
+
     def write_documents(
         self,
         documents: list[Document],
@@ -77,9 +82,7 @@ class DynavecDocumentStore:
         elif policy == DuplicatePolicy.FAIL:
             duplicates = [document.id for document in documents if document.id in existing]
             if duplicates:
-                raise DuplicateDocumentError(
-                    f"Documents with IDs already exist: {duplicates}"
-                )
+                raise DuplicateDocumentError(f"Documents with IDs already exist: {duplicates}")
 
         dynavec_documents = [
             DynavecDocument(
@@ -111,8 +114,7 @@ class DynavecDocumentStore:
             namespace=self.namespace,
             hydrate=True,
         ):
-            if filters and any(result.metadata.get(key) != value for key, value in filters.items()
-            ):
+            if filters and any(result.metadata.get(key) != value for key, value in filters.items()):
                 continue
 
             documents.append(
@@ -134,8 +136,7 @@ class DynavecDocumentStore:
                 "config": asdict(self.client.config),
                 "namespace": self.namespace,
             },
-    }
-
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DynavecDocumentStore:
@@ -149,7 +150,6 @@ class DynavecDocumentStore:
             client=client,
             namespace=parameters.get("namespace", "default"),
         )
-
 
 
 class DynavecRetriever:

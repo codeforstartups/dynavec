@@ -19,11 +19,43 @@ from .models import Document, Metadata, SearchResult
 _TOKEN_RE = re.compile(r"[a-zA-Z0-9]+(?:[-_.:][a-zA-Z0-9]+)*")
 _SUBTOKEN_RE = re.compile(r"[a-zA-Z0-9]+")
 
-DEFAULT_STOPWORDS: frozenset[str] = frozenset({
-    "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "if", "in",
-    "into", "is", "it", "no", "not", "of", "on", "or", "such", "that", "the",
-    "their", "then", "there", "these", "they", "this", "to", "was", "will", "with"
-})
+DEFAULT_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "but",
+        "by",
+        "for",
+        "if",
+        "in",
+        "into",
+        "is",
+        "it",
+        "no",
+        "not",
+        "of",
+        "on",
+        "or",
+        "such",
+        "that",
+        "the",
+        "their",
+        "then",
+        "there",
+        "these",
+        "they",
+        "this",
+        "to",
+        "was",
+        "will",
+        "with",
+    }
+)
 
 
 def default_tokenize(

@@ -78,9 +78,7 @@ class OpenAIChatModel(ChatModel):
         ]
 
     def _format_result(self, choice: Any) -> ChatResult:
-        out_msg = Message(
-            role=choice.message.role or "assistant", content=choice.message.content
-        )
+        out_msg = Message(role=choice.message.role or "assistant", content=choice.message.content)
         if choice.message.tool_calls:
             out_msg.tool_calls = [
                 ToolCall(
@@ -153,9 +151,7 @@ class OpenAIChatModel(ChatModel):
                     tool_calls.append(
                         ToolCall(
                             id=tc.id or "",
-                            name=tc.function.name
-                            if (tc.function and tc.function.name)
-                            else "",
+                            name=tc.function.name if (tc.function and tc.function.name) else "",
                             arguments=tc.function.arguments
                             if (tc.function and tc.function.arguments)
                             else "",
@@ -195,9 +191,7 @@ class OpenAIChatModel(ChatModel):
                     tool_calls.append(
                         ToolCall(
                             id=tc.id or "",
-                            name=tc.function.name
-                            if (tc.function and tc.function.name)
-                            else "",
+                            name=tc.function.name if (tc.function and tc.function.name) else "",
                             arguments=tc.function.arguments
                             if (tc.function and tc.function.arguments)
                             else "",

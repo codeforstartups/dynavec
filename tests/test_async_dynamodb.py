@@ -115,9 +115,7 @@ class FakeSession:
         **kwargs: Any,
     ) -> FakeResourceContext:
         self.calls.append((service_name, kwargs))
-        self.context = FakeResourceContext(
-            self.resource_instance
-        )
+        self.context = FakeResourceContext(self.resource_instance)
         return self.context
 
 
@@ -150,18 +148,14 @@ async def test_put_many_builds_and_writes_items():
             ],
         )
 
-    assert table.batch_writer_calls == [
-        {"overwrite_by_pkeys": ["pk"]}
-    ]
+    assert table.batch_writer_calls == [{"overwrite_by_pkeys": ["pk"]}]
 
     assert len(table.writer.items) == 2
 
     assert table.writer.items[0]["pk"] == "tenant#a"
     assert table.writer.items[0]["id"] == "a"
     assert table.writer.items[0]["text"] == "First"
-    assert table.writer.items[0]["metadata"]["score"] == Decimal(
-        "0.5"
-    )
+    assert table.writer.items[0]["metadata"]["score"] == Decimal("0.5")
 
 
 async def test_put_many_writes_custom_ttl_attribute():
@@ -342,12 +336,7 @@ async def test_get_many_batches_at_100_keys():
     async with AsyncDynamoDBStore(_config(), session) as store:
         await store.get_many("tenant", ids)
 
-    sizes = [
-        len(
-            call["RequestItems"]["docs"]["Keys"]
-        )
-        for call in resource.batch_get_calls
-    ]
+    sizes = [len(call["RequestItems"]["docs"]["Keys"]) for call in resource.batch_get_calls]
 
     assert sizes == [100, 100, 50]
 
@@ -355,9 +344,7 @@ async def test_get_many_batches_at_100_keys():
 async def test_operations_require_open_store():
     store = AsyncDynamoDBStore(
         _config(),
-        FakeSession(
-            FakeDynamoResource(FakeTable())
-        ),
+        FakeSession(FakeDynamoResource(FakeTable())),
     )
 
     with pytest.raises(RuntimeError, match="not open"):

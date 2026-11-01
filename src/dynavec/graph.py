@@ -105,9 +105,7 @@ def _mermaid_aliases(nodes: list[str]) -> dict[str, str]:
     reserved keyword) gets an `nN` alias carrying the real id as its label.
     Alias numbering follows sorted id order, so it is stable across exports.
     """
-    bare = {
-        n for n in nodes if _MERMAID_SAFE_ID.match(n) and n.lower() not in _MERMAID_RESERVED
-    }
+    bare = {n for n in nodes if _MERMAID_SAFE_ID.match(n) and n.lower() not in _MERMAID_RESERVED}
     aliases: dict[str, str] = {}
     counter = 0
     for node in nodes:
@@ -368,8 +366,7 @@ class GraphStore:
             edge
             for edge in edges
             if not (
-                edge.get("target") == dst
-                and (relation is None or edge.get("relation") == relation)
+                edge.get("target") == dst and (relation is None or edge.get("relation") == relation)
             )
         ]
         if len(kept) == len(edges):

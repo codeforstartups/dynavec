@@ -35,12 +35,12 @@ _COLORS = {
 # Representative quality/latency profile (EDIT with measured values).
 # recall@10, warm p50/p95/p99 ms for a ~1M x 768 workload.
 _PROFILE = {
-    "dynavec":               {"recall": 0.90, "p50": 45, "p95": 120, "p99": 180},
-    "pinecone_serverless":   {"recall": 0.95, "p50": 30, "p95": 70,  "p99": 110},
-    "opensearch_serverless": {"recall": 0.97, "p50": 15, "p95": 40,  "p99": 70},
-    "qdrant_cloud":          {"recall": 0.98, "p50": 8,  "p95": 20,  "p99": 35},
-    "weaviate_cloud":        {"recall": 0.97, "p50": 10, "p95": 25,  "p99": 45},
-    "milvus_zilliz":         {"recall": 0.98, "p50": 7,  "p95": 18,  "p99": 30},
+    "dynavec": {"recall": 0.90, "p50": 45, "p95": 120, "p99": 180},
+    "pinecone_serverless": {"recall": 0.95, "p50": 30, "p95": 70, "p99": 110},
+    "opensearch_serverless": {"recall": 0.97, "p50": 15, "p95": 40, "p99": 70},
+    "qdrant_cloud": {"recall": 0.98, "p50": 8, "p95": 20, "p99": 35},
+    "weaviate_cloud": {"recall": 0.97, "p50": 10, "p95": 25, "p99": 45},
+    "milvus_zilliz": {"recall": 0.98, "p50": 7, "p95": 18, "p99": 30},
 }
 
 _LABELS = {
@@ -73,16 +73,32 @@ def markdown_table(inp: ReportInputs) -> str:
         ("Latency p50 (ms)", {p: _PROFILE[p]["p50"] for p in products}, "min", "{:.0f}"),
         ("Latency p95 (ms)", {p: _PROFILE[p]["p95"] for p in products}, "min", "{:.0f}"),
         ("Cost ($/mo)", {p: costs[p] for p in products}, "min", "${:,.0f}"),
-        ("Serverless (scale-to-zero)", {
-            "dynavec": "Yes", "pinecone_serverless": "Yes",
-            "opensearch_serverless": "No (OCU floor)", "qdrant_cloud": "No (nodes)",
-            "weaviate_cloud": "No (nodes)", "milvus_zilliz": "No (CU)",
-        }, None, "{}"),
-        ("Data in your AWS account", {
-            "dynavec": "Yes", "pinecone_serverless": "No",
-            "opensearch_serverless": "Yes", "qdrant_cloud": "Self-host only",
-            "weaviate_cloud": "Self-host only", "milvus_zilliz": "Self-host only",
-        }, None, "{}"),
+        (
+            "Serverless (scale-to-zero)",
+            {
+                "dynavec": "Yes",
+                "pinecone_serverless": "Yes",
+                "opensearch_serverless": "No (OCU floor)",
+                "qdrant_cloud": "No (nodes)",
+                "weaviate_cloud": "No (nodes)",
+                "milvus_zilliz": "No (CU)",
+            },
+            None,
+            "{}",
+        ),
+        (
+            "Data in your AWS account",
+            {
+                "dynavec": "Yes",
+                "pinecone_serverless": "No",
+                "opensearch_serverless": "Yes",
+                "qdrant_cloud": "Self-host only",
+                "weaviate_cloud": "Self-host only",
+                "milvus_zilliz": "Self-host only",
+            },
+            None,
+            "{}",
+        ),
     ]
 
     header = "| Metric | " + " | ".join(_LABELS[p] for p in products) + " |"
@@ -148,21 +164,30 @@ def cost_scale_chart(inp: ReportInputs, out_path: str) -> str:
     fig, ax = plt.subplots(figsize=(11, 6))
     for p in products:
         ax.plot(
-            scales, series[p], marker="o",
-            color=_COLORS[p], linewidth=2.5 if p == "dynavec" else 1.6,
+            scales,
+            series[p],
+            marker="o",
+            color=_COLORS[p],
+            linewidth=2.5 if p == "dynavec" else 1.6,
             label=_LABELS[p],
         )
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlabel("Number of vectors (log scale)")
     ax.set_ylabel("Estimated cost ($/month, log scale)")
-    ax.set_title(f"Monthly cost by scale — {inp.dim}d, {inp.qpm:,} queries/mo",
-                 fontsize=14, weight="bold")
+    ax.set_title(
+        f"Monthly cost by scale — {inp.dim}d, {inp.qpm:,} queries/mo", fontsize=14, weight="bold"
+    )
     ax.grid(True, which="both", alpha=0.25)
     ax.legend()
-    fig.text(0.5, -0.02,
-             "APPROX public list prices (see cost_model.py). Order-of-magnitude only.",
-             ha="center", fontsize=8, style="italic")
+    fig.text(
+        0.5,
+        -0.02,
+        "APPROX public list prices (see cost_model.py). Order-of-magnitude only.",
+        ha="center",
+        fontsize=8,
+        style="italic",
+    )
     fig.tight_layout()
     fig.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close(fig)
@@ -196,9 +221,14 @@ def cost_matrix_chart(out_path: str, qpm: int = 1_000_000, wpm: int = 100_000) -
     for ax, dim in zip(axes, DIMENSIONS):
         for p in products:
             ys = [compare(Workload(n, dim, qpm, wpm))[p] for n in SCALES]
-            ax.plot(SCALES, ys, marker="o",
-                    color=_COLORS[p], linewidth=2.4 if p == "dynavec" else 1.4,
-                    label=_LABELS[p])
+            ax.plot(
+                SCALES,
+                ys,
+                marker="o",
+                color=_COLORS[p],
+                linewidth=2.4 if p == "dynavec" else 1.4,
+                label=_LABELS[p],
+            )
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.set_title(f"{dim}-dim embeddings", weight="bold")
@@ -212,8 +242,11 @@ def cost_matrix_chart(out_path: str, qpm: int = 1_000_000, wpm: int = 100_000) -
     handles, labels = axes[0].get_legend_handles_labels()
     legend_ax.legend(handles, labels, loc="center", fontsize=12, title="Product")
 
-    fig.suptitle(f"Estimated monthly cost by scale & dimension  ·  {qpm:,} queries/mo",
-                 fontsize=16, weight="bold")
+    fig.suptitle(
+        f"Estimated monthly cost by scale & dimension  ·  {qpm:,} queries/mo",
+        fontsize=16,
+        weight="bold",
+    )
     fig.supxlabel("Number of vectors (log scale)")
     fig.supylabel("Cost $/month (log scale)")
     fig.tight_layout()
@@ -228,19 +261,31 @@ def cost_by_dimension_chart(out_path: str, scale: int = 100_000_000, qpm: int = 
     fig, ax = plt.subplots(figsize=(11, 6))
     for p in products:
         ys = [compare(Workload(scale, d, qpm, 100_000))[p] for d in DIMENSIONS]
-        ax.plot(DIMENSIONS, ys, marker="s",
-                color=_COLORS[p], linewidth=2.4 if p == "dynavec" else 1.4,
-                label=_LABELS[p])
+        ax.plot(
+            DIMENSIONS,
+            ys,
+            marker="s",
+            color=_COLORS[p],
+            linewidth=2.4 if p == "dynavec" else 1.4,
+            label=_LABELS[p],
+        )
     ax.set_yscale("log")
     ax.set_xticks(DIMENSIONS)
     ax.set_xlabel("Embedding dimension")
     ax.set_ylabel("Cost $/month (log scale)")
-    ax.set_title(f"Cost by embedding dimension @ {_fmt_count(scale)} vectors",
-                 fontsize=14, weight="bold")
+    ax.set_title(
+        f"Cost by embedding dimension @ {_fmt_count(scale)} vectors", fontsize=14, weight="bold"
+    )
     ax.grid(True, which="both", alpha=0.25)
     ax.legend()
-    fig.text(0.5, -0.02, "APPROX list prices — see cost_model.py.", ha="center",
-             fontsize=8, style="italic")
+    fig.text(
+        0.5,
+        -0.02,
+        "APPROX list prices — see cost_model.py.",
+        ha="center",
+        fontsize=8,
+        style="italic",
+    )
     fig.tight_layout()
     fig.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close(fig)
@@ -303,8 +348,10 @@ def generate(out_dir: str = "benchmarks/out", inp: ReportInputs | None = None) -
     table_md = markdown_table(inp)
     table_path = os.path.join(out_dir, "comparison.md")
     with open(table_path, "w") as f:
-        f.write(f"# dynavec benchmark comparison\n\n"
-                f"_Workload: {inp.vectors:,} × {inp.dim}d, {inp.qpm:,} queries/mo._\n\n")
+        f.write(
+            f"# dynavec benchmark comparison\n\n"
+            f"_Workload: {inp.vectors:,} × {inp.dim}d, {inp.qpm:,} queries/mo._\n\n"
+        )
         f.write(table_md + "\n")
     bars = bar_chart(inp, os.path.join(out_dir, "quality_latency.png"))
     cost = cost_scale_chart(inp, os.path.join(out_dir, "cost_by_scale.png"))
@@ -316,15 +363,21 @@ def generate(out_dir: str = "benchmarks/out", inp: ReportInputs | None = None) -
     scaling_path = os.path.join(out_dir, "scaling.md")
     with open(scaling_path, "w") as f:
         f.write("# dynavec scaling: dimensions × vector count (100K → 1B)\n")
-        f.write("\n_Cost from the cost model (APPROX public list prices). "
-                "Recall/latency unaffected by this sweep._\n")
+        f.write(
+            "\n_Cost from the cost model (APPROX public list prices). "
+            "Recall/latency unaffected by this sweep._\n"
+        )
         f.write(scaling_tables_md(qpm=inp.qpm))
         f.write("\n")
 
     return {
-        "table_md": table_path, "bar_chart": bars, "cost_chart": cost,
-        "cost_matrix": matrix, "cost_by_dimension": by_dim,
-        "storage_footprint": footprint, "scaling_md": scaling_path,
+        "table_md": table_path,
+        "bar_chart": bars,
+        "cost_chart": cost,
+        "cost_matrix": matrix,
+        "cost_by_dimension": by_dim,
+        "storage_footprint": footprint,
+        "scaling_md": scaling_path,
     }
 
 

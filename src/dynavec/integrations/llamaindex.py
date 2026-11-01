@@ -86,8 +86,7 @@ def _translate_filters(metadata_filters: MetadataFilters) -> dict[str, Any]:
         return {"$or": translated}
 
     raise ValueError(
-        "Unsupported LlamaIndex metadata filter condition for S3 Vectors: "
-        f"{condition.value}"
+        f"Unsupported LlamaIndex metadata filter condition for S3 Vectors: {condition.value}"
     )
 
 

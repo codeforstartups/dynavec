@@ -1,13 +1,13 @@
 """DSPy retrieval module backed by dynavec.
 
-    import dspy
-    from dynavec.integrations.dspy import DynavecRM
+import dspy
+from dynavec.integrations.dspy import DynavecRM
 
-    rm = DynavecRM(dynavec_client, namespace="kb", k=4)
-    dspy.configure(rm=rm)
+rm = DynavecRM(dynavec_client, namespace="kb", k=4)
+dspy.configure(rm=rm)
 
-    retriever = dspy.Retrieve(k=4)
-    passages = retriever("what is retrieval-augmented generation?").passages
+retriever = dspy.Retrieve(k=4)
+passages = retriever("what is retrieval-augmented generation?").passages
 """
 
 from __future__ import annotations

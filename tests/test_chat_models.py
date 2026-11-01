@@ -89,6 +89,7 @@ class FakeAsyncOpenAIChatCompletions:
     async def create(self, **kwargs: Any) -> Any:
         self.last_kwargs = kwargs
         if kwargs.get("stream"):
+
             async def _async_gen() -> Any:
                 yield SimpleNamespace(
                     choices=[
@@ -107,6 +108,7 @@ class FakeAsyncOpenAIChatCompletions:
                         )
                     ]
                 )
+
             return _async_gen()
 
         if kwargs.get("tools"):
@@ -198,9 +200,7 @@ class FakeAnthropicMessages:
                     ),
                     SimpleNamespace(
                         type="content_block_delta",
-                        delta=SimpleNamespace(
-                            type="input_json_delta", partial_json='{"loc":"NY"}'
-                        ),
+                        delta=SimpleNamespace(type="input_json_delta", partial_json='{"loc":"NY"}'),
                     ),
                 ]
 
@@ -254,6 +254,7 @@ class FakeAsyncAnthropicMessages:
                             type="input_json_delta", partial_json='{"loc":"Async NY"}'
                         ),
                     )
+
                 return _gen()
 
             async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:

@@ -19,12 +19,12 @@ GB = 1024**3
 
 @dataclass
 class Workload:
-    vectors: int          # number of stored vectors
-    dim: int              # embedding dimension
+    vectors: int  # number of stored vectors
+    dim: int  # embedding dimension
     queries_per_month: int
     writes_per_month: int = 0
-    metadata_bytes: int = 500     # avg full metadata + text per doc (DynamoDB)
-    filterable_bytes: int = 120   # avg filterable metadata per vector (S3 Vectors)
+    metadata_bytes: int = 500  # avg full metadata + text per doc (DynamoDB)
+    filterable_bytes: int = 120  # avg filterable metadata per vector (S3 Vectors)
 
     @property
     def vector_bytes(self) -> int:
@@ -147,12 +147,15 @@ def main() -> None:
     p.add_argument("--wpm", type=int, default=100_000, help="writes per month")
     args = p.parse_args()
 
-    w = Workload(vectors=args.vectors, dim=args.dim,
-                 queries_per_month=args.qpm, writes_per_month=args.wpm)
+    w = Workload(
+        vectors=args.vectors, dim=args.dim, queries_per_month=args.qpm, writes_per_month=args.wpm
+    )
 
-    print(f"\nWorkload: {w.vectors:,} vectors × {w.dim}d "
-          f"({w.raw_vector_gb:.1f} GB raw), {w.queries_per_month:,} queries/mo, "
-          f"{w.writes_per_month:,} writes/mo\n")
+    print(
+        f"\nWorkload: {w.vectors:,} vectors × {w.dim}d "
+        f"({w.raw_vector_gb:.1f} GB raw), {w.queries_per_month:,} queries/mo, "
+        f"{w.writes_per_month:,} writes/mo\n"
+    )
     print("dynavec breakdown:")
     for k, v in dynavec_cost(w).items():
         print(f"  {k:<22} ${v:>10,.2f}")

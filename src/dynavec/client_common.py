@@ -21,11 +21,7 @@ EmbeddingTarget = tuple[int, Optional[str]]
 
 
 def s3_key(namespace: str, doc_id: str) -> str:
-    return (
-        f"{encode_key_component(namespace)}"
-        f"{KEY_SEPARATOR}"
-        f"{encode_key_component(doc_id)}"
-    )
+    return f"{encode_key_component(namespace)}{KEY_SEPARATOR}{encode_key_component(doc_id)}"
 
 
 def split_key(key: str) -> tuple[str, str]:
@@ -63,11 +59,7 @@ def apply_transform_pipeline(
 def documents_to_embed(
     docs: list[Document],
 ) -> list[EmbeddingTarget]:
-    return [
-        (index, doc.text)
-        for index, doc in enumerate(docs)
-        if doc.vector is None
-    ]
+    return [(index, doc.text) for index, doc in enumerate(docs) if doc.vector is None]
 
 
 def embedding_texts(
@@ -76,15 +68,9 @@ def embedding_texts(
     optional_texts = [text for _, text in targets]
 
     if any(text is None for text in optional_texts):
-        raise ConfigurationError(
-            "A document has neither text nor vector."
-        )
+        raise ConfigurationError("A document has neither text nor vector.")
 
-    return [
-        text
-        for text in optional_texts
-        if text is not None
-    ]
+    return [text for text in optional_texts if text is not None]
 
 
 def assign_embeddings(
@@ -94,8 +80,7 @@ def assign_embeddings(
 ) -> None:
     if len(vectors) != len(targets):
         raise ConfigurationError(
-            f"Embedder returned {len(vectors)} vectors for "
-            f"{len(targets)} documents."
+            f"Embedder returned {len(vectors)} vectors for {len(targets)} documents."
         )
 
     for (index, _), vector in zip(targets, vectors):
@@ -105,8 +90,7 @@ def assign_embeddings(
 def single_embedding(vectors: list[list[float]], doc_id: str) -> list[float]:
     if len(vectors) != 1:
         raise ConfigurationError(
-            f"Embedder returned {len(vectors)} vectors for 1 document "
-            f"({doc_id!r})."
+            f"Embedder returned {len(vectors)} vectors for 1 document ({doc_id!r})."
         )
 
     return vectors[0]
@@ -133,10 +117,7 @@ def build_write_payloads(
         vector = doc.vector
 
         if vector is None:
-            raise ConfigurationError(
-                f"Embedder did not return a vector for document "
-                f"{doc.id!r}."
-            )
+            raise ConfigurationError(f"Embedder did not return a vector for document {doc.id!r}.")
 
         if len(vector) != config.dimension:
             raise DimensionMismatchError(
@@ -158,23 +139,14 @@ def build_write_payloads(
             doc.text,
         )
 
-        doc_ttl_seconds = (
-            doc.ttl_seconds
-            if doc.ttl_seconds is not None
-            else default_ttl_seconds
-        )
+        doc_ttl_seconds = doc.ttl_seconds if doc.ttl_seconds is not None else default_ttl_seconds
 
         if doc_ttl_seconds is not None and doc_ttl_seconds <= 0:
             raise ValueError(
-                f"Document {doc.id!r} ttl_seconds must be positive, "
-                f"got {doc_ttl_seconds}."
+                f"Document {doc.id!r} ttl_seconds must be positive, got {doc_ttl_seconds}."
             )
 
-        ttl_timestamp = (
-            int(time.time() + doc_ttl_seconds)
-            if doc_ttl_seconds is not None
-            else None
-        )
+        ttl_timestamp = int(time.time() + doc_ttl_seconds) if doc_ttl_seconds is not None else None
 
         if ttl_timestamp is not None:
             ddb_metadata["_ttl"] = ttl_timestamp

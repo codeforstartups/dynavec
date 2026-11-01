@@ -38,9 +38,7 @@ class NamespaceView:
         ttl_seconds: int | None = None,
         **kw: Any,
     ) -> UpsertResult:
-        return self._db.upsert(
-            documents, namespace=self._ns, ttl_seconds=ttl_seconds, **kw
-        )
+        return self._db.upsert(documents, namespace=self._ns, ttl_seconds=ttl_seconds, **kw)
 
     def update(
         self,

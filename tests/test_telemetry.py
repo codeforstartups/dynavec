@@ -78,7 +78,7 @@ def test_aggregate_cache_hit_rate_and_errors():
     for e in evs:
         e.ts = now - 1
     agg = aggregate(evs, window_seconds=3600, now=now)
-    assert agg["cache_total"] == 3          # None excluded
+    assert agg["cache_total"] == 3  # None excluded
     assert agg["cache_hits"] == 2
     assert agg["cache_hit_rate"] == round(100 * 2 / 3, 1)
     assert agg["error_rate"] == round(100 * 1 / 5, 2)

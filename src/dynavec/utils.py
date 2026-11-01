@@ -28,6 +28,7 @@ def decode_key_component(value: str) -> str:
     """Restore a component produced by :func:`encode_key_component`."""
     return value.replace("%23", KEY_SEPARATOR).replace("%25", "%")
 
+
 # botocore error codes that are safe to retry (throttling / transient).
 _RETRYABLE_CODES = frozenset(
     {
@@ -180,7 +181,6 @@ class TokenBucket:
         self.tokens = self.capacity
         self.last_time = time.monotonic()
         self._lock = threading.Lock()
-
 
     def _acquire_wait_time(self) -> float | None:
         with self._lock:

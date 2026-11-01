@@ -168,8 +168,7 @@ class SimpleGraph:
         state: GraphRunState | dict[str, Any] | None = None,
         return_state: Literal[False] = False,
         raise_on_failure: bool = True,
-    ) -> dict[str, Any]:
-        ...
+    ) -> dict[str, Any]: ...
 
     @overload
     def run(
@@ -178,8 +177,7 @@ class SimpleGraph:
         state: GraphRunState | dict[str, Any] | None = None,
         return_state: Literal[True] = ...,
         raise_on_failure: bool = True,
-    ) -> GraphRunState:
-        ...
+    ) -> GraphRunState: ...
 
     @overload
     def run(
@@ -188,8 +186,7 @@ class SimpleGraph:
         state: GraphRunState | dict[str, Any] | None = None,
         return_state: bool = False,
         raise_on_failure: bool = True,
-    ) -> dict[str, Any] | GraphRunState:
-        ...
+    ) -> dict[str, Any] | GraphRunState: ...
 
     def run(
         self,

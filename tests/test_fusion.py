@@ -13,6 +13,7 @@ def _make_result(doc_id: str, score: float) -> SearchResult:
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
+
 def _two_retriever_fixture():
     """Two queries, two retrievers — dense is better."""
     labeled = [
@@ -41,6 +42,7 @@ def _three_retriever_fixture():
 
 # ── score ───────────────────────────────────────────────────────────────────
 
+
 def test_score_returns_float():
     labeled, dense, sparse = _two_retriever_fixture()
     fitter = RRFWeightFitter(labeled, [dense, sparse])
@@ -49,6 +51,7 @@ def test_score_returns_float():
 
 
 # ── fit() returns FitResult ─────────────────────────────────────────────────
+
 
 @pytest.mark.parametrize("method", ["grid", "random"])
 def test_fit_returns_fit_result(method):
@@ -64,6 +67,7 @@ def test_fit_returns_fit_result(method):
 
 
 # ── grid search ─────────────────────────────────────────────────────────────
+
 
 def test_fit_grid_improves_over_equal_weights():
     labeled = [LabeledQuery(query="q1", relevant_ids={"doc_a"})]
@@ -91,6 +95,7 @@ def test_fit_grid_three_retrievers():
 
 # ── random search ───────────────────────────────────────────────────────────
 
+
 def test_fit_random_three_retrievers():
     labeled, r1, r2, r3 = _three_retriever_fixture()
     fitter = RRFWeightFitter(labeled, [r1, r2, r3])
@@ -101,6 +106,7 @@ def test_fit_random_three_retrievers():
 
 
 # ── bayesian fitting ────────────────────────────────────────────────────────
+
 
 def test_fit_bayesian_two_retrievers():
     """Bayesian fitting should return valid FitResult."""
@@ -127,6 +133,7 @@ def test_fit_bayesian_three_retrievers():
 
 
 # ── serialisation (save / load) ─────────────────────────────────────────────
+
 
 def test_save_load_roundtrip(tmp_path):
     """FitResult should survive a JSON roundtrip."""
@@ -166,6 +173,7 @@ def test_to_dict():
 
 # ── end-to-end: fit then save/load ──────────────────────────────────────────
 
+
 def test_fit_and_save_load(tmp_path):
     """Full workflow: fit → save → load → use weights."""
     labeled, dense, sparse = _two_retriever_fixture()
@@ -181,6 +189,7 @@ def test_fit_and_save_load(tmp_path):
 
 
 # ── error handling ──────────────────────────────────────────────────────────
+
 
 def test_empty_labeled_queries_raises():
     with pytest.raises(ValueError, match="labeled_queries"):

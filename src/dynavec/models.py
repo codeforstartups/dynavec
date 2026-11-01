@@ -25,9 +25,7 @@ class Document:
 
     def __post_init__(self) -> None:
         if self.text is None and self.vector is None:
-            raise ValueError(
-                f"Document {self.id!r} must have either 'text' or 'vector' set."
-            )
+            raise ValueError(f"Document {self.id!r} must have either 'text' or 'vector' set.")
         if self.ttl_seconds is not None and self.ttl_seconds <= 0:
             raise ValueError(
                 f"Document {self.id!r} ttl_seconds must be positive, got {self.ttl_seconds}."

@@ -12,6 +12,7 @@ from dynavec.eval.runner import EvalSummary
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _retrieval_summary(recall_10: float, ndcg_10: float, mrr: float = 0.8) -> RetrievalEvalSummary:
     return RetrievalEvalSummary(
         total_queries=10,
@@ -39,6 +40,7 @@ def _rag_summary(faithfulness: float, relevance: float = 0.85) -> EvalSummary:
 # ---------------------------------------------------------------------------
 # 1. record()
 # ---------------------------------------------------------------------------
+
 
 def test_record_retrieval_summary_returns_eval_run():
     store = EvalRunStore()
@@ -78,10 +80,11 @@ def test_record_respects_max_runs():
 # 2. filter()
 # ---------------------------------------------------------------------------
 
+
 def test_filter_by_single_tag():
     store = EvalRunStore()
     store.record(_retrieval_summary(0.80, 0.75), tags={"dataset": "squad", "model": "ada"})
-    store.record(_retrieval_summary(0.70, 0.65), tags={"dataset": "nq",    "model": "ada"})
+    store.record(_retrieval_summary(0.70, 0.65), tags={"dataset": "nq", "model": "ada"})
     store.record(_retrieval_summary(0.90, 0.85), tags={"dataset": "squad", "model": "v3"})
 
     squad_runs = store.filter(dataset="squad")
@@ -108,6 +111,7 @@ def test_filter_no_match_returns_empty():
 # ---------------------------------------------------------------------------
 # 3. trend()
 # ---------------------------------------------------------------------------
+
 
 def test_trend_recall_returns_sorted_time_series():
     store = EvalRunStore()
@@ -139,7 +143,7 @@ def test_trend_faithfulness_from_rag_summaries():
 def test_trend_with_tag_filter():
     store = EvalRunStore()
     store.record(_retrieval_summary(0.60, 0.55), tags={"model": "ada"}, ts=100.0)
-    store.record(_retrieval_summary(0.80, 0.75), tags={"model": "v3"},  ts=200.0)
+    store.record(_retrieval_summary(0.80, 0.75), tags={"model": "v3"}, ts=200.0)
     store.record(_retrieval_summary(0.65, 0.60), tags={"model": "ada"}, ts=300.0)
 
     series = store.trend("recall", k=10, model="ada")
@@ -162,6 +166,7 @@ def test_trend_skips_runs_without_metric():
 # ---------------------------------------------------------------------------
 # 4. compare()
 # ---------------------------------------------------------------------------
+
 
 def test_compare_two_runs_returns_both():
     store = EvalRunStore()
@@ -186,8 +191,10 @@ def test_compare_missing_id_raises():
 # 5. to_dict round-trip
 # ---------------------------------------------------------------------------
 
+
 def test_eval_run_to_dict_is_serialisable():
     import json
+
     store = EvalRunStore()
     run = store.record(_retrieval_summary(0.82, 0.78), tags={"dataset": "squad"})
     d = run.to_dict()

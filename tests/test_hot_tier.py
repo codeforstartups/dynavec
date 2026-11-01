@@ -69,7 +69,8 @@ class FakeS3(client_mod.S3VectorsStore):
     def get_vectors(self, keys, return_metadata=False):
         return {
             k: {"vector": self._store[k][0], "metadata": self._store[k][1]}
-            for k in keys if k in self._store
+            for k in keys
+            if k in self._store
         }
 
     def list_pages(self, return_data=False, return_metadata=False, page_size=None):
@@ -117,6 +118,7 @@ def _make(monkeypatch, **cfg_kw):
 
 # --------------------------------------------------------------------- matcher
 
+
 def test_matches_supported_operators():
     m = {"cat": "food", "year": 2026, "score": 0.4}
     assert matches(m, {"cat": "food"})
@@ -134,6 +136,7 @@ def test_matches_rejects_unsupported_operator():
 
 
 # ---------------------------------------------------------------- integration
+
 
 def test_disabled_by_default_uses_s3(monkeypatch):
     db = _make(monkeypatch)
@@ -161,10 +164,10 @@ def test_warm_serves_from_ram_without_touching_s3_or_ddb(monkeypatch):
     hits = db.search("apple", top_k=2)
 
     assert len(hits) == 2
-    assert hits[0].text is not None                 # text served from RAM
+    assert hits[0].text is not None  # text served from RAM
     assert hits[0].score >= hits[1].score
-    assert db._vectors.query_calls == s3_before     # no S3 Vectors query
-    assert db._docs.get_calls == ddb_before         # no DynamoDB hydration
+    assert db._vectors.query_calls == s3_before  # no S3 Vectors query
+    assert db._docs.get_calls == ddb_before  # no DynamoDB hydration
 
 
 def test_write_through_keeps_warmed_namespace_current(monkeypatch):
@@ -176,7 +179,7 @@ def test_write_through_keeps_warmed_namespace_current(monkeypatch):
     db.upsert([Document(id="2", text="apple tart")])
     hits = db.search("apple tart", top_k=2)
     assert {h.id for h in hits} == {"1", "2"}
-    assert db._vectors.query_calls == s3_before      # still served from RAM
+    assert db._vectors.query_calls == s3_before  # still served from RAM
 
 
 def test_filter_on_hot_path(monkeypatch):
@@ -191,7 +194,7 @@ def test_filter_on_hot_path(monkeypatch):
     s3_before = db._vectors.query_calls
     hits = db.search("apple", top_k=5, filter={"cat": "space"})
     assert {h.id for h in hits} == {"2"}
-    assert db._vectors.query_calls == s3_before      # filtered in RAM
+    assert db._vectors.query_calls == s3_before  # filtered in RAM
 
 
 def test_unsupported_filter_falls_back_to_s3(monkeypatch):
@@ -204,7 +207,7 @@ def test_unsupported_filter_falls_back_to_s3(monkeypatch):
     assert db._hot.search("default", [0.0] * 8, 5, {"n": {"$regex": "3"}}) is None
     s3_before = db._vectors.query_calls
     db.search("apple", top_k=5, filter={"n": {"$regex": "3"}})
-    assert db._vectors.query_calls == s3_before + 1   # fell back to S3
+    assert db._vectors.query_calls == s3_before + 1  # fell back to S3
 
 
 def test_delete_removes_from_hot_tier(monkeypatch):
@@ -215,7 +218,7 @@ def test_delete_removes_from_hot_tier(monkeypatch):
     s3_before = db._vectors.query_calls
     hits = db.search("apple", top_k=5)
     assert {h.id for h in hits} == {"2"}
-    assert db._vectors.query_calls == s3_before      # still hot, id 1 gone
+    assert db._vectors.query_calls == s3_before  # still hot, id 1 gone
 
 
 def test_capacity_cap_falls_back_to_s3(monkeypatch):
@@ -225,7 +228,7 @@ def test_capacity_cap_falls_back_to_s3(monkeypatch):
     assert loaded == 0
     assert not db._hot.is_authoritative("default")
     hits = db.search("doc", top_k=3)
-    assert db._vectors.query_calls >= 1              # fell back to S3
+    assert db._vectors.query_calls >= 1  # fell back to S3
     assert hits
 
 
@@ -266,7 +269,9 @@ def test_hot_stats(monkeypatch):
 
 def test_hot_tier_lru_eviction(monkeypatch):
     db = _make(monkeypatch, hot_tier=True, hot_tier_max_vectors=3, hot_tier_eviction="lru")
-    db.upsert([Document(id="a1", text="apple 1"), Document(id="a2", text="apple 2")], namespace="ns_a")
+    db.upsert(
+        [Document(id="a1", text="apple 1"), Document(id="a2", text="apple 2")], namespace="ns_a"
+    )
     db.upsert([Document(id="b1", text="banana 1")], namespace="ns_b")
     db.upsert([Document(id="c1", text="cherry 1")], namespace="ns_c")
 
@@ -292,7 +297,9 @@ def test_hot_tier_lru_eviction(monkeypatch):
 
 def test_hot_tier_fifo_eviction(monkeypatch):
     db = _make(monkeypatch, hot_tier=True, hot_tier_max_vectors=3, hot_tier_eviction="fifo")
-    db.upsert([Document(id="a1", text="apple 1"), Document(id="a2", text="apple 2")], namespace="ns_a")
+    db.upsert(
+        [Document(id="a1", text="apple 1"), Document(id="a2", text="apple 2")], namespace="ns_a"
+    )
     db.upsert([Document(id="b1", text="banana 1")], namespace="ns_b")
     db.upsert([Document(id="c1", text="cherry 1")], namespace="ns_c")
 
@@ -315,7 +322,9 @@ def test_hot_tier_fifo_eviction(monkeypatch):
 
 def test_hot_tier_none_eviction(monkeypatch):
     db = _make(monkeypatch, hot_tier=True, hot_tier_max_vectors=3, hot_tier_eviction="none")
-    db.upsert([Document(id="a1", text="apple 1"), Document(id="a2", text="apple 2")], namespace="ns_a")
+    db.upsert(
+        [Document(id="a1", text="apple 1"), Document(id="a2", text="apple 2")], namespace="ns_a"
+    )
     db.upsert([Document(id="b1", text="banana 1")], namespace="ns_b")
     db.upsert([Document(id="c1", text="cherry 1")], namespace="ns_c")
 
@@ -356,7 +365,9 @@ def test_hot_tier_insert_many_evicts_cold_namespace(monkeypatch):
     # Now upsert 2 new docs into ns_b. Total vectors for ns_b will be 3.
     # ns_a (1 vector) + ns_b (3 vectors) = 4 > 3.
     # ns_a should be evicted, and ns_b should remain authoritative with 3 resident vectors.
-    db.upsert([Document(id="b2", text="banana 2"), Document(id="b3", text="banana 3")], namespace="ns_b")
+    db.upsert(
+        [Document(id="b2", text="banana 2"), Document(id="b3", text="banana 3")], namespace="ns_b"
+    )
     assert not db._hot.is_authoritative("ns_a")
     assert db._hot.is_authoritative("ns_b")
     assert db.hot_stats()["resident_vectors"] == 3

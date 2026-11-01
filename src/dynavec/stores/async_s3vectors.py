@@ -24,15 +24,9 @@ class AsyncS3VectorsStore:
     def __init__(self, config: DynavecConfig, boto_session: Any) -> None:
         self._config = config
         self._session = boto_session
-        self._put_limiter = (
-            TokenBucket(config.put_rps)
-            if config.put_rps is not None
-            else None
-        )
+        self._put_limiter = TokenBucket(config.put_rps) if config.put_rps is not None else None
         self._query_limiter = (
-            TokenBucket(config.query_rps)
-            if config.query_rps is not None
-            else None
+            TokenBucket(config.query_rps) if config.query_rps is not None else None
         )
         self._client_context: Any | None = None
         self._client: Any | None = None
@@ -119,10 +113,7 @@ class AsyncS3VectorsStore:
             raise ValueError("max_workers must be greater than 0.")
 
         t0 = time.perf_counter()
-        chunks = [
-            vectors[i : i + _PUT_LIMIT]
-            for i in range(0, len(vectors), _PUT_LIMIT)
-        ]
+        chunks = [vectors[i : i + _PUT_LIMIT] for i in range(0, len(vectors), _PUT_LIMIT)]
 
         semaphore = asyncio.Semaphore(min(max_workers, len(chunks)))
 
@@ -141,10 +132,7 @@ class AsyncS3VectorsStore:
             async with semaphore:
                 await self._put_batch(payload)
 
-        tasks = [
-            asyncio.create_task(upload_chunk(chunk))
-            for chunk in chunks
-        ]
+        tasks = [asyncio.create_task(upload_chunk(chunk)) for chunk in chunks]
 
         try:
             await asyncio.gather(*tasks)
@@ -165,7 +153,6 @@ class AsyncS3VectorsStore:
             count=len(vectors),
             duration_ms=round((time.perf_counter() - t0) * 1000, 2),
         )
-
 
     def _query_kwargs(
         self,
@@ -215,8 +202,7 @@ class AsyncS3VectorsStore:
 
         if top_k > _MAX_TOP_K:
             raise ValueError(
-                f"top_k ({top_k}) exceeds Amazon S3 Vectors "
-                f"maximum limit of {_MAX_TOP_K}."
+                f"top_k ({top_k}) exceeds Amazon S3 Vectors maximum limit of {_MAX_TOP_K}."
             )
 
         results: list[dict[str, Any]] = []
@@ -263,15 +249,10 @@ class AsyncS3VectorsStore:
 
         if top_k > _MAX_TOP_K:
             raise ValueError(
-                f"top_k ({top_k}) exceeds Amazon S3 Vectors "
-                f"maximum limit of {_MAX_TOP_K}."
+                f"top_k ({top_k}) exceeds Amazon S3 Vectors maximum limit of {_MAX_TOP_K}."
             )
 
-        effective_page_size = (
-            page_size
-            if page_size is not None
-            else self._config.top_k_page_size
-        )
+        effective_page_size = page_size if page_size is not None else self._config.top_k_page_size
 
         if effective_page_size is not None and effective_page_size <= 0:
             raise ValueError("page_size must be a positive integer.")
@@ -324,10 +305,7 @@ class AsyncS3VectorsStore:
                 else:
                     buffer.extend(vectors)
 
-                    while (
-                        len(buffer) >= effective_page_size
-                        and yielded < top_k
-                    ):
+                    while len(buffer) >= effective_page_size and yielded < top_k:
                         chunk = buffer[:effective_page_size]
                         buffer = buffer[effective_page_size:]
 
@@ -345,14 +323,9 @@ class AsyncS3VectorsStore:
             if page.get("NextToken") is None:
                 break
 
-        if (
-            effective_page_size is not None
-            and buffer
-            and yielded < top_k
-        ):
+        if effective_page_size is not None and buffer and yielded < top_k:
             remaining = top_k - yielded
             yield buffer[:remaining]
-
 
     @async_retry()
     async def get_vectors(

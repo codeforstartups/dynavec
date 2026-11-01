@@ -29,17 +29,13 @@ class AnthropicChatModel(ChatModel):
         try:
             from anthropic import Anthropic, AsyncAnthropic
         except ImportError as exc:
-            raise MissingDependencyError(
-                "AnthropicChatModel", "anthropic", "anthropic"
-            ) from exc
+            raise MissingDependencyError("AnthropicChatModel", "anthropic", "anthropic") from exc
 
         self.model = model
         self._client = Anthropic(api_key=api_key)
         self._async_client = AsyncAnthropic(api_key=api_key)
 
-    def _convert_messages(
-        self, messages: list[Message]
-    ) -> tuple[str, list[dict[str, Any]]]:
+    def _convert_messages(self, messages: list[Message]) -> tuple[str, list[dict[str, Any]]]:
         system_prompt = ""
         anthropic_msgs = []
 

@@ -112,10 +112,7 @@ async def test_put_vectors_batches_at_service_limit():
     client = FakeS3Client()
     session = FakeSession(client)
 
-    vectors = [
-        (f"key-{i}", [0.1, 0.2, 0.3, 0.4], {"tag": "test"})
-        for i in range(1200)
-    ]
+    vectors = [(f"key-{i}", [0.1, 0.2, 0.3, 0.4], {"tag": "test"}) for i in range(1200)]
 
     async with AsyncS3VectorsStore(_config(), session) as store:
         await store.put_vectors(vectors)
@@ -146,10 +143,7 @@ async def test_put_vectors_runs_batches_concurrently(monkeypatch):
 
         monkeypatch.setattr(store, "_put_batch", fake_put_batch)
 
-        vectors = [
-            (f"key-{i}", [0.1, 0.2, 0.3, 0.4], {})
-            for i in range(1200)
-        ]
+        vectors = [(f"key-{i}", [0.1, 0.2, 0.3, 0.4], {}) for i in range(1200)]
 
         await store.put_vectors(vectors)
 
@@ -167,35 +161,23 @@ async def test_put_vectors_propagates_errors(monkeypatch):
         monkeypatch.setattr(store, "_put_batch", fail)
 
         with pytest.raises(RuntimeError, match="S3 API failure"):
-            await store.put_vectors(
-                [("key", [0.1, 0.2, 0.3, 0.4], {})]
-            )
+            await store.put_vectors([("key", [0.1, 0.2, 0.3, 0.4], {})])
 
 
 async def test_put_vectors_requires_open_store():
     store = AsyncS3VectorsStore(_config(), FakeSession(FakeS3Client()))
 
     with pytest.raises(RuntimeError, match="not open"):
-        await store.put_vectors(
-            [("key", [0.1, 0.2, 0.3, 0.4], {})]
-        )
+        await store.put_vectors([("key", [0.1, 0.2, 0.3, 0.4], {})])
 
 
 async def test_query_returns_paginated_results():
     pages = [
         {
-            "vectors": [
-                {"key": f"k{i}", "distance": i * 0.01}
-                for i in range(100)
-            ],
+            "vectors": [{"key": f"k{i}", "distance": i * 0.01} for i in range(100)],
             "NextToken": "token-1",
         },
-        {
-            "vectors": [
-                {"key": f"k{i}", "distance": i * 0.01}
-                for i in range(100, 150)
-            ]
-        },
+        {"vectors": [{"key": f"k{i}", "distance": i * 0.01} for i in range(100, 150)]},
     ]
 
     client = FakeS3Client(pages)
@@ -215,18 +197,10 @@ async def test_query_returns_paginated_results():
 async def test_query_truncates_at_top_k():
     pages = [
         {
-            "vectors": [
-                {"key": f"k{i}"}
-                for i in range(100)
-            ],
+            "vectors": [{"key": f"k{i}"} for i in range(100)],
             "NextToken": "token-1",
         },
-        {
-            "vectors": [
-                {"key": f"k{i}"}
-                for i in range(100, 200)
-            ]
-        },
+        {"vectors": [{"key": f"k{i}"} for i in range(100, 200)]},
     ]
 
     client = FakeS3Client(pages)
@@ -243,14 +217,7 @@ async def test_query_truncates_at_top_k():
 
 
 async def test_query_pages_respects_page_size():
-    pages = [
-        {
-            "vectors": [
-                {"key": f"k{i}"}
-                for i in range(25)
-            ]
-        }
-    ]
+    pages = [{"vectors": [{"key": f"k{i}"} for i in range(25)]}]
 
     client = FakeS3Client(pages)
     session = FakeSession(client)

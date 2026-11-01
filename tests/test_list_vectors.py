@@ -258,9 +258,7 @@ def test_list_vectors_hydrates_text_and_metadata():
     assert result.distance is None
     assert result.vector is None
     # hydrating means we do not pay for metadata on the S3 Vectors side
-    assert db._vectors.calls == [
-        dict(return_data=False, return_metadata=False, page_size=None)
-    ]
+    assert db._vectors.calls == [dict(return_data=False, return_metadata=False, page_size=None)]
 
 
 def test_list_vectors_without_hydration_uses_s3_metadata():
@@ -278,9 +276,7 @@ def test_list_vectors_without_hydration_uses_s3_metadata():
     assert docs.calls == []  # DynamoDB is never touched
     assert result.text == "mirrored"
     assert result.metadata == {"cat": "food"}  # internal tags stripped
-    assert db._vectors.calls == [
-        dict(return_data=False, return_metadata=True, page_size=None)
-    ]
+    assert db._vectors.calls == [dict(return_data=False, return_metadata=True, page_size=None)]
 
 
 def test_list_vectors_without_hydration_tolerates_missing_metadata():

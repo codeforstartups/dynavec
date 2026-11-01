@@ -69,9 +69,7 @@ class Supervisor:
 
         if self.router is not None:
             if not isinstance(self.agents, dict):
-                raise TypeError(
-                    "A router requires agents to be provided as a named dictionary."
-                )
+                raise TypeError("A router requires agents to be provided as a named dictionary.")
 
             selected = self.router(goal, state)
             agent_names = [selected] if isinstance(selected, str) else selected
@@ -86,10 +84,7 @@ class Supervisor:
                     f"Registered agents: {list(self.agents)}"
                 )
 
-            return [
-                self.agents[name].run(goal, state=state)
-                for name in agent_names
-            ]
+            return [self.agents[name].run(goal, state=state) for name in agent_names]
 
         agents = self.agents.values() if isinstance(self.agents, dict) else self.agents
         return [agent.run(goal, state=state) for agent in agents]
@@ -128,8 +123,7 @@ class Supervisor:
         agent = self.agents.get(request.target)
         if agent is None:
             raise ValueError(
-                f"Unknown handoff target {request.target!r}. "
-                f"Registered agents: {list(self.agents)}"
+                f"Unknown handoff target {request.target!r}. Registered agents: {list(self.agents)}"
             )
 
         return agent.run(request.goal, state=state)

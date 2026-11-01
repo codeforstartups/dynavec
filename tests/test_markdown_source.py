@@ -115,6 +115,7 @@ def test_root_must_be_an_existing_directory(tmp_path):
 def test_empty_directory_yields_no_records(tmp_path):
     assert list(MarkdownSource(tmp_path)) == []
 
+
 def test_front_matter_dates_normalize_to_iso_strings(tmp_path):
     (tmp_path / "notes.md").write_text(
         "---\ntitle: Research Notes\ndate: 2026-09-24\n---\nBody\n",
@@ -186,7 +187,6 @@ def test_front_matter_dates_survive_dynamodb_serialization(tmp_path):
     serialized = serializer.serialize(_to_dynamo(record.metadata))
 
     assert serialized["M"]["date"] == {"S": "2026-09-24"}
-
 
 
 def test_markdown_source_flows_through_ingest(tmp_path):

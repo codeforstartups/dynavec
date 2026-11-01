@@ -9,4 +9,3 @@ from __future__ import annotations
 from .server import client_from_env, create_mcp_server, main
 
 __all__ = ["client_from_env", "create_mcp_server", "main"]
-

@@ -397,9 +397,7 @@ def test_node_retry_transient_failure_success() -> None:
         return {"result": inputs["x"] * 10}
 
     policy = RetryPolicy(max_attempts=4, base_delay=0.001, max_delay=0.01)
-    flaky_node = CodeNode(
-        code_fn=flaky_fn, node_id="flaky_node", retry_policy=policy
-    )
+    flaky_node = CodeNode(code_fn=flaky_fn, node_id="flaky_node", retry_policy=policy)
 
     graph = SimpleGraph()
     graph.add_node(flaky_node)
@@ -420,9 +418,7 @@ def test_node_retry_exhaustion_failure() -> None:
         raise RuntimeError("Hard database failure")
 
     policy = RetryPolicy(max_attempts=3, base_delay=0.001, max_delay=0.01)
-    failing_node = CodeNode(
-        code_fn=always_failing_fn, node_id="fail_node", retry_policy=policy
-    )
+    failing_node = CodeNode(code_fn=always_failing_fn, node_id="fail_node", retry_policy=policy)
 
     graph = SimpleGraph()
     graph.add_node(failing_node)

@@ -11,6 +11,8 @@ Concurrency and scale: a native async client, a lexical/hybrid retrieval path,
 per-document TTL, a new framework connector, and a graph data-loss fix.
 
 ### Added
+
+- **MCP write tools** (#350) - Added opt-in `dynavec_remember`, `dynavec_get`, and `dynavec_forget` tools, enabled with `dynavec mcp --enable-write`.
 - **Native async client** (#270) — `AsyncDynavec` offers `async`/`await` `upsert` / `search` /
   `get` / `delete` built on non-blocking I/O, so agent and web workloads can fan out
   concurrent calls without thread pools.

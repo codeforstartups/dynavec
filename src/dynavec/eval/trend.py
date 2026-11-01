@@ -33,9 +33,9 @@ class EvalRun:
     """A recorded eval run with metadata tags and metric snapshots."""
 
     run_id: str
-    ts: float                          # epoch seconds when the run was recorded
-    tags: dict[str, str]               # e.g. {"dataset": "squad", "model": "ada-002"}
-    metrics: dict[str, Any]            # flat metric snapshot (recall@k, ndcg@k, faithfulness, …)
+    ts: float  # epoch seconds when the run was recorded
+    tags: dict[str, str]  # e.g. {"dataset": "squad", "model": "ada-002"}
+    metrics: dict[str, Any]  # flat metric snapshot (recall@k, ndcg@k, faithfulness, …)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -121,7 +121,7 @@ class EvalRunStore:
         )
         self._runs.append(run)
         if len(self._runs) > self._max_runs:
-            self._runs = self._runs[-self._max_runs:]
+            self._runs = self._runs[-self._max_runs :]
         return run
 
     # ------------------------------------------------------------------ filter

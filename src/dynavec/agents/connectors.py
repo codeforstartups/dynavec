@@ -52,6 +52,7 @@ def create_http_tool(
 
         if params:
             import urllib.parse
+
             query_string = urllib.parse.urlencode(params)
             sep = "&" if "?" in full_url else "?"
             full_url = f"{full_url}{sep}{query_string}"
@@ -112,13 +113,14 @@ def create_python_code_tool(
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
                 # We use a restricted globals dict to avoid polluting the main namespace
                 exec_globals: dict[str, Any] = {"__builtins__": __builtins__}
-                
+
                 import ast
+
                 # Parse to check if the last statement is an expression
                 tree = ast.parse(code)
                 if not tree.body:
                     return ""
-                    
+
                 last_node = tree.body[-1]
                 if isinstance(last_node, ast.Expr):
                     # Compile all but the last node as statements
@@ -131,10 +133,10 @@ def create_python_code_tool(
                         print(repr(result))
                 else:
                     exec(code, exec_globals)
-                    
+
         except Exception:
             traceback.print_exc(file=out)
-            
+
         return out.getvalue()
 
     return python_repl
@@ -145,13 +147,13 @@ def mcp_tools_from_session(
     tags: list[str] | None = None,
 ) -> list[AgentTool]:
     """Extract and adapt MCP tools from an MCP Client Session.
-    
+
     Args:
         session: An MCP Client session exposing `list_tools()` and `call_tool(name, arguments)`.
         tags: Optional tags to apply to the generated tools.
     """
     listing = session.list_tools()
-    
+
     # Handle async listing if needed (e.g. if list_tools is a coroutine)
     if hasattr(listing, "__await__"):
         raise ValueError(
@@ -161,15 +163,21 @@ def mcp_tools_from_session(
 
     tools = getattr(listing, "tools", listing)
     agent_tools = []
-    
+
     for t in tools:
         name = getattr(t, "name", None) or (t.get("name") if isinstance(t, dict) else None)
         if not name:
             continue
-            
-        description = getattr(t, "description", None) or (t.get("description") if isinstance(t, dict) else "")
-        schema = getattr(t, "inputSchema", None) or getattr(t, "input_schema", None) or (t.get("inputSchema") if isinstance(t, dict) else None)
-        
+
+        description = getattr(t, "description", None) or (
+            t.get("description") if isinstance(t, dict) else ""
+        )
+        schema = (
+            getattr(t, "inputSchema", None)
+            or getattr(t, "input_schema", None)
+            or (t.get("inputSchema") if isinstance(t, dict) else None)
+        )
+
         # We create a closure to bind the session and name
         def _make_caller(tool_name: str) -> Callable[..., str]:
             def call_mcp_tool(**kwargs: Any) -> str:
@@ -180,17 +188,20 @@ def mcp_tools_from_session(
                 if isinstance(content, (list, tuple)):
                     texts = []
                     for p in content:
-                        txt = getattr(p, "text", None) or (p.get("text") if isinstance(p, dict) else None)
+                        txt = getattr(p, "text", None) or (
+                            p.get("text") if isinstance(p, dict) else None
+                        )
                         if txt:
                             texts.append(txt)
                     return "\n\n".join(texts)
                 return str(result)
+
             return call_mcp_tool
-            
+
         fn = _make_caller(name)
         fn.__name__ = name
         fn.__doc__ = description
-        
+
         agent_tool = AgentTool(
             fn=fn,
             name=name,
@@ -199,7 +210,7 @@ def mcp_tools_from_session(
             tags=tags,
         )
         agent_tools.append(agent_tool)
-        
+
     return agent_tools
 
 
@@ -211,36 +222,45 @@ async def mcp_tools_from_session_async(
     listing = await session.list_tools()
     tools = getattr(listing, "tools", listing)
     agent_tools = []
-    
+
     for t in tools:
         name = getattr(t, "name", None) or (t.get("name") if isinstance(t, dict) else None)
         if not name:
             continue
-            
-        description = getattr(t, "description", None) or (t.get("description") if isinstance(t, dict) else "")
-        schema = getattr(t, "inputSchema", None) or getattr(t, "input_schema", None) or (t.get("inputSchema") if isinstance(t, dict) else None)
-        
+
+        description = getattr(t, "description", None) or (
+            t.get("description") if isinstance(t, dict) else ""
+        )
+        schema = (
+            getattr(t, "inputSchema", None)
+            or getattr(t, "input_schema", None)
+            or (t.get("inputSchema") if isinstance(t, dict) else None)
+        )
+
         def _make_async_caller(tool_name: str) -> Callable[..., Any]:
             async def acall_mcp_tool(**kwargs: Any) -> str:
                 result = await session.call_tool(tool_name, arguments=kwargs)
                 content = getattr(result, "content", result)
                 is_error = getattr(result, "isError", False)
                 prefix = "Error: " if is_error else ""
-                
+
                 if isinstance(content, (list, tuple)):
                     texts = []
                     for p in content:
-                        txt = getattr(p, "text", None) or (p.get("text") if isinstance(p, dict) else None)
+                        txt = getattr(p, "text", None) or (
+                            p.get("text") if isinstance(p, dict) else None
+                        )
                         if txt:
                             texts.append(txt)
                     return prefix + "\n\n".join(texts)
                 return prefix + str(result)
+
             return acall_mcp_tool
-            
+
         fn = _make_async_caller(name)
         fn.__name__ = name
         fn.__doc__ = description
-        
+
         agent_tool = AgentTool(
             fn=fn,
             name=name,
@@ -249,5 +269,5 @@ async def mcp_tools_from_session_async(
             tags=tags,
         )
         agent_tools.append(agent_tool)
-        
+
     return agent_tools

@@ -14,9 +14,7 @@ def generate_dataset(n_vectors=10_000, dim=32, seed=0):
     centers = rng.normal(size=(8, dim)).astype(np.float32)
     assign = rng.integers(0, 8, size=n_vectors)
 
-    x = centers[assign] + 0.05 * rng.normal(
-        size=(n_vectors, dim)
-    ).astype(np.float32)
+    x = centers[assign] + 0.05 * rng.normal(size=(n_vectors, dim)).astype(np.float32)
 
     return x.astype(np.float32)
 
@@ -94,15 +92,11 @@ def benchmark():
             scalar_codes,
         )
 
-        scalar_reconstruction_error = scalar.reconstruction_error(
-            vectors
-        )
+        scalar_reconstruction_error = scalar.reconstruction_error(vectors)
 
         scalar_bytes_per_vector = scalar.code_size_bytes
         scalar_total_bytes = scalar_codes.nbytes
-        scalar_compression = (
-            raw_bytes_per_vector / scalar_bytes_per_vector
-        )
+        scalar_compression = raw_bytes_per_vector / scalar_bytes_per_vector
 
         # ---------------------------------------------------------
         # Product Quantizer
@@ -130,15 +124,11 @@ def benchmark():
             pq_codes,
         )
 
-        pq_reconstruction_error = pq.reconstruction_error(
-            vectors
-        )
+        pq_reconstruction_error = pq.reconstruction_error(vectors)
 
         pq_bytes_per_vector = pq.code_size_bytes
         pq_total_bytes = pq_codes.nbytes
-        pq_compression = (
-            raw_bytes_per_vector / pq_bytes_per_vector
-        )
+        pq_compression = raw_bytes_per_vector / pq_bytes_per_vector
 
         # ---------------------------------------------------------
         # Results
@@ -148,10 +138,7 @@ def benchmark():
         print(f"  Fit time:                  {scalar_fit_time:.4f} sec")
         print(f"  Encode time:               {scalar_encode_time:.4f} sec")
         print(f"  Decode time:               {scalar_decode_time:.4f} sec")
-        print(
-            f"  Reconstruction error:     "
-            f"{scalar_reconstruction_error:.8f}"
-        )
+        print(f"  Reconstruction error:     {scalar_reconstruction_error:.8f}")
         print(f"  Bytes/vector:              {scalar_bytes_per_vector}")
         print(f"  Total encoded size:        {scalar_total_bytes / 1024:.2f} KB")
         print(f"  Compression:               {scalar_compression:.2f}x")
@@ -161,32 +148,20 @@ def benchmark():
         print(f"  Fit time:                  {pq_fit_time:.4f} sec")
         print(f"  Encode time:               {pq_encode_time:.4f} sec")
         print(f"  Decode time:               {pq_decode_time:.4f} sec")
-        print(
-            f"  Reconstruction error:     "
-            f"{pq_reconstruction_error:.8f}"
-        )
+        print(f"  Reconstruction error:     {pq_reconstruction_error:.8f}")
         print(f"  Bytes/vector:              {pq_bytes_per_vector}")
         print(f"  Total encoded size:        {pq_total_bytes / 1024:.2f} KB")
         print(f"  Compression:               {pq_compression:.2f}x")
 
         print()
         print("Comparison")
-        print(
-            f"  Scalar/PQ compression:     "
-            f"{scalar_compression / pq_compression:.2f}x"
-        )
+        print(f"  Scalar/PQ compression:     {scalar_compression / pq_compression:.2f}x")
 
         if scalar_encode_time > 0:
-            print(
-                f"  PQ encode / Scalar encode: "
-                f"{pq_encode_time / scalar_encode_time:.2f}x"
-            )
+            print(f"  PQ encode / Scalar encode: {pq_encode_time / scalar_encode_time:.2f}x")
 
         if scalar_decode_time > 0:
-            print(
-                f"  PQ decode / Scalar decode: "
-                f"{pq_decode_time / scalar_decode_time:.2f}x"
-            )
+            print(f"  PQ decode / Scalar decode: {pq_decode_time / scalar_decode_time:.2f}x")
 
         print()
         print("=" * 80)

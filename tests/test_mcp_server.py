@@ -111,7 +111,9 @@ def test_client_from_env_embedder_resolution(monkeypatch):
     monkeypatch.setattr(gemini_mod, "GeminiEmbedder", lambda **kw: MagicMock(dimension=768))
     monkeypatch.setattr(voyage_mod, "VoyageEmbedder", lambda **kw: MagicMock(dimension=1024))
     monkeypatch.setattr(mistral_mod, "MistralEmbedder", lambda **kw: MagicMock(dimension=1024))
-    monkeypatch.setattr(st_mod, "SentenceTransformerEmbedder", lambda **kw: MagicMock(dimension=384))
+    monkeypatch.setattr(
+        st_mod, "SentenceTransformerEmbedder", lambda **kw: MagicMock(dimension=384)
+    )
 
     base_env = {
         "DYNAVEC_BUCKET": "b",
@@ -175,7 +177,7 @@ def test_mcp_server_search_tool(fake_mcp):
         rescore="dot",
         rerank="mmr",
     )
-    assert "[1] id: doc-1 (score: 0.9500 | metadata: {\"topic\": \"greeting\"})" in result_text
+    assert '[1] id: doc-1 (score: 0.9500 | metadata: {"topic": "greeting"})' in result_text
     assert "Hello world" in result_text
     assert "[2] id: doc-2 (score: 0.8200)" in result_text
 
@@ -197,7 +199,9 @@ def test_mcp_server_search_tool_empty_and_error(fake_mcp):
 def test_mcp_server_graph_search_tool(fake_mcp):
     mock_db = MagicMock()
     mock_db.graph_search.return_value = [
-        SearchResult(id="doc-graph", score=0.91, text="Graph entity content", metadata={"entity": "acme"}),
+        SearchResult(
+            id="doc-graph", score=0.91, text="Graph entity content", metadata={"entity": "acme"}
+        ),
     ]
 
     mcp = create_mcp_server(mock_db)
@@ -225,7 +229,163 @@ def test_mcp_server_graph_search_tool(fake_mcp):
 
 def test_cli_mcp_subcommand_parser():
     parser = _parser()
-    args = parser.parse_args(["mcp", "--transport", "sse", "--port", "9000"])
+
+    args = parser.parse_args(
+        [
+            "mcp",
+            "--transport",
+            "sse",
+            "--port",
+            "9000",
+            "--enable-write",
+        ]
+    )
+
     assert args.command == "mcp"
     assert args.transport == "sse"
     assert args.port == 9000
+    assert args.enable_write is True
+
+    # Verify write access is disabled by default.
+    default_args = parser.parse_args(["mcp"])
+
+    assert default_args.enable_write is False
+
+
+def test_write_tools_hidden_by_default(fake_mcp):
+    mock_db = MagicMock()
+
+    mcp = create_mcp_server(db=mock_db)
+
+    assert "dynavec_search" in mcp.tools
+    assert "dynavec_graph_search" in mcp.tools
+
+    assert "dynavec_remember" not in mcp.tools
+    assert "dynavec_get" not in mcp.tools
+    assert "dynavec_forget" not in mcp.tools
+
+
+def test_write_tools_registered_with_enable_write(fake_mcp):
+    mock_db = MagicMock()
+
+    mcp = create_mcp_server(
+        db=mock_db,
+        enable_write=True,
+    )
+
+    assert "dynavec_search" in mcp.tools
+    assert "dynavec_graph_search" in mcp.tools
+
+    assert "dynavec_remember" in mcp.tools
+    assert "dynavec_get" in mcp.tools
+    assert "dynavec_forget" in mcp.tools
+
+
+def test_remember_calls_upsert_with_metadata_and_ttl(fake_mcp):
+    mock_db = MagicMock()
+
+    mcp = create_mcp_server(
+        db=mock_db,
+        enable_write=True,
+    )
+
+    remember_fn = mcp.tools["dynavec_remember"].fn
+
+    result = remember_fn(
+        text="Remember this important information",
+        doc_id="memory-001",
+        namespace="test-namespace",
+        metadata_json='{"category": "notes", "source": "test"}',
+        ttl_seconds=3600,
+    )
+
+    mock_db.upsert.assert_called_once()
+
+    args, kwargs = mock_db.upsert.call_args
+    documents = args[0]
+
+    assert len(documents) == 1
+
+    document = documents[0]
+    assert document.id == "memory-001"
+    assert document.text == "Remember this important information"
+    assert document.metadata == {
+        "category": "notes",
+        "source": "test",
+    }
+    assert document.ttl_seconds == 3600
+
+    assert kwargs["namespace"] == "test-namespace"
+    assert kwargs["ttl_seconds"] == 3600
+
+    assert "Successfully remembered" in result
+
+
+def test_remember_rejects_bad_metadata_json(fake_mcp):
+    mock_db = MagicMock()
+
+    mcp = create_mcp_server(
+        db=mock_db,
+        enable_write=True,
+    )
+
+    remember_fn = mcp.tools["dynavec_remember"].fn
+
+    result = remember_fn(
+        text="Test memory",
+        metadata_json='{"category":',
+    )
+
+    assert "Error parsing metadata_json" in result
+    mock_db.upsert.assert_not_called()
+
+
+def test_get_and_forget_forward_ids_and_namespace(fake_mcp):
+    mock_db = MagicMock()
+
+    mock_db.get.return_value = [
+        SearchResult(
+            id="doc-1",
+            score=1.0,
+            text="First document",
+            metadata={"type": "test"},
+        ),
+        SearchResult(
+            id="doc-2",
+            score=0.9,
+            text="Second document",
+            metadata={"type": "test"},
+        ),
+    ]
+
+    mcp = create_mcp_server(
+        db=mock_db,
+        enable_write=True,
+    )
+
+    get_fn = mcp.tools["dynavec_get"].fn
+    forget_fn = mcp.tools["dynavec_forget"].fn
+
+    ids = ["doc-1", "doc-2"]
+    namespace = "test-namespace"
+
+    get_result = get_fn(
+        ids=ids,
+        namespace=namespace,
+    )
+
+    mock_db.get.assert_called_once_with(ids, namespace)
+
+    assert "doc-1" in get_result
+    assert "First document" in get_result
+    assert "doc-2" in get_result
+    assert "Second document" in get_result
+
+    forget_result = forget_fn(
+        ids=ids,
+        namespace=namespace,
+    )
+
+    mock_db.delete.assert_called_once_with(ids, namespace)
+
+    assert "Successfully deleted 2 document(s)" in forget_result

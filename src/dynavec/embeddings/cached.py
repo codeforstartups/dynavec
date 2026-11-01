@@ -133,7 +133,4 @@ class CachedEmbedder(Embedder):
         return self._inner
 
     def __repr__(self) -> str:
-        return (
-            f"CachedEmbedder(inner={self._inner!r}, "
-            f"model_key={self._model_key!r})"
-        )
+        return f"CachedEmbedder(inner={self._inner!r}, model_key={self._model_key!r})"

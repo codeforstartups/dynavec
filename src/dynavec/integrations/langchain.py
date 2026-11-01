@@ -70,10 +70,7 @@ class DynavecVectorStore(VectorStore):
         texts = list(texts)
         ids = ids or [str(uuid.uuid4()) for _ in texts]
         metadatas = metadatas or [{} for _ in texts]
-        docs = [
-            DVDocument(id=i, text=t, metadata=m)
-            for i, t, m in zip(ids, texts, metadatas)
-        ]
+        docs = [DVDocument(id=i, text=t, metadata=m) for i, t, m in zip(ids, texts, metadatas)]
         self._client.upsert(docs, namespace=self._namespace)
         return ids
 
@@ -86,11 +83,11 @@ class DynavecVectorStore(VectorStore):
     def similarity_search(
         self, query: str, k: int = 4, filter: dict[str, Any] | None = None, **kwargs: Any
     ) -> list[LCDocument]:
-        results = self._client.search(
-            query, top_k=k, namespace=self._namespace, filter=filter
-        )
+        results = self._client.search(query, top_k=k, namespace=self._namespace, filter=filter)
         return [
-            LCDocument(page_content=r.text or "", metadata={**r.metadata, "id": r.id, "score": r.score})
+            LCDocument(
+                page_content=r.text or "", metadata={**r.metadata, "id": r.id, "score": r.score}
+            )
             for r in results
         ]
 
@@ -119,9 +116,7 @@ class DynavecVectorStore(VectorStore):
     def similarity_search_with_score(
         self, query: str, k: int = 4, filter: dict[str, Any] | None = None, **kwargs: Any
     ) -> list[tuple[LCDocument, float]]:
-        results = self._client.search(
-            query, top_k=k, namespace=self._namespace, filter=filter
-        )
+        results = self._client.search(query, top_k=k, namespace=self._namespace, filter=filter)
         return [
             (
                 LCDocument(page_content=r.text or "", metadata={**r.metadata, "id": r.id}),
@@ -173,7 +168,9 @@ class DynavecVectorStore(VectorStore):
             mmr_lambda=lambda_mult,
         )
         return [
-            LCDocument(page_content=r.text or "", metadata={**r.metadata, "id": r.id, "score": r.score})
+            LCDocument(
+                page_content=r.text or "", metadata={**r.metadata, "id": r.id, "score": r.score}
+            )
             for r in results
         ]
 

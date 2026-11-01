@@ -124,8 +124,7 @@ class AsyncDynamoDBStore:
         self,
         namespace: str,
         items: Sequence[
-            tuple[str, str | None, Metadata]
-            | tuple[str, str | None, Metadata, int | None]
+            tuple[str, str | None, Metadata] | tuple[str, str | None, Metadata, int | None]
         ],
     ) -> None:
         """Upsert document tuples using DynamoDB's async batch writer."""
@@ -195,10 +194,7 @@ class AsyncDynamoDBStore:
 
         ddb = self._require_ddb()
 
-        keys = [
-            {"pk": self._pk(namespace, doc_id)}
-            for doc_id in ids
-        ]
+        keys = [{"pk": self._pk(namespace, doc_id)} for doc_id in ids]
 
         out: dict[str, dict[str, Any]] = {}
 
@@ -222,9 +218,7 @@ class AsyncDynamoDBStore:
                 ):
                     entry: dict[str, Any] = {
                         "text": _read_text(item),
-                        "metadata": _from_dynamo(
-                            item.get("metadata", {})
-                        ),
+                        "metadata": _from_dynamo(item.get("metadata", {})),
                     }
 
                     ttl_attr = self._config.dynamodb_ttl_attribute
@@ -233,15 +227,9 @@ class AsyncDynamoDBStore:
 
                     out[item["id"]] = entry
 
-                unprocessed = (
-                    response.get("UnprocessedKeys") or {}
-                )
+                unprocessed = response.get("UnprocessedKeys") or {}
 
-                request = (
-                    unprocessed
-                    if unprocessed
-                    else None
-                )
+                request = unprocessed if unprocessed else None
 
         log_store_event(
             self._logger,

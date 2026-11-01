@@ -229,5 +229,3 @@ def plot_retrieval_metrics(
     plt.close(fig)
 
     return output_path
-
-

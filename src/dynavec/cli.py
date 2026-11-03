@@ -86,6 +86,51 @@ def _parser() -> argparse.ArgumentParser:
 		default=8000,
 		help="Port for SSE transport (default: 8000)",
 	)
+
+	eval_cmd = subparsers.add_parser("eval", help="evaluation regression gating and trend commands")
+	eval_sub = eval_cmd.add_subparsers(dest="eval_command")
+	eval_check = eval_sub.add_parser(
+		"check", help="compare eval run against baseline and fail on regression"
+	)
+	eval_check.add_argument("--current", "-c", required=True, help="path to current eval run JSON file")
+	eval_check.add_argument(
+		"--baseline", "-b", required=False, help="path to baseline eval run JSON file"
+	)
+	eval_check.add_argument(
+		"--max-drop",
+		type=float,
+		default=0.05,
+		help="max allowed relative drop (default: 0.05)",
+	)
+	eval_check.add_argument(
+		"--threshold",
+		action="append",
+		dest="thresholds",
+		metavar="METRIC=VAL",
+		help="per-metric threshold override, e.g. --threshold recall@10=0.02 (repeatable)",
+	)
+	eval_check.add_argument(
+		"--absolute",
+		action="store_true",
+		help="use absolute drop threshold instead of relative",
+	)
+	eval_check.add_argument(
+		"--store",
+		help="path to EvalRunStore JSON file to record/persist runs",
+	)
+	eval_check.add_argument(
+		"--tag",
+		action="append",
+		dest="tags",
+		metavar="KEY=VALUE",
+		help="metadata tags to attach to the recorded run (repeatable)",
+	)
+	eval_check.add_argument("--json", action="store_true", help="output report as JSON")
+	eval_check.add_argument(
+		"--allow-missing-baseline",
+		action="store_true",
+		help="succeed with warning if baseline file does not exist",
+	)
 	return parser
 
 
@@ -280,6 +325,99 @@ def _check_dynamodb(session: Any, table: str, region: str | None) -> str:
 	return "Accessible"
 
 
+def _eval_check(args: argparse.Namespace) -> int:
+	import json
+	from pathlib import Path
+
+	from .eval.gate import check_regression
+	from .eval.trend import EvalRun, EvalRunStore
+
+	current_path = Path(args.current)
+	if not current_path.exists():
+		print(f"[FAIL] Current eval file not found: {args.current}", file=sys.stderr)
+		return 2
+
+	tag_dict: dict[str, str] = {}
+	if args.tags:
+		for item in args.tags:
+			if "=" in item:
+				k, v = item.split("=", 1)
+				tag_dict[k.strip()] = v.strip()
+
+	if args.store:
+		try:
+			import time
+			import uuid
+
+			from .eval.gate import _extract_metrics
+
+			store = EvalRunStore.load_json(args.store)
+			curr_metrics, c_run_id = _extract_metrics(current_path)
+			run_id = c_run_id or uuid.uuid4().hex[:12]
+			run = EvalRun(
+				run_id=run_id,
+				ts=time.time(),
+				tags=tag_dict,
+				metrics=curr_metrics,
+			)
+			store._runs.append(run)
+			store.save_json(args.store)
+		except Exception as exc:
+			print(f"[WARN] Failed to update trend store at {args.store}: {exc}", file=sys.stderr)
+
+	if not args.baseline:
+		if args.allow_missing_baseline:
+			print(
+				"[WARN] No baseline provided and --allow-missing-baseline set. Skipping regression check."
+			)
+			return 0
+		print(
+			"[FAIL] Missing required --baseline argument (or pass --allow-missing-baseline).",
+			file=sys.stderr,
+		)
+		return 2
+
+	baseline_path = Path(args.baseline)
+	if not baseline_path.exists():
+		if args.allow_missing_baseline:
+			print(
+				f"[WARN] Baseline file not found: {args.baseline}. Bootstrapping mode: skipping regression check."
+			)
+			return 0
+		print(f"[FAIL] Baseline file not found: {args.baseline}", file=sys.stderr)
+		return 2
+
+	metric_thresholds: dict[str, float] = {}
+	if args.thresholds:
+		for item in args.thresholds:
+			if "=" in item:
+				m, val = item.split("=", 1)
+				try:
+					metric_thresholds[m.strip()] = float(val.strip())
+				except ValueError:
+					print(f"[FAIL] Invalid threshold value for {m}: {val}", file=sys.stderr)
+					return 2
+
+	try:
+		report = check_regression(
+			current=current_path,
+			baseline=baseline_path,
+			max_drop=args.max_drop,
+			metric_thresholds=metric_thresholds,
+			relative=not args.absolute,
+		)
+	except Exception as exc:
+		print(f"[FAIL] Regression check error: {exc}", file=sys.stderr)
+		return 2
+
+	if args.json:
+		print(json.dumps(report.to_dict(), indent=2))
+	else:
+		print(report.summary_table())
+
+	return 0 if report.passed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
 	args = _parser().parse_args(argv)
 	if args.command == "version":
@@ -300,6 +438,11 @@ def main(argv: list[str] | None = None) -> int:
 			server.run(transport="sse")
 		else:
 			server.run(transport="stdio")
+		return 0
+	if args.command == "eval":
+		if getattr(args, "eval_command", None) == "check":
+			return _eval_check(args)
+		_parser().parse_args(["eval", "--help"])
 		return 0
 	_parser().print_help()
 	return 0

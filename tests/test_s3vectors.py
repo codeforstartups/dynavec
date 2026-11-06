@@ -1,7 +1,10 @@
 import time
+from contextlib import closing
 from unittest.mock import MagicMock
 
+import boto3
 import pytest
+from botocore.stub import Stubber
 
 from dynavec.config import DynavecConfig
 from dynavec.stores.s3vectors import _MAX_TOP_K, S3VectorsStore
@@ -49,34 +52,50 @@ def _store_with_pages(pages, config=None):
     store._put_limiter = None
     store._query_limiter = None
 
-    paginator = MagicMock()
-    paginator.paginate.return_value = pages
-    store._client.get_paginator.return_value = paginator
-    return store, paginator
+    store._client.query_vectors.side_effect = pages or [{"vectors": []}]
+    return store, store._client.query_vectors
 
 
 def test_query_single_page():
 	page = [{"key": f"k{i}", "distance": 0.01 * i} for i in range(50)]
-	store, paginator = _store_with_pages([{"vectors": page}])
+	store, query = _store_with_pages([{"vectors": page}])
 
 	results = store.query(query_vector=[0.1, 0.2, 0.3, 0.4], top_k=50)
 
 	assert len(results) == 50
 	assert results[0]["key"] == "k0"
 	assert results[-1]["key"] == "k49"
-	store._client.get_paginator.assert_called_once_with("query_vectors")
-	assert paginator.paginate.call_args.kwargs["PaginationConfig"] == {"MaxItems": 50}
-	assert paginator.paginate.call_args.kwargs["topK"] == 50
+	store._client.get_paginator.assert_not_called()
+	assert query.call_args.kwargs["topK"] == 50
+	assert "nextToken" not in query.call_args.kwargs
+
+
+def test_query_with_real_sdk_client():
+    session = boto3.Session(
+        aws_access_key_id="testing", aws_secret_access_key="testing", region_name="us-east-1"
+    )
+    store = S3VectorsStore(_config(), session)
+    vectors = [{"key": "doc-1", "distance": 0.25}]
+
+    with closing(store._client), Stubber(store._client) as stubber:
+        stubber.add_response("query_vectors", {"vectors": vectors}, {
+            "vectorBucketName": "test-bucket", "indexName": "test-index", "topK": 1,
+            "queryVector": {"float32": [1.0, 2.0, 3.0, 4.0]},
+            "returnMetadata": True, "returnDistance": True,
+        })
+
+        assert store.query([1.0, 2.0, 3.0, 4.0], top_k=1) == vectors
+        stubber.assert_no_pending_responses()
 
 def test_query_multi_page_pagination():
     pages = [
         {
             "vectors": [{"key": f"k{i}"} for i in range(100)],
-            "NextToken": "token-1",
+            "nextToken": "token-1",
         },
         {
             "vectors": [{"key": f"k{i}"} for i in range(100, 200)],
-            "NextToken": "token-2",
+            "nextToken": "token-2",
         },
         {
             "vectors": [{"key": f"k{i}"} for i in range(200, 250)],
@@ -97,6 +116,9 @@ def test_query_multi_page_pagination():
         "k248",
         "k249",
     ]
+    calls = store._client.query_vectors.call_args_list
+    assert "nextToken" not in calls[0].kwargs
+    assert [call.kwargs["nextToken"] for call in calls[1:]] == ["token-1", "token-2"]
 
 def test_query_fewer_results_than_top_k():
 	store, _ = _store_with_pages([{"vectors": [{"key": "k0"}, {"key": "k1"}]}])
@@ -111,7 +133,7 @@ def test_query_zero_or_negative_top_k():
 
 	assert store.query(query_vector=[0.1, 0.2, 0.3, 0.4], top_k=0) == []
 	assert store.query(query_vector=[0.1, 0.2, 0.3, 0.4], top_k=-5) == []
-	store._client.get_paginator.assert_not_called()
+	store._client.query_vectors.assert_not_called()
 
 
 def test_query_exceeding_service_limit():
@@ -200,7 +222,7 @@ def test_query_truncation_at_top_k():
     pages = [
         {
             "vectors": [{"key": f"k{i}"} for i in range(100)],
-            "NextToken": "token-1",
+            "nextToken": "token-1",
         },
         {
             "vectors": [{"key": f"k{i}"} for i in range(100, 200)],
@@ -222,7 +244,7 @@ def test_query_pages_raw_chunks():
     pages = [
         {
             "vectors": [{"key": f"k{i}"} for i in range(100)],
-            "NextToken": "token-1",
+            "nextToken": "token-1",
         },
         {
             "vectors": [{"key": f"k{i}"} for i in range(100, 150)],
@@ -273,15 +295,52 @@ def test_query_pages_uses_config_top_k_page_size():
     assert [len(p) for p in result_pages] == [10, 10, 5]
 
 
+@pytest.mark.parametrize("page_size", [None, 2])
+def test_query_pages_continues_after_empty_page_with_next_token(page_size):
+    store, _ = _store_with_pages([
+        {"vectors": [{"key": "k0"}], "nextToken": "token-1"},
+        {"vectors": [], "nextToken": "token-2"},
+        {"vectors": [{"key": "k1"}, {"key": "k2"}]},
+    ])
+    limiter = MagicMock()
+    store._query_limiter = limiter
+
+    pages = list(store.query_pages([0.1, 0.2, 0.3, 0.4], top_k=5, page_size=page_size))
+
+    assert [hit["key"] for page in pages for hit in page] == ["k0", "k1", "k2"]
+    assert [len(page) for page in pages] == ([1, 2] if page_size is None else [2, 1])
+    assert limiter.acquire.call_count == 3
+
+
+def test_query_pages_stops_at_top_k_with_large_page_size():
+    store, query = _store_with_pages([
+        {"vectors": [{"key": "k0"}], "nextToken": "token-1"},
+        {"vectors": [{"key": "k1"}, {"key": "k2"}], "nextToken": "unused"},
+    ])
+
+    pages = list(store.query_pages(
+        [1.0, 2.0, 3.0, 4.0], top_k=2, page_size=100,
+        filter={"kind": "test"}, return_metadata=False, return_distance=False,
+    ))
+
+    assert pages == [[{"key": "k0"}, {"key": "k1"}]]
+    assert query.call_count == 2
+    for call in query.call_args_list:
+        assert call.kwargs["topK"] == 2
+        assert call.kwargs["filter"] == {"kind": "test"}
+        assert call.kwargs["returnMetadata"] is False
+        assert call.kwargs["returnDistance"] is False
+
+
 def test_query_pages_uses_rate_limiter_per_page():
     pages = [
         {
             "vectors": [{"key": "k0"}],
-            "NextToken": "token-1",
+            "nextToken": "token-1",
         },
         {
             "vectors": [{"key": "k1"}],
-            "NextToken": "token-2",
+            "nextToken": "token-2",
         },
         {
             "vectors": [{"key": "k2"}],

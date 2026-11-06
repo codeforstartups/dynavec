@@ -130,10 +130,9 @@ def test_dynamodb_store_structured_logging(caplog):
 def test_s3vectors_store_structured_logging(caplog):
     session = MagicMock()
     client = session.client.return_value
-    paginator = client.get_paginator.return_value
-    paginator.paginate.return_value = [
-        {"vectors": [{"key": "ns#1", "data": {"float32": [0.1] * 8}, "distance": 0.05}]}
-    ]
+    client.query_vectors.return_value = {
+        "vectors": [{"key": "ns#1", "data": {"float32": [0.1] * 8}, "distance": 0.05}]
+    }
 
     # 1. Opt-in: When False, no logs
     cfg_disabled = DynavecConfig(

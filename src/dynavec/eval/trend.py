@@ -15,13 +15,21 @@ Usage::
 
     # compare two runs side by side
     diff = store.compare([run_a_id, run_b_id])
+
+    # persist and restore across runs
+    store.save_json("eval_history.json")
+    loaded = EvalRunStore.load_json("eval_history.json")
 """
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from .retrieval import RetrievalEvalSummary
@@ -45,6 +53,16 @@ class EvalRun:
             "metrics": self.metrics,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EvalRun:
+        if not isinstance(data, dict):
+            raise TypeError(f"Expected dict for EvalRun, got {type(data).__name__}")
+        run_id = str(data.get("run_id", ""))
+        ts = float(data.get("ts", 0.0))
+        tags = {str(k): str(v) for k, v in data.get("tags", {}).items()}
+        metrics = dict(data.get("metrics", {}))
+        return cls(run_id=run_id, ts=ts, tags=tags, metrics=metrics)
+
 
 def _metrics_from_retrieval(summary: RetrievalEvalSummary) -> dict[str, Any]:
     """Flatten a RetrievalEvalSummary into a key→value metric dict."""
@@ -65,17 +83,22 @@ def _metrics_from_retrieval(summary: RetrievalEvalSummary) -> dict[str, Any]:
 
 def _metrics_from_rag(summary: EvalSummary) -> dict[str, Any]:
     """Flatten an EvalSummary (RAG) into a key→value metric dict."""
-    return {
+    out: dict[str, Any] = {
         "total_samples": summary.total_samples,
         "faithfulness": summary.mean_faithfulness,
         "relevance": summary.mean_relevance,
         "pass_rate": summary.pass_rate,
         "p95_latency_ms": summary.p95_latency_ms,
     }
+    if hasattr(summary, "mean_context_precision") and summary.mean_context_precision is not None:
+        out["context_precision"] = summary.mean_context_precision
+    if hasattr(summary, "mean_context_recall") and summary.mean_context_recall is not None:
+        out["context_recall"] = summary.mean_context_recall
+    return out
 
 
 class EvalRunStore:
-    """In-memory store for eval runs that supports trend queries and tag filtering.
+    """In-memory store for eval runs that supports trend queries, tag filtering, and JSON persistence.
 
     Parameters
     ----------
@@ -199,3 +222,63 @@ class EvalRunStore:
         if missing:
             raise KeyError(f"Run IDs not found: {missing}")
         return result
+
+    # -------------------------------------------------------------- persistence
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the store to a dictionary representation."""
+        return {
+            "max_runs": self._max_runs,
+            "runs": [r.to_dict() for r in self._runs],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EvalRunStore:
+        """Construct an EvalRunStore from a serialized dictionary."""
+        if not isinstance(data, dict):
+            raise TypeError(f"Expected dict for EvalRunStore, got {type(data).__name__}")
+        max_runs = int(data.get("max_runs", 1_000))
+        store = cls(max_runs=max_runs)
+        raw_runs = data.get("runs", [])
+        if isinstance(raw_runs, list):
+            store._runs = [EvalRun.from_dict(r) for r in raw_runs if isinstance(r, dict)]
+        return store
+
+    def save_json(self, path: str | Path) -> None:
+        """Persist recorded runs atomically to a JSON file."""
+        file_path = Path(path).resolve()
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        payload = json.dumps(self.to_dict(), indent=2)
+        # Write to temporary file in the same directory, then atomic rename
+        with tempfile.NamedTemporaryFile("w", dir=file_path.parent, delete=False, encoding="utf-8") as tf:
+            tf.write(payload)
+            tmp_name = tf.name
+
+        try:
+            os.replace(tmp_name, file_path)
+        except Exception:
+            if os.path.exists(tmp_name):
+                os.remove(tmp_name)
+            raise
+
+    @classmethod
+    def load_json(cls, path: str | Path) -> EvalRunStore:
+        """Load runs from a JSON file.
+
+        If the file does not exist, returns an empty EvalRunStore.
+        Supports both `{max_runs: ..., runs: [...]}` and a bare list `[{...}, ...]`.
+        """
+        file_path = Path(path).resolve()
+        if not file_path.exists():
+            return cls()
+
+        with open(file_path, encoding="utf-8") as f:
+            data = json.load(f)
+
+        if isinstance(data, list):
+            store = cls()
+            store._runs = [EvalRun.from_dict(r) for r in data if isinstance(r, dict)]
+            return store
+
+        return cls.from_dict(data)

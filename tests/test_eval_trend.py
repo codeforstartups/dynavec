@@ -1,6 +1,9 @@
-"""Tests for EvalRunStore — trend tracking, tag filtering, and run comparison."""
+"""Tests for EvalRunStore — trend tracking, tag filtering, run comparison, and persistence."""
 
 from __future__ import annotations
+
+import json
+from pathlib import Path
 
 import pytest
 
@@ -111,7 +114,6 @@ def test_filter_no_match_returns_empty():
 
 def test_trend_recall_returns_sorted_time_series():
     store = EvalRunStore()
-    # record three runs at explicit timestamps
     store.record(_retrieval_summary(0.70, 0.65), ts=1000.0)
     store.record(_retrieval_summary(0.80, 0.75), ts=2000.0)
     store.record(_retrieval_summary(0.90, 0.85), ts=3000.0)
@@ -119,7 +121,6 @@ def test_trend_recall_returns_sorted_time_series():
     series = store.trend("recall", k=10)
 
     assert len(series) == 3
-    # oldest first
     assert series[0] == pytest.approx((1000.0, 0.70))
     assert series[1] == pytest.approx((2000.0, 0.80))
     assert series[2] == pytest.approx((3000.0, 0.90))
@@ -150,12 +151,11 @@ def test_trend_with_tag_filter():
 
 def test_trend_skips_runs_without_metric():
     store = EvalRunStore()
-    # RAG summary has no recall@10
     store.record(_rag_summary(0.9), ts=100.0)
     store.record(_retrieval_summary(0.85, 0.80), ts=200.0)
 
     series = store.trend("recall", k=10)
-    assert len(series) == 1  # only the retrieval run has recall@10
+    assert len(series) == 1
     assert series[0][1] == pytest.approx(0.85)
 
 
@@ -183,14 +183,66 @@ def test_compare_missing_id_raises():
 
 
 # ---------------------------------------------------------------------------
-# 5. to_dict round-trip
+# 5. Serialization & Persistence
 # ---------------------------------------------------------------------------
 
-def test_eval_run_to_dict_is_serialisable():
-    import json
-    store = EvalRunStore()
-    run = store.record(_retrieval_summary(0.82, 0.78), tags={"dataset": "squad"})
+def test_eval_run_to_dict_and_from_dict():
+    run = EvalRun(
+        run_id="run-123",
+        ts=1700000000.0,
+        tags={"dataset": "squad", "version": "1.0"},
+        metrics={"recall@10": 0.88, "p95_latency_ms": 25.0},
+    )
     d = run.to_dict()
-    json.dumps(d)  # must not raise
-    assert d["tags"]["dataset"] == "squad"
-    assert "recall@10" in d["metrics"]
+    restored = EvalRun.from_dict(d)
+
+    assert restored.run_id == run.run_id
+    assert restored.ts == run.ts
+    assert restored.tags == run.tags
+    assert restored.metrics == run.metrics
+
+
+def test_eval_run_store_save_and_load_json(tmp_path: Path):
+    store = EvalRunStore(max_runs=50)
+    store.record(_retrieval_summary(0.82, 0.78), tags={"dataset": "squad", "version": "v1"})
+    store.record(_rag_summary(0.94), tags={"model": "claude-3-opus", "version": "v2"})
+
+    file_path = tmp_path / "subdir" / "eval_store.json"
+    store.save_json(file_path)
+    assert file_path.exists()
+
+    loaded = EvalRunStore.load_json(file_path)
+    assert len(loaded.all_runs()) == 2
+    assert loaded._max_runs == 50
+
+    v1_runs = loaded.filter(version="v1")
+    assert len(v1_runs) == 1
+    assert v1_runs[0].metrics["recall@10"] == pytest.approx(0.82)
+
+    v2_runs = loaded.filter(version="v2")
+    assert len(v2_runs) == 1
+    assert v2_runs[0].metrics["faithfulness"] == pytest.approx(0.94)
+
+
+def test_eval_run_store_load_nonexistent_returns_empty(tmp_path: Path):
+    missing_path = tmp_path / "does_not_exist.json"
+    loaded = EvalRunStore.load_json(missing_path)
+    assert isinstance(loaded, EvalRunStore)
+    assert len(loaded.all_runs()) == 0
+
+
+def test_eval_run_store_load_bare_list(tmp_path: Path):
+    file_path = tmp_path / "bare_list.json"
+    raw_list = [
+        {
+            "run_id": "r1",
+            "ts": 1000.0,
+            "tags": {"env": "prod"},
+            "metrics": {"recall@10": 0.85},
+        }
+    ]
+    file_path.write_text(json.dumps(raw_list), encoding="utf-8")
+
+    loaded = EvalRunStore.load_json(file_path)
+    assert len(loaded.all_runs()) == 1
+    assert loaded.all_runs()[0].run_id == "r1"

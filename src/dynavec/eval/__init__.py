@@ -1,4 +1,4 @@
-"""Evaluation framework for RAG generation quality, context quality, and retrieval metrics."""
+"""Evaluation framework for RAG generation quality, context quality, retrieval metrics, and CI regression gating."""
 
 from __future__ import annotations
 
@@ -14,6 +14,13 @@ from .base import (
     extract_json,
 )
 from .chart import plot_eval_summary, plot_retrieval_metrics
+from .gate import (
+    MetricDiff,
+    MetricDirection,
+    RegressionReport,
+    assert_no_regression,
+    check_regression,
+)
 from .judges import (
     BedrockJudge,
     ChatModelJudge,
@@ -48,6 +55,12 @@ from .trend import EvalRun, EvalRunStore
 __all__ = [
     "EvalRun",
     "EvalRunStore",
+    # CI Regression Gating
+    "MetricDirection",
+    "MetricDiff",
+    "RegressionReport",
+    "check_regression",
+    "assert_no_regression",
     # LLM Judge & Data Models
     "BaseJudge",
     "OpenAIJudge",

@@ -1,3 +1,5 @@
+import json
+
 from dynavec import __version__, cli
 
 
@@ -313,3 +315,88 @@ def test_import_failure_handles_exception(monkeypatch, capsys):
 
     assert result == 1
     assert "[FAIL] Import failed: DDB batch write failure" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# Eval Check CLI Tests (Issue #305)
+# ---------------------------------------------------------------------------
+
+
+def test_eval_check_passes_on_no_regression(tmp_path, capsys):
+    base_file = tmp_path / "base.json"
+    curr_file = tmp_path / "curr.json"
+    base_file.write_text(json.dumps({"metrics": {"recall@10": 0.85, "mrr": 0.70}}), encoding="utf-8")
+    curr_file.write_text(json.dumps({"metrics": {"recall@10": 0.86, "mrr": 0.70}}), encoding="utf-8")
+
+    exit_code = cli.main(["eval", "check", "--current", str(curr_file), "--baseline", str(base_file)])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "PASSED: No metric regressions detected." in out
+
+
+def test_eval_check_fails_on_regression(tmp_path, capsys):
+    base_file = tmp_path / "base.json"
+    curr_file = tmp_path / "curr.json"
+    base_file.write_text(json.dumps({"metrics": {"recall@10": 0.90}}), encoding="utf-8")
+    curr_file.write_text(json.dumps({"metrics": {"recall@10": 0.75}}), encoding="utf-8")
+
+    exit_code = cli.main(["eval", "check", "--current", str(curr_file), "--baseline", str(base_file), "--max-drop", "0.05"])
+    assert exit_code == 1
+    out = capsys.readouterr().out
+    assert "FAILED: 1 metric(s) regressed beyond threshold." in out
+    assert "REGRESSION" in out
+
+
+def test_eval_check_json_output(tmp_path, capsys):
+    base_file = tmp_path / "base.json"
+    curr_file = tmp_path / "curr.json"
+    base_file.write_text(json.dumps({"metrics": {"recall@10": 0.90}}), encoding="utf-8")
+    curr_file.write_text(json.dumps({"metrics": {"recall@10": 0.90}}), encoding="utf-8")
+
+    exit_code = cli.main(["eval", "check", "--current", str(curr_file), "--baseline", str(base_file), "--json"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert data["passed"] is True
+    assert "recall@10" in data["diffs"]
+
+
+def test_eval_check_allow_missing_baseline(tmp_path, capsys):
+    curr_file = tmp_path / "curr.json"
+    curr_file.write_text(json.dumps({"metrics": {"recall@10": 0.90}}), encoding="utf-8")
+    missing_baseline = tmp_path / "missing_base.json"
+
+    exit_code = cli.main(["eval", "check", "--current", str(curr_file), "--baseline", str(missing_baseline), "--allow-missing-baseline"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "[WARN] Baseline file not found" in out
+
+
+def test_eval_check_missing_current_file_returns_code_2(capsys):
+    exit_code = cli.main(["eval", "check", "--current", "non_existent_file.json", "--baseline", "base.json"])
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "[FAIL] Current eval file not found" in err
+
+
+def test_eval_check_records_to_store(tmp_path, capsys):
+    base_file = tmp_path / "base.json"
+    curr_file = tmp_path / "curr.json"
+    store_file = tmp_path / "eval_store.json"
+
+    base_file.write_text(json.dumps({"run_id": "base-1", "metrics": {"recall@10": 0.85}}), encoding="utf-8")
+    curr_file.write_text(json.dumps({"run_id": "curr-1", "metrics": {"recall@10": 0.88}}), encoding="utf-8")
+
+    exit_code = cli.main([
+        "eval", "check",
+        "--current", str(curr_file),
+        "--baseline", str(base_file),
+        "--store", str(store_file),
+        "--tag", "env=ci",
+        "--tag", "branch=main"
+    ])
+    assert exit_code == 0
+    assert store_file.exists()
+    store_data = json.loads(store_file.read_text(encoding="utf-8"))
+    assert len(store_data["runs"]) == 1
+    assert store_data["runs"][0]["tags"]["branch"] == "main"

@@ -5,6 +5,13 @@ All notable changes to dynavec are documented here. This project adheres to
 
 ## [Unreleased]
 
+### Added
+- **Human-in-the-loop interrupts** (#296) — call `dynavec.agents.interrupt(node_id, payload)`
+  inside a tool to pause a `ReActAgent` run (`termination_reason="interrupted"`, details in
+  `AgentResult.interrupt_payload`). `resume()` / `aresume()` re-run the paused tool and
+  `interrupt()` returns the human decision. With a checkpointer, a paused run resumes from
+  `thread_id` alone in a new process.
+
 ## [0.7.0] - 2026-10-01
 
 Concurrency and scale: a native async client, a lexical/hybrid retrieval path,

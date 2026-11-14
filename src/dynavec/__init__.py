@@ -87,6 +87,7 @@ from .models import (
 )
 from .namespace import NamespaceView
 from .nodes import (
+    GRAPH_SCHEMA_VERSION,
     ApprovalNode,
     CodeNode,
     Edge,
@@ -98,6 +99,7 @@ from .nodes import (
     NodeRegistry,
     NodeSchema,
     NodeStatus,
+    PortCompatibilityError,
     PortType,
     RetrieverNode,
     RetryPolicy,
@@ -106,6 +108,8 @@ from .nodes import (
     SubGraphNode,
     ToolNode,
     WebhookNode,
+    custom_node,
+    is_port_type_compatible,
     node_registry,
 )
 from .quantization import (
@@ -224,10 +228,14 @@ __all__ = [
     "NodePort",
     "NodeSchema",
     "NodeStatus",
+    "PortCompatibilityError",
     "RetryPolicy",
     "PortType",
+    "is_port_type_compatible",
     "NodeRegistry",
     "node_registry",
+    "custom_node",
+    "GRAPH_SCHEMA_VERSION",
     "Edge",
     "GraphRunState",
     "SimpleGraph",

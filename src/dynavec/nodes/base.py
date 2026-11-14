@@ -12,6 +12,29 @@ PortType = Literal["string", "number", "boolean", "array", "object", "any"]
 NodeStatus = Literal["pending", "running", "retrying", "succeeded", "failed", "skipped"]
 
 
+class PortCompatibilityError(TypeError, ValueError):
+    """Raised when connecting incompatible port types in a dynaflow graph."""
+
+
+def is_port_type_compatible(source_type: PortType, target_type: PortType) -> bool:
+    """Evaluate whether source_type can be assigned or connected to target_type.
+
+    The 'any' port type matches any other type symmetrically.
+    Exact matches (e.g. string -> string, number -> number) are compatible.
+    In agent/LLM pipelines, string and object are compatible to allow JSON-encoded
+    strings to flow into object ports (and vice-versa).
+    """
+    if source_type == "any" or target_type == "any":
+        return True
+    if source_type == target_type:
+        return True
+    if (source_type == "string" and target_type == "object") or (
+        source_type == "object" and target_type == "string"
+    ):
+        return True
+    return False
+
+
 @dataclass
 class RetryPolicy:
     """Configurable retry policy for node execution with exponential backoff and jitter."""
@@ -72,6 +95,17 @@ class NodePort:
             "default": self.default,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> NodePort:
+        """Deserialize port definition from a dictionary."""
+        return cls(
+            name=data["name"],
+            port_type=data.get("port_type", "any"),
+            description=data.get("description", ""),
+            required=data.get("required", True),
+            default=data.get("default", None),
+        )
+
 
 @dataclass
 class NodeSchema:
@@ -85,6 +119,20 @@ class NodeSchema:
     outputs: list[NodePort] = field(default_factory=list)
     config_schema: dict[str, Any] = field(default_factory=dict)
 
+    def get_input_port(self, name: str) -> NodePort | None:
+        """Retrieve an input port definition by name if declared."""
+        for p in self.inputs:
+            if p.name == name:
+                return p
+        return None
+
+    def get_output_port(self, name: str) -> NodePort | None:
+        """Retrieve an output port definition by name if declared."""
+        for p in self.outputs:
+            if p.name == name:
+                return p
+        return None
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize schema to dictionary."""
         return {
@@ -96,6 +144,27 @@ class NodeSchema:
             "outputs": [p.to_dict() for p in self.outputs],
             "config_schema": self.config_schema,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> NodeSchema:
+        """Deserialize node schema from a dictionary."""
+        inputs = [
+            NodePort.from_dict(p) if isinstance(p, dict) else p
+            for p in data.get("inputs", [])
+        ]
+        outputs = [
+            NodePort.from_dict(p) if isinstance(p, dict) else p
+            for p in data.get("outputs", [])
+        ]
+        return cls(
+            node_type=data["node_type"],
+            label=data.get("label", data["node_type"]),
+            description=data.get("description", ""),
+            category=data.get("category", "general"),
+            inputs=inputs,
+            outputs=outputs,
+            config_schema=dict(data.get("config_schema", {})),
+        )
 
     def to_reactflow_dict(self) -> dict[str, Any]:
         """Export ReactFlow-compatible component metadata for visual canvas builders."""
@@ -150,3 +219,20 @@ class Node(ABC):
             "data": data,
             "position": {"x": 0, "y": 0},
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Node:
+        """Instantiate node from a dictionary representation."""
+        node_id = data.get("id")
+        node_data = data.get("data", {})
+        config = node_data.get("config", {})
+        retry_policy_data = node_data.get("retry_policy")
+        retry_policy = (
+            RetryPolicy.from_dict(retry_policy_data)
+            if retry_policy_data
+            else None
+        )
+        node = cls(node_id=node_id, config=config, retry_policy=retry_policy)
+        if "status" in node_data:
+            node.status = node_data["status"]
+        return node

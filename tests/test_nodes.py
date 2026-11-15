@@ -7,13 +7,18 @@ from typing import Any
 import pytest
 
 from dynavec import (
+    GRAPH_SCHEMA_VERSION,
     ApprovalNode,
     CodeNode,
+    Edge,
     GraphRunState,
     LLMNode,
     LoopNode,
+    Node,
     NodePort,
+    NodeRegistry,
     NodeSchema,
+    PortCompatibilityError,
     RetrieverNode,
     RetryPolicy,
     RouterNode,
@@ -21,6 +26,8 @@ from dynavec import (
     SubGraphNode,
     ToolNode,
     WebhookNode,
+    custom_node,
+    is_port_type_compatible,
     node_registry,
 )
 from dynavec.chat.base import ChatChunk, ChatModel, ChatResult, Message
@@ -561,3 +568,377 @@ def test_graph_resumability_from_checkpoint() -> None:
     assert resumed_state.current_state["step_c"] == "done"
     # start (5) + 10 = 15; 15 * 2 = 30; 30 + 5 = 35
     assert resumed_state.current_state["final_result"] == 35
+
+
+# =====================================================================
+# Issue #282: Typed Node System, Schema, Port Compatibility & JSON Round-Trip
+# =====================================================================
+
+
+def test_port_type_compatibility_rules() -> None:
+    # "any" is compatible with any type
+    assert is_port_type_compatible("any", "string") is True
+    assert is_port_type_compatible("number", "any") is True
+    assert is_port_type_compatible("any", "any") is True
+
+    # Exact matches
+    assert is_port_type_compatible("string", "string") is True
+    assert is_port_type_compatible("number", "number") is True
+    assert is_port_type_compatible("boolean", "boolean") is True
+    assert is_port_type_compatible("array", "array") is True
+    assert is_port_type_compatible("object", "object") is True
+
+    # JSON serialization / deserialization bridge
+    assert is_port_type_compatible("string", "object") is True
+    assert is_port_type_compatible("object", "string") is True
+
+    # Incompatible pairings
+    assert is_port_type_compatible("number", "string") is False
+    assert is_port_type_compatible("boolean", "number") is False
+    assert is_port_type_compatible("array", "boolean") is False
+    assert is_port_type_compatible("number", "object") is False
+
+
+def test_edge_serialization_round_trip() -> None:
+    edge = Edge(
+        source_node="node_1",
+        target_node="node_2",
+        source_port="out_data",
+        target_port="in_data",
+        mapping={"key1": "key2"},
+        is_error_edge=False,
+    )
+    data = edge.to_dict()
+    assert data["source"] == "node_1"
+    assert data["target"] == "node_2"
+    assert data["source_port"] == "out_data"
+    assert data["target_port"] == "in_data"
+    assert data["mapping"] == {"key1": "key2"}
+    assert data["is_error_edge"] is False
+
+    restored = Edge.from_dict(data)
+    assert restored.source_node == "node_1"
+    assert restored.target_node == "node_2"
+    assert restored.source_port == "out_data"
+    assert restored.target_port == "in_data"
+    assert restored.mapping == {"key1": "key2"}
+    assert restored.is_error_edge is False
+
+
+def test_port_compatibility_validation_in_graph() -> None:
+    # Node with declared schema
+    schema_producer = NodeSchema(
+        node_type="num_producer",
+        label="Number Producer",
+        description="Emits numbers",
+        outputs=[NodePort(name="val", port_type="number")],
+    )
+    schema_str_consumer = NodeSchema(
+        node_type="str_consumer",
+        label="String Consumer",
+        description="Requires strings",
+        inputs=[NodePort(name="text", port_type="string")],
+    )
+
+    class NumNode(Node):
+        node_type = "num_producer"
+        schema = schema_producer
+
+        def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
+            return {"val": 42}
+
+    class StrNode(Node):
+        node_type = "str_consumer"
+        schema = schema_str_consumer
+
+        def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
+            return {"received": inputs["text"]}
+
+    graph = SimpleGraph()
+    graph.add_node(NumNode(node_id="n1"))
+    graph.add_node(StrNode(node_id="n2"))
+
+    # Direct incompatible port connection should raise PortCompatibilityError
+    with pytest.raises(PortCompatibilityError, match="Cannot connect incompatible ports"):
+        graph.add_edge("n1", "n2", source_port="val", target_port="text")
+
+    # Mapping with incompatible ports should also raise
+    with pytest.raises(PortCompatibilityError, match="Cannot connect incompatible ports"):
+        graph.add_edge("n1", "n2", mapping={"val": "text"})
+
+    # Connecting undeclared port should raise ValueError
+    with pytest.raises(ValueError, match="Source port 'unknown_out' not declared"):
+        graph.add_edge("n1", "n2", source_port="unknown_out", target_port="text")
+
+    with pytest.raises(ValueError, match="Target port 'unknown_in' not declared"):
+        graph.add_edge("n1", "n2", source_port="val", target_port="unknown_in")
+
+    # Disabling validate_ports allows connection without raising
+    graph.add_edge("n1", "n2", source_port="val", target_port="text", validate_ports=False)
+
+    # Calling graph.validate() checks all edges and catches the incompatibility
+    with pytest.raises(PortCompatibilityError, match="Cannot connect incompatible ports"):
+        graph.validate()
+
+
+def test_graph_json_serialization_round_trip() -> None:
+    # Build a multi-node graph with CodeNode and RouterNode
+    def step1(inputs: dict[str, Any]) -> dict[str, Any]:
+        return {"query": inputs.get("query", "").strip(), "count": 10}
+
+    def step2(inputs: dict[str, Any]) -> dict[str, Any]:
+        return {"formatted": f"Processed: {inputs.get('query')} (x{inputs.get('count')})"}
+
+    node1 = CodeNode(code_fn=step1, node_id="step1", config={"opt": True})
+    node2 = CodeNode(code_fn=step2, node_id="step2")
+
+    graph = SimpleGraph()
+    graph.add_node(node1)
+    graph.add_node(node2)
+    graph.add_edge("step1", "step2")
+
+    # Serialize to dict and JSON string
+    graph_dict = graph.to_dict()
+    assert graph_dict["version"] == GRAPH_SCHEMA_VERSION
+    assert len(graph_dict["nodes"]) == 2
+    assert len(graph_dict["edges"]) == 1
+    assert graph_dict["execution_order"] == ["step1", "step2"]
+
+    json_str = graph.to_json()
+    assert f'"version": "{GRAPH_SCHEMA_VERSION}"' in json_str
+
+    # Deserialize back from JSON
+    restored_graph = SimpleGraph.from_json(json_str)
+    assert len(restored_graph.nodes) == 2
+    assert len(restored_graph.edges) == 1
+    assert restored_graph._execution_order == ["step1", "step2"]
+
+    # Verify node config and type preserved
+    assert restored_graph.nodes["step1"].config == {"opt": True}
+    assert restored_graph.nodes["step1"].node_type == "code"
+    assert restored_graph.nodes["step2"].node_type == "code"
+
+    # Edge preserved
+    edge = restored_graph.edges[0]
+    assert edge.source_node == "step1"
+    assert edge.target_node == "step2"
+
+    # Verify schema version validation
+    with pytest.raises(ValueError, match="Unsupported graph schema version '99.0'"):
+        SimpleGraph.from_dict({"version": "99.0", "nodes": [], "edges": []})
+
+    with pytest.raises(ValueError, match="Missing 'version'"):
+        SimpleGraph.from_dict({"nodes": [], "edges": []})
+
+    # Unknown node type validation
+    with pytest.raises(ValueError, match="Unknown node type 'unregistered_type'"):
+        SimpleGraph.from_dict({
+            "version": GRAPH_SCHEMA_VERSION,
+            "nodes": [{"id": "x", "type": "unregistered_type", "data": {}}],
+            "edges": [],
+        })
+
+
+# =====================================================================
+# Issue #284: Custom Nodes via SDK & Registry
+# =====================================================================
+
+
+def test_custom_node_subclass_and_registration() -> None:
+    # 1. Define custom node via class inheritance and @node_registry.register
+    @node_registry.register
+    class MultiplierCustomNode(Node):
+        node_type = "multiplier_custom_test"
+        schema = NodeSchema(
+            node_type="multiplier_custom_test",
+            label="Multiplier Node",
+            description="Multiplies inputs by a configured factor",
+            category="math",
+            inputs=[NodePort(name="val", port_type="number")],
+            outputs=[NodePort(name="result", port_type="number")],
+            config_schema={"factor": {"type": "number", "default": 2}},
+        )
+
+        def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
+            factor = self.config.get("factor", 2)
+            return {"result": inputs["val"] * factor}
+
+    try:
+        # Check registration
+        assert node_registry.has("multiplier_custom_test") is True
+        assert "multiplier_custom_test" in node_registry.list_types()
+        assert node_registry.get("multiplier_custom_test") is MultiplierCustomNode
+
+        # Check canvas palette includes custom node
+        palette = node_registry.export_canvas_palette()
+        custom_item = next(
+            (p for p in palette if p["type"] == "multiplier_custom_test"), None
+        )
+        assert custom_item is not None
+        assert custom_item["label"] == "Multiplier Node"
+        assert custom_item["category"] == "math"
+        assert custom_item["inputPorts"] == ["val"]
+        assert custom_item["outputPorts"] == ["result"]
+
+        # Instantiate and run standalone
+        node = MultiplierCustomNode(config={"factor": 5})
+        output = node.execute({"val": 10})
+        assert output["result"] == 50
+
+        # Wire into a SimpleGraph and run
+        graph = SimpleGraph()
+        graph.add_node(node)
+        res = graph.run({"val": 7})
+        assert res["result"] == 35
+
+        # Verify graph round-trip with custom node
+        json_repr = graph.to_json()
+        reloaded_graph = SimpleGraph.from_json(json_repr)
+        reloaded_node = reloaded_graph.nodes[node.id]
+        assert isinstance(reloaded_node, MultiplierCustomNode)
+        assert reloaded_node.config == {"factor": 5}
+        assert reloaded_graph.run({"val": 6})["result"] == 30
+
+    finally:
+        node_registry.unregister("multiplier_custom_test")
+        assert node_registry.has("multiplier_custom_test") is False
+
+
+def test_custom_node_decorator_and_round_trip() -> None:
+    # 2. Define custom node using the @custom_node decorator
+    custom_reg = NodeRegistry()
+
+    @custom_node(
+        node_type="text_sentiment",
+        label="Text Sentiment Analyzer",
+        description="Analyzes polarity score of input text",
+        category="nlp",
+        inputs=[("text", "string")],
+        outputs=[("sentiment", "string"), ("confidence", "number")],
+        config_schema={"threshold": {"type": "number", "default": 0.5}},
+        registry=custom_reg,
+    )
+    def analyze_sentiment(
+        inputs: dict[str, Any], config: dict[str, Any]
+    ) -> dict[str, Any]:
+        text = inputs.get("text", "")
+        threshold = config.get("threshold", 0.5)
+        pos = "good" in text.lower() or "excellent" in text.lower()
+        return {
+            "sentiment": "positive" if pos else "neutral",
+            "confidence": 0.95 if pos else threshold,
+        }
+
+    # Verify custom registry holds the node
+    assert custom_reg.has("text_sentiment") is True
+    schema = custom_reg.get_schema("text_sentiment")
+    assert schema is not None
+    assert schema.node_type == "text_sentiment"
+    assert schema.category == "nlp"
+    assert len(schema.inputs) == 1
+    assert schema.inputs[0].name == "text"
+    assert schema.inputs[0].port_type == "string"
+    assert len(schema.outputs) == 2
+    assert schema.outputs[0].name == "sentiment"
+    assert schema.outputs[1].name == "confidence"
+
+    # Instantiate custom node
+    sentiment_node_instance = analyze_sentiment(
+        node_id="sentiment_1", config={"threshold": 0.6}
+    )
+    out = sentiment_node_instance.execute({"text": "This vector database is excellent!"})
+    assert out["sentiment"] == "positive"
+    assert out["confidence"] == 0.95
+
+    # Test graph composition with custom registry
+    graph = SimpleGraph()
+    graph.add_node(sentiment_node_instance)
+    res = graph.run({"text": "Average response"})
+    assert res["sentiment"] == "neutral"
+    assert res["confidence"] == 0.6
+
+    # Graph JSON round-trip using custom registry
+    json_data = graph.to_json()
+    graph_reconstructed = SimpleGraph.from_json(json_data, registry=custom_reg)
+    res2 = graph_reconstructed.run({"text": "This is good"})
+    assert res2["sentiment"] == "positive"
+    assert res2["confidence"] == 0.95
+
+
+def test_custom_node_pipeline_with_builtin_nodes() -> None:
+    # 3. End-to-end integration: RetrieverNode -> LLMNode -> CustomFormatterNode
+    custom_type = "summary_formatter_test"
+
+    @custom_node(
+        node_type=custom_type,
+        label="Summary Formatter",
+        description="Formats response text into a markdown report",
+        inputs=[("response", "string")],
+        outputs=[("report", "string")],
+        config_schema={"header": {"type": "string", "default": "Dynavec Report"}},
+    )
+    def format_summary(inputs: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+        header = config.get("header", "Dynavec Report")
+        body = inputs.get("response", "")
+        return {"report": f"# {header}\n\n{body}"}
+
+    try:
+        def dummy_retriever(query: str, **kwargs: Any) -> list[MockDoc]:
+            return [MockDoc("d100", "S3 Vectors provides sub-cent storage.")]
+
+        retriever = RetrieverNode(retriever_fn=dummy_retriever, node_id="retriever")
+        llm = LLMNode(model=MockChatModel(), node_id="llm")
+        formatter = format_summary(
+            node_id="formatter", config={"header": "Storage Analysis"}
+        )
+
+        graph = SimpleGraph()
+        graph.add_node(retriever)
+        graph.add_node(llm)
+        graph.add_node(formatter)
+
+        # Connect retriever.context -> llm.context
+        graph.add_edge("retriever", "llm", source_port="context", target_port="context")
+        # Connect llm.response -> formatter.response
+        graph.add_edge("llm", "formatter", source_port="response", target_port="response")
+
+        result = graph.run({
+            "query": "How cheap is S3 Vectors?",
+            "prompt": "Summarize vector cost",
+        })
+
+        assert "Storage Analysis" in result["report"]
+        assert "Summarize vector cost" in result["report"]
+        assert "S3 Vectors provides sub-cent storage" in result["report"]
+
+        # Validate graph
+        graph.validate()
+
+        # Serialize & execute reloaded graph
+        json_flow = graph.to_json()
+        restored = SimpleGraph.from_json(json_flow)
+        # Bind runtime execution handles to restored graph nodes
+        restored_llm = restored.nodes["llm"]
+        assert isinstance(restored_llm, LLMNode)
+        restored_llm.model = MockChatModel()
+
+        restored_retriever = restored.nodes["retriever"]
+        assert isinstance(restored_retriever, RetrieverNode)
+        restored_retriever.retriever_fn = dummy_retriever
+
+        restored_res = restored.run({
+            "query": "How cheap is S3 Vectors?",
+            "prompt": "Summarize vector cost",
+        })
+        assert restored_res["report"] == result["report"]
+
+    finally:
+        node_registry.unregister(custom_type)
+
+
+def test_custom_nodes_sdk_example_runs_in_ci() -> None:
+    # Execute the example script to ensure docs and examples never regress
+    from examples.custom_nodes_sdk import main
+
+    main()
+

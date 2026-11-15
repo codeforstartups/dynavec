@@ -8,7 +8,15 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Literal, overload
 
-from .base import Node, NodeStatus, RetryPolicy
+from .base import (
+    Node,
+    NodeStatus,
+    PortCompatibilityError,
+    RetryPolicy,
+    is_port_type_compatible,
+)
+
+GRAPH_SCHEMA_VERSION = "1.0"
 
 
 @dataclass
@@ -21,6 +29,30 @@ class Edge:
     target_port: str = "input"
     mapping: dict[str, str] = field(default_factory=dict)
     is_error_edge: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize edge to dictionary for export and visual canvas rendering."""
+        return {
+            "id": f"{self.source_node}:{self.source_port}->{self.target_node}:{self.target_port}",
+            "source": self.source_node,
+            "target": self.target_node,
+            "source_port": self.source_port,
+            "target_port": self.target_port,
+            "mapping": dict(self.mapping),
+            "is_error_edge": self.is_error_edge,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Edge:
+        """Deserialize edge from dictionary."""
+        return cls(
+            source_node=data.get("source") or data.get("source_node", ""),
+            target_node=data.get("target") or data.get("target_node", ""),
+            source_port=data.get("source_port", "output"),
+            target_port=data.get("target_port", "input"),
+            mapping=dict(data.get("mapping", {})),
+            is_error_edge=bool(data.get("is_error_edge", False)),
+        )
 
 
 @dataclass
@@ -80,6 +112,83 @@ class SimpleGraph:
             self._execution_order.append(node.id)
         return self
 
+    def _validate_edge(self, edge: Edge) -> None:
+        """Validate edge port declarations and type compatibility between nodes."""
+        if edge.source_node not in self.nodes:
+            raise ValueError(f"Source node {edge.source_node!r} not in graph.")
+        if edge.target_node not in self.nodes:
+            raise ValueError(f"Target node {edge.target_node!r} not in graph.")
+
+        src_node = self.nodes[edge.source_node]
+        tgt_node = self.nodes[edge.target_node]
+        src_schema = getattr(src_node, "schema", None)
+        tgt_schema = getattr(tgt_node, "schema", None)
+
+        if edge.is_error_edge:
+            return
+
+        if edge.mapping:
+            for s_port_name, t_port_name in edge.mapping.items():
+                s_port = src_schema.get_output_port(s_port_name) if src_schema else None
+                t_port = tgt_schema.get_input_port(t_port_name) if tgt_schema else None
+
+                if src_schema and src_schema.outputs and s_port is None:
+                    raise ValueError(
+                        f"Source port {s_port_name!r} not declared in outputs of node "
+                        f"{src_node.id!r} ({src_node.node_type})."
+                    )
+                if tgt_schema and tgt_schema.inputs and t_port is None:
+                    raise ValueError(
+                        f"Target port {t_port_name!r} not declared in inputs of node "
+                        f"{tgt_node.id!r} ({tgt_node.node_type})."
+                    )
+
+                if s_port is not None and t_port is not None:
+                    if not is_port_type_compatible(s_port.port_type, t_port.port_type):
+                        raise PortCompatibilityError(
+                            f"Cannot connect incompatible ports: source port {s_port_name!r} "
+                            f"(type {s_port.port_type!r}) -> target port {t_port_name!r} "
+                            f"(type {t_port.port_type!r}) between {src_node.id!r} and {tgt_node.id!r}."
+                        )
+        else:
+            # Default connection
+            if edge.source_port == "output" and edge.target_port == "input":
+                s_port = src_schema.get_output_port("output") if src_schema else None
+                t_port = tgt_schema.get_input_port("input") if tgt_schema else None
+                if s_port is not None and t_port is not None:
+                    if not is_port_type_compatible(s_port.port_type, t_port.port_type):
+                        raise PortCompatibilityError(
+                            f"Cannot connect incompatible ports: source port 'output' "
+                            f"(type {s_port.port_type!r}) -> target port 'input' "
+                            f"(type {t_port.port_type!r}) between {src_node.id!r} and {tgt_node.id!r}."
+                        )
+            else:
+                s_port = (
+                    src_schema.get_output_port(edge.source_port) if src_schema else None
+                )
+                t_port = (
+                    tgt_schema.get_input_port(edge.target_port) if tgt_schema else None
+                )
+
+                if src_schema and src_schema.outputs and s_port is None:
+                    raise ValueError(
+                        f"Source port {edge.source_port!r} not declared in outputs of node "
+                        f"{src_node.id!r} ({src_node.node_type})."
+                    )
+                if tgt_schema and tgt_schema.inputs and t_port is None:
+                    raise ValueError(
+                        f"Target port {edge.target_port!r} not declared in inputs of node "
+                        f"{tgt_node.id!r} ({tgt_node.node_type})."
+                    )
+
+                if s_port is not None and t_port is not None:
+                    if not is_port_type_compatible(s_port.port_type, t_port.port_type):
+                        raise PortCompatibilityError(
+                            f"Cannot connect incompatible ports: source port {edge.source_port!r} "
+                            f"(type {s_port.port_type!r}) -> target port {edge.target_port!r} "
+                            f"(type {t_port.port_type!r}) between {src_node.id!r} and {tgt_node.id!r}."
+                        )
+
     def add_edge(
         self,
         source_id: str,
@@ -88,6 +197,7 @@ class SimpleGraph:
         target_port: str = "input",
         mapping: dict[str, str] | None = None,
         is_error_edge: bool = False,
+        validate_ports: bool = True,
     ) -> SimpleGraph:
         """Connect source node output to target node input."""
         if source_id not in self.nodes:
@@ -103,8 +213,15 @@ class SimpleGraph:
             mapping=dict(mapping or {}),
             is_error_edge=is_error_edge,
         )
+        if validate_ports:
+            self._validate_edge(edge)
         self.edges.append(edge)
         return self
+
+    def validate(self) -> None:
+        """Validate entire graph structure and all port connections."""
+        for edge in self.edges:
+            self._validate_edge(edge)
 
     def add_error_edge(
         self,
@@ -317,3 +434,102 @@ class SimpleGraph:
         )
         assert isinstance(result, GraphRunState)
         return result
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize entire graph (nodes, edges, execution order) to a stable, versioned JSON dictionary."""
+        return {
+            "version": GRAPH_SCHEMA_VERSION,
+            "nodes": [node.to_dict() for node in self.nodes.values()],
+            "edges": [edge.to_dict() for edge in self.edges],
+            "execution_order": list(self._execution_order),
+        }
+
+    def to_json(self, indent: int = 2) -> str:
+        """Serialize graph to a formatted JSON string."""
+        import json
+
+        return json.dumps(self.to_dict(), indent=indent)
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        registry: Any = None,
+        validate_ports: bool = False,
+    ) -> SimpleGraph:
+        """Deserialize a graph from a versioned JSON dictionary using a node registry."""
+        version = data.get("version")
+        if not version:
+            raise ValueError("Missing 'version' in graph specification.")
+        if version != GRAPH_SCHEMA_VERSION:
+            raise ValueError(
+                f"Unsupported graph schema version {version!r}. Expected {GRAPH_SCHEMA_VERSION!r}."
+            )
+
+        from .registry import node_registry as default_registry
+
+        reg = registry if registry is not None else default_registry
+        graph = cls()
+
+        for node_spec in data.get("nodes", []):
+            node_type = node_spec.get("type")
+            if not node_type:
+                raise ValueError("Node specification missing 'type'.")
+            node_cls = reg.get(node_type)
+            if node_cls is None:
+                raise ValueError(
+                    f"Unknown node type {node_type!r}. Register it with node_registry before deserialization."
+                )
+
+            if hasattr(node_cls, "from_dict") and callable(node_cls.from_dict):
+                node = node_cls.from_dict(node_spec)
+            else:
+                node_id = node_spec.get("id")
+                node_data = node_spec.get("data", {})
+                config = node_data.get("config", {})
+                retry_policy_data = node_data.get("retry_policy")
+                retry_policy = (
+                    RetryPolicy.from_dict(retry_policy_data)
+                    if retry_policy_data
+                    else None
+                )
+                node = node_cls(node_id=node_id, config=config, retry_policy=retry_policy)
+                if "status" in node_data:
+                    node.status = node_data["status"]
+
+            graph.add_node(node)
+
+        # Restore execution order if provided
+        exec_order = data.get("execution_order")
+        if exec_order and isinstance(exec_order, list):
+            graph._execution_order = [nid for nid in exec_order if nid in graph.nodes]
+
+        for edge_spec in data.get("edges", []):
+            edge = Edge.from_dict(edge_spec)
+            graph.add_edge(
+                source_id=edge.source_node,
+                target_id=edge.target_node,
+                source_port=edge.source_port,
+                target_port=edge.target_port,
+                mapping=edge.mapping,
+                is_error_edge=edge.is_error_edge,
+                validate_ports=validate_ports,
+            )
+
+        return graph
+
+    @classmethod
+    def from_json(
+        cls,
+        json_str: str,
+        registry: Any = None,
+        validate_ports: bool = False,
+    ) -> SimpleGraph:
+        """Deserialize a graph from a JSON string."""
+        import json
+
+        return cls.from_dict(
+            json.loads(json_str),
+            registry=registry,
+            validate_ports=validate_ports,
+        )

@@ -161,7 +161,7 @@ class LLMNode(Node):
 
     def __init__(
         self,
-        model: ChatModel | Callable[[list[Message]], Any],
+        model: ChatModel | Callable[[list[Message]], Any] | None = None,
         node_id: str | None = None,
         config: dict[str, Any] | None = None,
         retry_policy: RetryPolicy | None = None,
@@ -170,6 +170,8 @@ class LLMNode(Node):
         self.model = model
 
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        if self.model is None:
+            raise RuntimeError(f"LLMNode {self.id!r} has no model configured.")
         prompt = str(inputs.get("prompt", ""))
         context = str(inputs.get("context", ""))
         sys_prompt = inputs.get("system_prompt", self.config.get("system_prompt"))
@@ -248,7 +250,7 @@ class ToolNode(Node):
 
     def __init__(
         self,
-        tool: Callable[..., Any],
+        tool: Callable[..., Any] | None = None,
         node_id: str | None = None,
         config: dict[str, Any] | None = None,
         retry_policy: RetryPolicy | None = None,
@@ -257,6 +259,8 @@ class ToolNode(Node):
         self.tool = tool
 
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        if self.tool is None:
+            return {"result": f"ToolNode {self.id!r} has no tool configured.", "status": "error"}
         args = inputs.get("arguments")
         if args is None and "input" in inputs:
             args = inputs["input"]
@@ -392,13 +396,13 @@ class CodeNode(Node):
 
     def __init__(
         self,
-        code_fn: Callable[[dict[str, Any]], dict[str, Any]],
+        code_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
         node_id: str | None = None,
         config: dict[str, Any] | None = None,
         retry_policy: RetryPolicy | None = None,
     ) -> None:
         super().__init__(node_id=node_id, config=config, retry_policy=retry_policy)
-        self.code_fn = code_fn
+        self.code_fn = code_fn or (lambda x: x if isinstance(x, dict) else {"outputs": x})
 
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
         in_data = inputs.get("inputs", inputs)

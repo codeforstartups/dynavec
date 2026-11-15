@@ -195,7 +195,7 @@ class S3VectorsStore:
         return_distance: bool = True,
         page_size: int | None = None,
     ) -> Iterator[list[dict[str, Any]]]:
-        """Yield result pages as the S3 Vectors paginator returns them.
+        """Yield result pages from S3 Vectors, following ``nextToken``.
 
         This is what powers streaming search: an agent can begin consuming the
         first page while later pages are still in flight.
@@ -233,24 +233,13 @@ class S3VectorsStore:
         yielded = 0
         buffer: list[dict[str, Any]] = []
 
-        with translate_client_errors():
-            paginator = self._client.get_paginator("query_vectors")
-            page_iterator = iter(
-                paginator.paginate(
-                    PaginationConfig={"MaxItems": top_k},
-                    **kwargs,
-                )
-            )
-
         while True:
             if self._query_limiter is not None:
                 self._query_limiter.acquire()
 
-            try:
-                with translate_client_errors():
-                    page = next(page_iterator)
-            except StopIteration:
-                break
+            # Older supported SDKs expose QueryVectors without a paginator.
+            with translate_client_errors():
+                page = self._client.query_vectors(**kwargs)
 
             vectors = page.get("vectors", [])
 
@@ -270,14 +259,12 @@ class S3VectorsStore:
                 else:
                     buffer.extend(vectors)
 
-                    while len(buffer) >= effective_page_size and yielded < top_k:
-                        chunk = buffer[:effective_page_size]
-                        buffer = buffer[effective_page_size:]
-
-                        remaining = top_k - yielded
-
-                        if len(chunk) > remaining:
-                            chunk = chunk[:remaining]
+                    while yielded < top_k and len(buffer) >= min(
+                        effective_page_size, top_k - yielded
+                    ):
+                        chunk_size = min(effective_page_size, top_k - yielded)
+                        chunk = buffer[:chunk_size]
+                        buffer = buffer[chunk_size:]
 
                         yield chunk
                         yielded += len(chunk)
@@ -285,8 +272,10 @@ class S3VectorsStore:
                         if yielded >= top_k:
                             return
 
-            if page.get("NextToken") is None:
+            next_token = page.get("nextToken")
+            if not next_token:
                 break
+            kwargs["nextToken"] = next_token
 
         if effective_page_size is not None and buffer and yielded < top_k:
             remaining = top_k - yielded

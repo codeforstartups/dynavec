@@ -42,6 +42,7 @@ def _async_store():
     client = MagicMock()
     client.put_vectors = AsyncMock()
     client.get_vectors = AsyncMock()
+    client.query_vectors = AsyncMock()
     session = MagicMock()
     session.client.return_value.__aenter__.return_value = client
     return AsyncS3VectorsStore(_config(), session), client
@@ -118,6 +119,7 @@ def test_new_exceptions_are_public(error_type):
         ("_put_batch", ([],), "put_vectors"),
         ("get_vectors", (["key"],), "get_vectors"),
         ("delete_vectors", (["key"],), "delete_vectors"),
+        ("query", ([0.1, 0.2], 2), "query_vectors"),
     ],
 )
 def test_sync_direct_operations_translate(
@@ -138,7 +140,11 @@ def test_sync_direct_operations_translate(
 @pytest.mark.parametrize("code,error_type", MAPPINGS)
 @pytest.mark.parametrize(
     "operation,args,aws_operation",
-    [("_put_batch", ([],), "put_vectors"), ("get_vectors", (["key"],), "get_vectors")],
+    [
+        ("_put_batch", ([],), "put_vectors"),
+        ("get_vectors", (["key"],), "get_vectors"),
+        ("query", ([0.1, 0.2], 2), "query_vectors"),
+    ],
 )
 async def test_async_direct_operations_translate(code, error_type, operation, args, aws_operation):
     store, client = _async_store()
@@ -155,24 +161,24 @@ async def test_async_direct_operations_translate(code, error_type, operation, ar
 
 
 def _failing_pages(original):
-    yield {"vectors": [{"key": "first"}], "NextToken": "next"}
+    yield {"vectors": [{"key": "first"}], "nextToken": "next"}
     raise original
-
-
-async def _async_pages(original=None):
-    yield {"vectors": [{"key": "first"}], "NextToken": "next"}
-    if original is not None:
-        raise original
 
 
 @pytest.mark.parametrize("operation,args", [("query_pages", ([0.1, 0.2], 2)), ("list_pages", ())])
 def test_sync_pagination_translates_later_page_errors(sync_store, operation, args):
     store, client = sync_store
     original = _client_error("NotFoundException")
-    client.get_paginator.return_value.paginate.return_value = _failing_pages(original)
+    if operation == "query_pages":
+        client.query_vectors.side_effect = [
+            {"vectors": [{"key": "first"}], "nextToken": "next"}, original,
+        ]
+    else:
+        client.get_paginator.return_value.paginate.return_value = _failing_pages(original)
 
     pages = getattr(store, operation)(*args)
     client.get_paginator.assert_not_called()
+    client.query_vectors.assert_not_called()
     assert next(pages) == [{"key": "first"}]
     with pytest.raises(NotFoundError) as caught:
         next(pages)
@@ -183,11 +189,13 @@ def test_sync_pagination_translates_later_page_errors(sync_store, operation, arg
 async def test_async_pagination_translates_later_page_errors():
     store, client = _async_store()
     original = _client_error("NotFoundException")
-    client.get_paginator.return_value.paginate.return_value = _async_pages(original)
+    client.query_vectors.side_effect = [
+        {"vectors": [{"key": "first"}], "nextToken": "next"}, original,
+    ]
 
     async with store:
         pages = store.query_pages([0.1, 0.2], 2)
-        client.get_paginator.assert_not_called()
+        client.query_vectors.assert_not_called()
         assert await pages.__anext__() == [{"key": "first"}]
         with pytest.raises(NotFoundError) as caught:
             await pages.__anext__()
@@ -195,9 +203,8 @@ async def test_async_pagination_translates_later_page_errors():
     assert caught.value.__cause__ is original
 
 
-@pytest.mark.parametrize("operation,args", [("query", ([0.1, 0.2], 2)), ("list_pages", ())])
 @pytest.mark.parametrize("boundary", ["get_paginator", "paginate"])
-def test_sync_paginator_setup_errors_translate(sync_store, operation, args, boundary):
+def test_sync_list_paginator_setup_errors_translate(sync_store, boundary):
     store, client = sync_store
     original = _client_error("ValidationException")
     call = (
@@ -208,26 +215,7 @@ def test_sync_paginator_setup_errors_translate(sync_store, operation, args, boun
     call.side_effect = original
 
     with pytest.raises(ValidationError) as caught:
-        list(getattr(store, operation)(*args))
-
-    assert caught.value.__cause__ is original
-    call.assert_called_once()
-
-
-@pytest.mark.parametrize("boundary", ["get_paginator", "paginate"])
-async def test_async_paginator_setup_errors_translate(boundary):
-    store, client = _async_store()
-    original = _client_error("ValidationException")
-    call = (
-        client.get_paginator
-        if boundary == "get_paginator"
-        else client.get_paginator.return_value.paginate
-    )
-    call.side_effect = original
-
-    async with store:
-        with pytest.raises(ValidationError) as caught:
-            await store.query([0.1, 0.2], 2)
+        list(store.list_pages())
 
     assert caught.value.__cause__ is original
     call.assert_called_once()
@@ -287,32 +275,36 @@ async def test_async_batch_retries_then_succeeds(monkeypatch, code):
 
 def test_sync_query_retries_page_iteration_failure(sync_store, monkeypatch):
     store, client = sync_store
-    client.get_paginator.return_value.paginate.side_effect = [
-        _failing_pages(_client_error("ThrottlingException")),
-        [{"vectors": [{"key": "success"}]}],
+    client.query_vectors.side_effect = [
+        {"vectors": [{"key": "first"}], "nextToken": "next"},
+        _client_error("ThrottlingException"),
+        {"vectors": [{"key": "success"}]},
     ]
     sleep = MagicMock()
     monkeypatch.setattr("dynavec.utils.time.sleep", sleep)
 
     assert store.query([0.1, 0.2], 2) == [{"key": "success"}]
 
-    assert client.get_paginator.call_count == 2
+    assert client.query_vectors.call_count == 3
+    assert "nextToken" not in client.query_vectors.call_args.kwargs
     sleep.assert_called_once()
 
 
 async def test_async_query_retries_page_iteration_failure(monkeypatch):
     store, client = _async_store()
-    client.get_paginator.return_value.paginate.side_effect = [
-        _async_pages(_client_error("ThrottlingException")),
-        _async_pages(),
+    client.query_vectors.side_effect = [
+        {"vectors": [{"key": "first"}], "nextToken": "next"},
+        _client_error("ThrottlingException"),
+        {"vectors": [{"key": "success"}]},
     ]
     sleep = AsyncMock()
     monkeypatch.setattr("dynavec.utils.asyncio.sleep", sleep)
 
     async with store:
-        assert await store.query([0.1, 0.2], 2) == [{"key": "first"}]
+        assert await store.query([0.1, 0.2], 2) == [{"key": "success"}]
 
-    assert client.get_paginator.call_count == 2
+    assert client.query_vectors.await_count == 3
+    assert "nextToken" not in client.query_vectors.call_args.kwargs
     sleep.assert_awaited_once()
 
 

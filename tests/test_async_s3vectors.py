@@ -6,22 +6,12 @@ import asyncio
 from typing import Any
 from unittest.mock import AsyncMock
 
+import aioboto3
 import pytest
+from aiobotocore.stub import AioStubber
 
 from dynavec.config import DynavecConfig
 from dynavec.stores.async_s3vectors import AsyncS3VectorsStore
-
-
-class FakeAsyncPaginator:
-    def __init__(self, pages: list[dict[str, Any]]) -> None:
-        self.pages = pages
-        self.calls: list[dict[str, Any]] = []
-
-    async def paginate(self, **kwargs: Any):
-        self.calls.append(kwargs)
-
-        for page in self.pages:
-            yield page
 
 
 def _config() -> DynavecConfig:
@@ -71,14 +61,15 @@ class FakeS3Client:
     ) -> None:
         self.put_calls: list[dict[str, Any]] = []
         self.get_calls: list[dict[str, Any]] = []
-        self.paginator = FakeAsyncPaginator(pages or [])
+        self.pages = iter(pages or [{"vectors": []}])
+        self.query_calls: list[dict[str, Any]] = []
 
     async def put_vectors(self, **kwargs: Any) -> None:
         self.put_calls.append(kwargs)
 
-    def get_paginator(self, name: str) -> FakeAsyncPaginator:
-        assert name == "query_vectors"
-        return self.paginator
+    async def query_vectors(self, **kwargs: Any) -> dict[str, Any]:
+        self.query_calls.append(kwargs)
+        return next(self.pages)
 
     async def get_vectors(self, **kwargs: Any) -> dict[str, Any]:
         self.get_calls.append(kwargs)
@@ -188,7 +179,7 @@ async def test_query_returns_paginated_results():
                 {"key": f"k{i}", "distance": i * 0.01}
                 for i in range(100)
             ],
-            "NextToken": "token-1",
+            "nextToken": "token-1",
         },
         {
             "vectors": [
@@ -210,6 +201,26 @@ async def test_query_returns_paginated_results():
     assert len(results) == 150
     assert results[0]["key"] == "k0"
     assert results[-1]["key"] == "k149"
+    assert "nextToken" not in client.query_calls[0]
+    assert client.query_calls[1]["nextToken"] == "token-1"
+
+
+async def test_query_with_real_async_sdk_client():
+    session = aioboto3.Session(
+        aws_access_key_id="testing", aws_secret_access_key="testing", region_name="us-east-1"
+    )
+    vectors = [{"key": "doc-1", "distance": 0.25}]
+
+    async with AsyncS3VectorsStore(_config(), session) as store:
+        with AioStubber(store._client) as stubber:
+            stubber.add_response("query_vectors", {"vectors": vectors}, {
+                "vectorBucketName": "test-bucket", "indexName": "test-index", "topK": 1,
+                "queryVector": {"float32": [1.0, 2.0, 3.0, 4.0]},
+                "returnMetadata": True, "returnDistance": True,
+            })
+
+            assert await store.query([1.0, 2.0, 3.0, 4.0], top_k=1) == vectors
+            stubber.assert_no_pending_responses()
 
 
 async def test_query_truncates_at_top_k():
@@ -219,7 +230,7 @@ async def test_query_truncates_at_top_k():
                 {"key": f"k{i}"}
                 for i in range(100)
             ],
-            "NextToken": "token-1",
+            "nextToken": "token-1",
         },
         {
             "vectors": [
@@ -283,6 +294,49 @@ async def test_query_rejects_excessive_top_k():
             )
 
 
+@pytest.mark.parametrize("page_size", [None, 2])
+async def test_query_pages_continues_after_empty_page_with_next_token(page_size):
+    client = FakeS3Client([
+        {"vectors": [{"key": "k0"}], "nextToken": "token-1"},
+        {"vectors": [], "nextToken": "token-2"},
+        {"vectors": [{"key": "k1"}, {"key": "k2"}]},
+    ])
+    limiter = AsyncMock()
+
+    async with AsyncS3VectorsStore(_config(), FakeSession(client)) as store:
+        store._query_limiter = limiter
+        pages = [
+            page async for page in store.query_pages(
+                [0.1, 0.2, 0.3, 0.4], top_k=5, page_size=page_size
+            )
+        ]
+
+    assert [hit["key"] for page in pages for hit in page] == ["k0", "k1", "k2"]
+    assert [len(page) for page in pages] == ([1, 2] if page_size is None else [2, 1])
+    assert limiter.acquire_async.await_count == 3
+
+
+async def test_query_pages_stops_at_top_k_with_large_page_size():
+    client = FakeS3Client([
+        {"vectors": [{"key": "k0"}], "nextToken": "token-1"},
+        {"vectors": [{"key": "k1"}, {"key": "k2"}], "nextToken": "unused"},
+    ])
+
+    async with AsyncS3VectorsStore(_config(), FakeSession(client)) as store:
+        pages = [page async for page in store.query_pages(
+            [1.0, 2.0, 3.0, 4.0], top_k=2, page_size=100,
+            filter={"kind": "test"}, return_metadata=False, return_distance=False,
+        )]
+
+    assert pages == [[{"key": "k0"}, {"key": "k1"}]]
+    assert len(client.query_calls) == 2
+    for call in client.query_calls:
+        assert call["topK"] == 2
+        assert call["filter"] == {"kind": "test"}
+        assert call["returnMetadata"] is False
+        assert call["returnDistance"] is False
+
+
 async def test_put_batch_uses_rate_limiter():
     config = DynavecConfig(
         vector_bucket="test-bucket",
@@ -319,11 +373,11 @@ async def test_query_pages_uses_rate_limiter_per_page():
     pages = [
         {
             "vectors": [{"key": "k0"}],
-            "NextToken": "token-1",
+            "nextToken": "token-1",
         },
         {
             "vectors": [{"key": "k1"}],
-            "NextToken": "token-2",
+            "nextToken": "token-2",
         },
         {
             "vectors": [{"key": "k2"}],

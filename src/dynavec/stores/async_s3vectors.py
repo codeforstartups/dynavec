@@ -257,7 +257,7 @@ class AsyncS3VectorsStore:
         return_distance: bool = True,
         page_size: int | None = None,
     ) -> AsyncIterator[list[dict[str, Any]]]:
-        """Yield result pages from the async S3 Vectors paginator."""
+        """Yield async result pages, following S3 Vectors ``nextToken``."""
         if top_k <= 0:
             return
 
@@ -289,22 +289,13 @@ class AsyncS3VectorsStore:
         yielded = 0
         buffer: list[dict[str, Any]] = []
 
-        with translate_client_errors():
-            paginator = client.get_paginator("query_vectors")
-            page_iterator = paginator.paginate(
-                PaginationConfig={"MaxItems": top_k},
-                **kwargs,
-            ).__aiter__()
-
         while True:
             if self._query_limiter is not None:
                 await self._query_limiter.acquire_async()
 
-            try:
-                with translate_client_errors():
-                    page = await page_iterator.__anext__()
-            except StopAsyncIteration:
-                break
+            # Older supported SDKs expose QueryVectors without a paginator.
+            with translate_client_errors():
+                page = await client.query_vectors(**kwargs)
 
             vectors = page.get("vectors", [])
 
@@ -325,16 +316,12 @@ class AsyncS3VectorsStore:
                     buffer.extend(vectors)
 
                     while (
-                        len(buffer) >= effective_page_size
-                        and yielded < top_k
+                        yielded < top_k
+                        and len(buffer) >= min(effective_page_size, top_k - yielded)
                     ):
-                        chunk = buffer[:effective_page_size]
-                        buffer = buffer[effective_page_size:]
-
-                        remaining = top_k - yielded
-
-                        if len(chunk) > remaining:
-                            chunk = chunk[:remaining]
+                        chunk_size = min(effective_page_size, top_k - yielded)
+                        chunk = buffer[:chunk_size]
+                        buffer = buffer[chunk_size:]
 
                         yield chunk
                         yielded += len(chunk)
@@ -342,8 +329,10 @@ class AsyncS3VectorsStore:
                         if yielded >= top_k:
                             return
 
-            if page.get("NextToken") is None:
+            next_token = page.get("nextToken")
+            if not next_token:
                 break
+            kwargs["nextToken"] = next_token
 
         if (
             effective_page_size is not None

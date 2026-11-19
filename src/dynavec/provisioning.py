@@ -146,8 +146,95 @@ def ensure_table(config: DynavecConfig, boto_session: Any | None = None) -> None
         ensure_ttl(config, boto_session)
 
 
+def create_telemetry_table(
+    client: Any,
+    table_name: str = "dynavec-telemetry",
+    ttl_attribute: str = "ttl",
+    billing_mode: str = "PAY_PER_REQUEST",
+    read_capacity_units: int = 5,
+    write_capacity_units: int = 5,
+    wait: bool = True,
+) -> dict[str, Any]:
+    """Provision DynamoDB telemetry events table with TTL enabled. Idempotent."""
+    ddb_client = (
+        client.meta.client
+        if hasattr(client, "meta") and hasattr(client.meta, "client")
+        else client
+    )
+
+    create_kwargs: dict[str, Any] = {
+        "TableName": table_name,
+        "AttributeDefinitions": [
+            {"AttributeName": "pk", "AttributeType": "S"},
+            {"AttributeName": "sk", "AttributeType": "S"},
+        ],
+        "KeySchema": [
+            {"AttributeName": "pk", "KeyType": "HASH"},
+            {"AttributeName": "sk", "KeyType": "RANGE"},
+        ],
+        "BillingMode": billing_mode,
+    }
+    if billing_mode == "PROVISIONED":
+        create_kwargs["ProvisionedThroughput"] = {
+            "ReadCapacityUnits": read_capacity_units,
+            "WriteCapacityUnits": write_capacity_units,
+        }
+
+    table_created = False
+    try:
+        ddb_client.create_table(**create_kwargs)
+        table_created = True
+    except Exception as exc:  # noqa: BLE001
+        if _client_error_code(exc) != "ResourceInUseException":
+            raise ProvisioningError(f"Failed to create telemetry table: {exc}") from exc
+
+    if table_created and wait:
+        try:
+            ddb_client.get_waiter("table_exists").wait(TableName=table_name)
+        except Exception:  # noqa: BLE001
+            pass
+
+    if ttl_attribute:
+        try:
+            desc = ddb_client.describe_time_to_live(TableName=table_name)
+            ttl_desc = desc.get("TimeToLiveDescription", {})
+            status = ttl_desc.get("TimeToLiveStatus")
+            current_attr = ttl_desc.get("AttributeName")
+            if not (status in ("ENABLED", "ENABLING") and current_attr == ttl_attribute):
+                ddb_client.update_time_to_live(
+                    TableName=table_name,
+                    TimeToLiveSpecification={
+                        "Enabled": True,
+                        "AttributeName": ttl_attribute,
+                    },
+                )
+        except Exception as exc:  # noqa: BLE001
+            code = _client_error_code(exc)
+            if code not in ("ValidationException", "ResourceInUseException"):
+                raise ProvisioningError(
+                    f"Failed to enable TTL on telemetry table {table_name!r}: {exc}"
+                ) from exc
+
+    return cast(dict[str, Any], ddb_client.describe_table(TableName=table_name))
+
+
 def provision_all(config: DynavecConfig, boto_session: Any | None = None) -> None:
     """Create every resource dynavec needs. Idempotent."""
     ensure_vector_bucket(config, boto_session)
     ensure_index(config, boto_session)
     ensure_table(config, boto_session)
+    if config.telemetry_dynamodb:
+        import boto3
+
+        session = boto_session or boto3.Session()
+        client_kwargs: dict[str, object] = {"region_name": config.region}
+        botocore_config = config.botocore_config()
+        if botocore_config is not None:
+            client_kwargs["config"] = botocore_config
+        ddb = session.client("dynamodb", **client_kwargs)
+        create_telemetry_table(
+            ddb,
+            table_name=config.telemetry_table,
+            ttl_attribute=config.telemetry_ttl_attribute,
+            billing_mode=config.dynamodb_billing_mode,
+        )

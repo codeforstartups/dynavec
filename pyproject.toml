@@ -121,7 +121,7 @@ include = ["src/dynavec/py.typed"]
 testpaths = ["tests"]
 addopts = "-q"
 asyncio_mode = "auto"
-pythonpath = ["."]
+pythonpath = ["src", "."]
 
 [tool.ruff]
 line-length = 100

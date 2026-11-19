@@ -118,6 +118,13 @@ class DynavecConfig:
     structured_logging: bool = False
     log_level: str = "INFO"
 
+    # telemetry persistence (dynalogs)
+    telemetry_dynamodb: bool = False
+    telemetry_table: str = "dynavec-telemetry"
+    telemetry_ttl_attribute: str = "ttl"
+    telemetry_ttl_days: int = 30
+    telemetry_capture_text: bool = False
+
     def botocore_config(self) -> Config | None:
         """Return a botocore Config with pool tuning, or None for defaults.
 
@@ -158,6 +165,8 @@ class DynavecConfig:
         valid_log_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
         if self.log_level.upper() not in valid_log_levels:
             raise ValueError(f"log_level must be one of {valid_log_levels}")
+        if self.telemetry_ttl_days <= 0:
+            raise ValueError("telemetry_ttl_days must be a positive integer")
         
         if self.dimension > 4096:
             logger = logging.getLogger(__name__)

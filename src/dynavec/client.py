@@ -83,7 +83,7 @@ from .namespace import NamespaceView
 from .provisioning import provision_all
 from .retrieval import distance_to_score, maximal_marginal_relevance, reciprocal_rank_fusion
 from .stores import DynamoDBStore, S3VectorsStore
-from .telemetry import TelemetryRecorder
+from .telemetry import DynamoDBTelemetrySink, TelemetryRecorder
 from .transforms import Transform, TransformPipeline, as_pipeline
 from .utils import chunked
 
@@ -107,7 +107,9 @@ class Dynavec:
         boto_session: Any | None = None,
         transform: TransformSpec | None = None,
         cache: BaseCache | None = None,
-        telemetry: TelemetryRecorder | None = None,
+        telemetry: TelemetryRecorder | DynamoDBTelemetrySink | None = None,
+        telemetry_dynamodb: bool | None = None,
+        telemetry_table: str | None = None,
     ) -> None:
         self.config = config
         self.embedder = embedder
@@ -116,6 +118,24 @@ class Dynavec:
         self._docs = DynamoDBStore(config, boto_session=self._session)
         self._default_transform = as_pipeline(transform)
         self._cache = cache
+
+        use_tel_ddb = (
+            telemetry_dynamodb
+            if telemetry_dynamodb is not None
+            else config.telemetry_dynamodb
+        )
+        if telemetry is None and use_tel_ddb:
+            from .telemetry import DynamoDBTelemetryRecorder
+
+            tel_tbl = telemetry_table or config.telemetry_table
+            telemetry = DynamoDBTelemetryRecorder(
+                table_name=tel_tbl,
+                boto_session=self._session,
+                region_name=config.region,
+                capture_text=config.telemetry_capture_text,
+                ttl_seconds=config.telemetry_ttl_days * 86400,
+                ttl_attribute=config.telemetry_ttl_attribute,
+            )
         self._telemetry = telemetry
         self._graph_store: GraphStore | None = None
         self._pool: ThreadPoolExecutor | None = None
@@ -147,6 +167,13 @@ class Dynavec:
         if self._pool is not None:
             self._pool.shutdown(wait=True)
             self._pool = None
+        if self._telemetry is not None and hasattr(self._telemetry, "close"):
+            self._telemetry.close()
+
+    def flush_telemetry(self) -> None:
+        """Flush any pending telemetry records to DynamoDB."""
+        if self._telemetry is not None and hasattr(self._telemetry, "flush"):
+            self._telemetry.flush()
 
     def __enter__(self) -> Dynavec:
         return self
@@ -544,6 +571,7 @@ class Dynavec:
                         rescore,
                         rerank,
                         query,
+                        explanation=explanation,
                     )
 
                     if explanation is not None:
@@ -592,6 +620,7 @@ class Dynavec:
                 rescore,
                 rerank,
                 query,
+                explanation=explanation,
             )
 
             if explanation is not None:
@@ -614,6 +643,7 @@ class Dynavec:
                         filtered=bool(filter),
                         rescore=self._rescore_label(rescore),
                         rerank=rerank,
+                        stage_latencies=(dict(explanation.timings_ms) if explanation else {}),
                     )
                 )
             raise
@@ -777,7 +807,7 @@ class Dynavec:
 
     def _record_search(
         self,
-        tel: TelemetryRecorder | None,
+        tel: Any | None,
         t0: float,
         namespace: str,
         top_k: int,
@@ -787,10 +817,13 @@ class Dynavec:
         rescore: RescoreSpec | None,
         rerank: str | None,
         query: str | None,
+        explanation: SearchExplanation | None = None,
     ) -> None:
         if tel is None:
             return
         scores = [r.score for r in results] if results else []
+        stage_latencies = dict(explanation.timings_ms) if explanation is not None else {}
+        result_ids = [r.id for r in results] if results else []
         tel.record(
             tel.new_event(
                 "search",
@@ -804,7 +837,11 @@ class Dynavec:
                 rerank=rerank,
                 score_top=round(max(scores), 4) if scores else None,
                 score_mean=round(sum(scores) / len(scores), 4) if scores else None,
-                query_preview=(query[:80] if (query and tel.capture_text) else None),
+                query_preview=(
+                    query[:80] if (query and getattr(tel, "capture_text", False)) else None
+                ),
+                stage_latencies=stage_latencies,
+                result_ids=result_ids,
             )
         )
 

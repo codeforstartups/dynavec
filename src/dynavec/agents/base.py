@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..chat.base import Tool, ToolCall
+from ..exceptions import NodeInterrupt
 
 
 @dataclass
@@ -31,6 +32,7 @@ class AgentResult:
     termination_reason: str = "completed"  # "completed", "max_steps_reached", "error"
     total_steps: int = 0
     tool_calls_count: int = 0
+    interrupt_payload: dict[str, Any] | None = None
 
 
 @dataclass
@@ -191,6 +193,8 @@ class AgentTool:
             if isinstance(result, str):
                 return result
             return json.dumps(result, ensure_ascii=False)
+        except NodeInterrupt:
+            raise
         except Exception as exc:  # noqa: BLE001
             return f"Error executing tool {self.name!r}: {exc}"
 
@@ -209,6 +213,8 @@ class AgentTool:
             if isinstance(result, str):
                 return result
             return json.dumps(result, ensure_ascii=False)
+        except NodeInterrupt:
+            raise
         except Exception as exc:  # noqa: BLE001
             return f"Error executing tool {self.name!r}: {exc}"
 
@@ -234,3 +240,10 @@ def tool(
         )
 
     return decorator
+
+
+def interrupt(thread_id: str, node_id: str, payload: dict[str, Any] | None = None) -> None:
+    """Pause current run and wait for human input/approval."""
+    from ..exceptions import NodeInterrupt
+
+    raise NodeInterrupt(thread_id=thread_id, node_id=node_id, payload=payload)

@@ -131,35 +131,41 @@ Replace `REGION` and `ACCOUNT_ID`. `dynamodb:Scan` is only needed for the GraphR
 
 ```python
 from dynavec import Dynavec, DynavecConfig, Document
-from dynavec.embeddings import OpenAIEmbedder   # or Gemini / Bedrock / SentenceTransformer
+from dynavec.embeddings import OpenAIEmbedder  # or Gemini / Bedrock / SentenceTransformer
 
 cfg = DynavecConfig(
-    vector_bucket="my-vectors",     # S3 vector bucket
-    index="docs",                   # vector index
-    table="dynavec_docs",           # DynamoDB table
+    vector_bucket="my-vectors",  # S3 vector bucket
+    index="docs",  # vector index
+    table="dynavec_docs",  # DynamoDB table
     dimension=1536,
     distance_metric="cosine",
     region="us-east-1",
-    auto_provision=True,            # create bucket + index + table if missing
+    auto_provision=True,  # create bucket + index + table if missing
 )
 
 db = Dynavec(cfg, embedder=OpenAIEmbedder(model="text-embedding-3-small"))
 
 db.upsert(
     [
-        Document(id="a", text="The mitochondria is the powerhouse of the cell.",
-                 metadata={"topic": "biology", "year": 2021}),
-        Document(id="b", text="Rockets reach orbit at roughly 28,000 km/h.",
-                 metadata={"topic": "space", "year": 2023}),
+        Document(
+            id="a",
+            text="The mitochondria is the powerhouse of the cell.",
+            metadata={"topic": "biology", "year": 2021},
+        ),
+        Document(
+            id="b",
+            text="Rockets reach orbit at roughly 28,000 km/h.",
+            metadata={"topic": "space", "year": 2023},
+        ),
     ],
-    auto_metadata=True,             # also attach hash/timestamp/word counts
+    auto_metadata=True,  # also attach hash/timestamp/word counts
 )
 
 hits = db.search(
     "how do cells make energy?",
     top_k=3,
-    filter={"topic": "biology"},    # S3 Vectors metadata pre-filter
-    rerank="mmr",                   # diversity-aware reranking
+    filter={"topic": "biology"},  # S3 Vectors metadata pre-filter
+    rerank="mmr",  # diversity-aware reranking
 )
 for h in hits:
     print(h.score, h.id, h.text)
@@ -190,10 +196,12 @@ Expire ephemeral documents, session memories, or cache entries automatically via
 
 ```python
 # Pass ttl_seconds on Document or upsert()
-db.upsert([
-    Document(id="session-1", text="Temporary session context", ttl_seconds=3600),
-    Document(id="cached-doc", text="Ephemeral cache data", ttl_seconds=86400),
-])
+db.upsert(
+    [
+        Document(id="session-1", text="Temporary session context", ttl_seconds=3600),
+        Document(id="cached-doc", text="Ephemeral cache data", ttl_seconds=86400),
+    ]
+)
 
 # Or set a default TTL across an entire batch
 ns = db.namespace("sessions")
@@ -259,10 +267,12 @@ from dynavec.integrations.tools import make_retriever_fn
 
 retrieve = make_retriever_fn(db, namespace="kb", top_k=2)
 
+
 @tool
 def search_knowledge_base(query: str) -> str:
     """Search the dynavec knowledge base for relevant passages."""
     return retrieve(query)
+
 
 agent = Agent(tools=[search_knowledge_base])
 agent("Where is dynavec vector data stored?")
@@ -426,7 +436,7 @@ from dynavec.dashboard import serve
 rec = TelemetryRecorder()
 db = Dynavec(cfg, embedder=emb, cache=SemanticCache(), telemetry=rec)
 # ... your app runs searches; the recorder fills automatically ...
-serve(rec, port=8779)          # JSON API at http://127.0.0.1:8779
+serve(rec, port=8779)  # JSON API at http://127.0.0.1:8779
 ```
 
 **2. Run the dashboard** (points at that API; falls back to sample data if unset):
@@ -500,75 +510,6 @@ leaves its linked documents and their embeddings untouched:
 db.graph_delete_edge("acme", "competes_with", "globex", namespace="kb", bidirectional=True)
 db.graph_delete_node("globex", namespace="kb")
 ```
-
-Load graph records with grouped DynamoDB updates:
-
-```python
-result = db.graph_import(
-    namespace="kb",
-    nodes=[{"id": "acme", "ntype": "company", "props": {"country": "US"}}],
-    edges=[{"src": "acme", "relation": "supplies", "dst": "globex",
-            "weight": 2.5, "props": {"created_at": "2026-10-07T12:00:00Z"}}],
-    batch_size=100,
-)
-print(result.nodes_processed, result.edges_appended)  # 2, 1
-
-db.graph_import_file(namespace="kb", json_file="graph.json")
-db.graph_import_file(namespace="kb", nodes_csv="nodes.csv", edges_csv="edges.csv")
-# Either CSV file can also be supplied alone.
-```
-
-Both client methods default to namespace `"default"`. The storage APIs are
-`GraphStore.import_graph(ns, *, nodes=None, edges=None, batch_size=100)` and
-`GraphStore.import_graph_file(ns, *, json_file=None, nodes_csv=None, edges_csv=None,
-batch_size=100)`. They return `GraphImportResult`: `nodes_processed` counts unique
-IDs, including inferred edge endpoints and already-existing nodes;
-`edges_appended` counts input edge records. Empty record collections return zeros.
-
-- **Python:** `nodes` and `edges` are sequences of dictionaries. Nodes require a
-  non-empty string `id`; optional `ntype` is a string or `None`, and `props` is a
-  dictionary or `None`. Edges require non-empty strings `src`, `relation`, and
-  `dst`; optional `weight` defaults to `1.0`, and omitted/`None` `props` defaults
-  to `{}`. Identifiers are stored unchanged, including spaces.
-- **JSON:** a UTF-8 object containing optional `nodes` and `edges` arrays using
-  those same fields. Missing arrays mean empty collections; `null` arrays are
-  invalid. For example: `{"nodes": [{"id": "acme"}], "edges": [{"src": "acme",
-  "relation": "supplies", "dst": "globex"}]}`.
-- **CSV:** separate UTF-8 files. Node headers: required `id`, optional `ntype,props`.
-  Edge headers: required `src,relation,dst`, optional `weight,props`. A `props`
-  cell must contain a JSON object; use standard CSV quoting, e.g.
-  `acme,company,"{""country"":""US""}"`. Blank optional cells mean omitted values.
-  Supply JSON or CSV files in one call; combining formats is invalid.
-
-Existing edges and document links are preserved. Omitted/`None` node attributes
-preserve existing values; explicit node `props` replaces the entire dictionary,
-so `{}` clears it. For repeated node IDs, later supplied attributes win, while
-omitted values preserve earlier ones. Missing edge endpoints are created without
-overwriting existing endpoint metadata. Duplicate edges remain duplicates, and
-repeating an import appends them again: imports are **not idempotent**.
-
-Finite numeric weights may be negative or greater than one; booleans, NaN,
-infinity, and numbers outside DynamoDB's supported precision/range are rejected.
-Nested floats in properties are copied as `Decimal` values for DynamoDB, caller
-inputs are not mutated, and timestamp strings remain caller-provided strings.
-Unsupported DynamoDB values are rejected before writing.
-
-Every supplied record/file is loaded and validated before any database writes,
-including when both CSV files are supplied. Errors identify a record index or
-filename/CSV row. Complete prevalidation uses memory proportional to the import.
-Each unique node is prepared once, then edges are grouped by source and appended
-in input order within that source. `batch_size` must be a positive integer
-(excluding booleans) and limits edges per append request. Three edges from one
-source to three destinations use five `UpdateItem` requests with the default
-batch size, versus nine via three `add_edge()` calls. This is grouping, not
-compression or a single AWS request; `BatchWriteItem` is not used.
-
-The existing **400 KB DynamoDB item limit** still applies to each node's complete
-adjacency list, even with small chunks. AWS failures can leave partial writes;
-there is no whole-import rollback or exactly-once guarantee. Safe node preparation
-uses the existing retry policy, but the importer does not retry edge appends or
-restart completed chunks. SDK retries can still make ambiguous append failures
-unsafe to replay; inspect the stored graph before deciding how to recover.
 
 ## Ecosystem
 

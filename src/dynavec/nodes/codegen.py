@@ -173,6 +173,10 @@ def export_graph_to_code(graph: SimpleGraph) -> str:
             cls_expr = custom_type_nodes.get(
                 nid, BUILTIN_NODE_CLASSES.get(node.node_type, node.__class__.__name__)
             )
+            if nid in custom_type_nodes:
+                lines.append(
+                    f"# Note: Custom node type '{node.node_type}' must be registered before executing this script."
+                )
 
             args: list[str] = [f"node_id={json.dumps(node.id)}"]
             if node.config:
@@ -220,15 +224,23 @@ def export_graph_to_code(graph: SimpleGraph) -> str:
             lines.append(")")
         lines.append("")
 
-    if list(graph._execution_order) != ordered_node_ids:
-        lines.append(f"graph._execution_order = {json.dumps(list(graph._execution_order))}")
-        lines.append("")
-
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _safe_eval_literal(node: ast.AST) -> Any:
-    """Safely evaluate literal AST expression without code execution."""
+def _safe_eval_literal(node: ast.AST, local_vars: dict[str, Any] | None = None) -> Any:
+    """Safely evaluate literal AST expression without code execution, resolving local variables."""
+    if isinstance(node, ast.Name):
+        if local_vars is not None and node.id in local_vars:
+            return local_vars[node.id]
+        raise ValueError(f"Undefined variable in AST expression: {node.id}")
+    if isinstance(node, ast.Dict):
+        return {
+            _safe_eval_literal(k, local_vars): _safe_eval_literal(v, local_vars)
+            for k, v in zip(node.keys, node.values)
+            if k is not None
+        }
+    if isinstance(node, (ast.List, ast.Tuple)):
+        return [_safe_eval_literal(elt, local_vars) for elt in node.elts]
     try:
         return ast.literal_eval(node)
     except Exception as exc:
@@ -255,17 +267,33 @@ def _resolve_node_id(expr: ast.AST, var_nodes: dict[str, Node]) -> str:
     raise ValueError(f"Could not resolve node identifier from AST: {ast.dump(expr)}")
 
 
-def _parse_retry_policy(expr: ast.AST) -> RetryPolicy | None:
-    """Parse RetryPolicy constructor call from AST."""
+def _parse_retry_policy(
+    expr: ast.AST, local_vars: dict[str, Any] | None = None
+) -> RetryPolicy | None:
+    """Parse RetryPolicy constructor call or variable reference from AST."""
     if isinstance(expr, ast.Constant) and expr.value is None:
         return None
+    if isinstance(expr, ast.Name):
+        if local_vars is not None and expr.id in local_vars:
+            val = local_vars[expr.id]
+            if isinstance(val, RetryPolicy):
+                return val
+        return None
     if isinstance(expr, ast.Call):
+        func_name = None
+        if isinstance(expr.func, ast.Name):
+            func_name = expr.func.id
+        elif isinstance(expr.func, ast.Attribute):
+            func_name = expr.func.attr
+        if func_name != "RetryPolicy":
+            return None
+
         kw_dict = {
-            kw.arg: _safe_eval_literal(kw.value)
+            kw.arg: _safe_eval_literal(kw.value, local_vars)
             for kw in expr.keywords
             if kw.arg is not None
         }
-        args = [_safe_eval_literal(arg) for arg in expr.args]
+        args = [_safe_eval_literal(arg, local_vars) for arg in expr.args]
         max_attempts = kw_dict.get("max_attempts", args[0] if len(args) > 0 else 3)
         base_delay = kw_dict.get("base_delay", args[1] if len(args) > 1 else 0.05)
         max_delay = kw_dict.get("max_delay", args[2] if len(args) > 2 else 2.0)
@@ -326,6 +354,7 @@ def _try_parse_node_call(
     custom_node_classes: dict[str, type[Node]],
     imports_map: dict[str, str],
     target_var_name: str | None = None,
+    local_vars: dict[str, Any] | None = None,
 ) -> Node | None:
     """Attempt to parse a node instantiation AST call."""
     node_cls = _resolve_node_class(call.func, reg, custom_node_classes, imports_map)
@@ -342,7 +371,7 @@ def _try_parse_node_call(
 
     # node_id
     if "node_id" in kw_dict:
-        node_id: str | None = str(_safe_eval_literal(kw_dict["node_id"]))
+        node_id: str | None = str(_safe_eval_literal(kw_dict["node_id"], local_vars))
     elif len(args) >= 1 and isinstance(args[0], ast.Constant) and isinstance(args[0].value, str):
         node_id = str(args[0].value)
     elif target_var_name:
@@ -352,22 +381,22 @@ def _try_parse_node_call(
 
     # config
     if "config" in kw_dict:
-        config = dict(_safe_eval_literal(kw_dict["config"]))
-    elif len(args) >= 2 and isinstance(args[1], ast.Dict):
-        config = dict(_safe_eval_literal(args[1]))
+        config = dict(_safe_eval_literal(kw_dict["config"], local_vars))
+    elif len(args) >= 2 and isinstance(args[1], (ast.Dict, ast.Name)):
+        config = dict(_safe_eval_literal(args[1], local_vars))
     else:
         config = {}
 
     # retry_policy
     if "retry_policy" in kw_dict:
-        retry_policy = _parse_retry_policy(kw_dict["retry_policy"])
+        retry_policy = _parse_retry_policy(kw_dict["retry_policy"], local_vars)
     else:
         retry_policy = None
 
     node = node_cls(node_id=node_id, config=config, retry_policy=retry_policy)
 
     if "status" in kw_dict:
-        node.status = cast(NodeStatus, str(_safe_eval_literal(kw_dict["status"])))
+        node.status = cast(NodeStatus, str(_safe_eval_literal(kw_dict["status"], local_vars)))
 
     return node
 
@@ -379,6 +408,7 @@ def _parse_edge_call(
     nodes_by_id: dict[str, Node],
     is_error: bool = False,
     validate_ports: bool = False,
+    local_vars: dict[str, Any] | None = None,
 ) -> None:
     """Parse graph.add_edge(...) or graph.add_error_edge(...) AST call."""
     kw_dict = {kw.arg: kw.value for kw in call.keywords if kw.arg is not None}
@@ -410,32 +440,32 @@ def _parse_edge_call(
     default_target_port = "error" if is_error else "input"
 
     if "source_port" in kw_dict:
-        source_port = str(_safe_eval_literal(kw_dict["source_port"]))
+        source_port = str(_safe_eval_literal(kw_dict["source_port"], local_vars))
     elif len(args) >= 3:
-        source_port = str(_safe_eval_literal(args[2]))
+        source_port = str(_safe_eval_literal(args[2], local_vars))
     else:
         source_port = default_source_port
 
     if "target_port" in kw_dict:
-        target_port = str(_safe_eval_literal(kw_dict["target_port"]))
+        target_port = str(_safe_eval_literal(kw_dict["target_port"], local_vars))
     elif len(args) >= 4:
-        target_port = str(_safe_eval_literal(args[3]))
+        target_port = str(_safe_eval_literal(args[3], local_vars))
     else:
         target_port = default_target_port
 
     if "mapping" in kw_dict:
-        mapping = dict(_safe_eval_literal(kw_dict["mapping"]))
+        mapping = dict(_safe_eval_literal(kw_dict["mapping"], local_vars))
     elif len(args) >= 5:
-        mapping = dict(_safe_eval_literal(args[4]))
+        mapping = dict(_safe_eval_literal(args[4], local_vars))
     else:
         mapping = {}
 
     if is_error:
         is_error_edge = True
     elif "is_error_edge" in kw_dict:
-        is_error_edge = bool(_safe_eval_literal(kw_dict["is_error_edge"]))
+        is_error_edge = bool(_safe_eval_literal(kw_dict["is_error_edge"], local_vars))
     elif len(args) >= 6:
-        is_error_edge = bool(_safe_eval_literal(args[5]))
+        is_error_edge = bool(_safe_eval_literal(args[5], local_vars))
     else:
         is_error_edge = False
 
@@ -521,34 +551,38 @@ def import_graph_from_code(
                         }
                         node_type = dec_kw.get("node_type")
                         if node_type:
-                            label = dec_kw.get("label", node_type.replace("_", " ").title())
-                            description = dec_kw.get("description", stmt.name)
-                            category = dec_kw.get("category", "custom")
-                            inputs = dec_kw.get("inputs", [])
-                            outputs = dec_kw.get("outputs", [])
-                            config_schema = dec_kw.get("config_schema", {})
+                            if reg.has(node_type):
+                                custom_cls = cast(type[Node], reg.get(node_type))
+                            else:
+                                label = dec_kw.get("label", node_type.replace("_", " ").title())
+                                description = dec_kw.get("description", stmt.name)
+                                category = dec_kw.get("category", "custom")
+                                inputs = dec_kw.get("inputs", [])
+                                outputs = dec_kw.get("outputs", [])
+                                config_schema = dec_kw.get("config_schema", {})
 
-                            def _dummy_custom_fn(
-                                inputs: dict[str, Any],
-                                config: dict[str, Any] | None = None,
-                            ) -> dict[str, Any]:
-                                return {}
+                                def _dummy_custom_fn(
+                                    inputs: dict[str, Any],
+                                    config: dict[str, Any] | None = None,
+                                ) -> dict[str, Any]:
+                                    return {}
 
-                            custom_cls = custom_node(
-                                node_type=node_type,
-                                label=label,
-                                description=description,
-                                category=category,
-                                inputs=inputs,
-                                outputs=outputs,
-                                config_schema=config_schema,
-                                registry=reg,
-                                register=True,
-                            )(_dummy_custom_fn)
+                                custom_cls = custom_node(
+                                    node_type=node_type,
+                                    label=label,
+                                    description=description,
+                                    category=category,
+                                    inputs=inputs,
+                                    outputs=outputs,
+                                    config_schema=config_schema,
+                                    registry=reg,
+                                    register=True,
+                                )(_dummy_custom_fn)
                             custom_node_classes[stmt.name] = custom_cls
                             custom_node_classes[custom_cls.__name__] = custom_cls
 
     all_stmts = _collect_statements(tree.body)
+    local_vars: dict[str, Any] = {}
 
     for stmt in all_stmts:
         if isinstance(stmt, ast.Import):
@@ -568,16 +602,27 @@ def import_graph_from_code(
                 if isinstance(target, ast.Name):
                     var_name = target.id
                     if isinstance(stmt.value, ast.Call):
+                        rp = _parse_retry_policy(stmt.value, local_vars=local_vars)
+                        if rp is not None:
+                            local_vars[var_name] = rp
+                            continue
                         node = _try_parse_node_call(
                             stmt.value,
                             reg,
                             custom_node_classes,
                             imports_map,
                             target_var_name=var_name,
+                            local_vars=local_vars,
                         )
                         if node is not None:
                             var_nodes[var_name] = node
                             nodes_by_id[node.id] = node
+                            continue
+                    try:
+                        val = _safe_eval_literal(stmt.value, local_vars=local_vars)
+                        local_vars[var_name] = val
+                    except Exception:
+                        pass
                 elif isinstance(target, ast.Attribute):
                     # var.status = "..."
                     if (
@@ -586,10 +631,10 @@ def import_graph_from_code(
                         and target.attr == "status"
                     ):
                         var_nodes[target.value.id].status = cast(
-                            NodeStatus, str(_safe_eval_literal(stmt.value))
+                            NodeStatus, str(_safe_eval_literal(stmt.value, local_vars=local_vars))
                         )
                     elif target.attr == "_execution_order":
-                        order = _safe_eval_literal(stmt.value)
+                        order = _safe_eval_literal(stmt.value, local_vars=local_vars)
                         if isinstance(order, list):
                             graph._execution_order = [str(x) for x in order]
 
@@ -611,6 +656,7 @@ def import_graph_from_code(
                                     reg,
                                     custom_node_classes,
                                     imports_map,
+                                    local_vars=local_vars,
                                 )
                                 if inline_node is not None:
                                     nodes_by_id[inline_node.id] = inline_node
@@ -623,6 +669,7 @@ def import_graph_from_code(
                             nodes_by_id,
                             is_error=(attr_name == "add_error_edge"),
                             validate_ports=validate_ports,
+                            local_vars=local_vars,
                         )
 
     return graph

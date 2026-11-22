@@ -601,3 +601,78 @@ def test_node_id_with_special_characters_roundtrip() -> None:
     assert restored.edges[0].source_node == "step-1-fetch"
     assert restored.edges[0].target_node == "step-2-process"
     assert restored.to_dict() == graph.to_dict()
+
+
+def test_variable_references_in_ast_import() -> None:
+    """Verify AST parser resolves variables for config, retry_policy, and edge mapping."""
+    code = """
+from dynavec import SimpleGraph, LLMNode, RetrieverNode, RetryPolicy
+
+graph = SimpleGraph()
+
+llm_cfg = {"temperature": 0.8, "model": "gpt-4o"}
+r_policy = RetryPolicy(max_attempts=5, base_delay=0.1)
+edge_map = {"context": "input"}
+
+r = RetrieverNode(node_id="retriever_var", retry_policy=r_policy)
+l = LLMNode(node_id="llm_var", config=llm_cfg)
+
+graph.add_node(r)
+graph.add_node(l)
+graph.add_edge(source_id="retriever_var", target_id="llm_var", mapping=edge_map)
+"""
+    restored = SimpleGraph.from_code(code)
+    assert "llm_var" in restored.nodes
+    assert restored.nodes["llm_var"].config == {"temperature": 0.8, "model": "gpt-4o"}
+    assert restored.nodes["retriever_var"].retry_policy is not None
+    assert restored.nodes["retriever_var"].retry_policy.max_attempts == 5
+    assert len(restored.edges) == 1
+    assert restored.edges[0].mapping == {"context": "input"}
+
+
+def test_custom_node_registry_not_overwritten() -> None:
+    """Verify importing code with @custom_node does not overwrite existing registry implementations."""
+    from dynavec.nodes.registry import NodeRegistry
+
+    test_reg = NodeRegistry()
+
+    @custom_node(node_type="test_existing_node", registry=test_reg)
+    def my_real_func(inputs: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
+        return {"real_output": 123}
+
+    code = """
+from dynavec import custom_node, SimpleGraph
+
+@custom_node(node_type="test_existing_node")
+def my_real_func(inputs, config=None):
+    pass
+
+graph = SimpleGraph()
+n = my_real_func(node_id="custom_1")
+graph.add_node(n)
+"""
+    restored = import_graph_from_code(code, registry=test_reg)
+    assert "custom_1" in restored.nodes
+    # Verify the registry still points to the real class and function
+    custom_cls = test_reg.get("test_existing_node")
+    assert custom_cls is not None
+    node_inst = custom_cls(node_id="custom_1")
+    exec_result = node_inst.execute({})
+    assert exec_result == {"real_output": 123}
+
+
+def test_custom_node_export_includes_reminder_comment() -> None:
+    """Verify exporting a graph with custom nodes emits a helpful reminder comment."""
+    @custom_node(node_type="exporter_custom_reminder_node")
+    def reminder_fn(inputs: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
+        return {}
+
+    custom_cls = node_registry.get("exporter_custom_reminder_node")
+    assert custom_cls is not None
+    graph = SimpleGraph()
+    n = custom_cls(node_id="rem_1")
+    graph.add_node(n)
+
+    code = graph.to_code()
+    assert "# Note: Custom node type 'exporter_custom_reminder_node' must be registered before executing this script." in code
+    assert "graph._execution_order" not in code

@@ -8,14 +8,16 @@ for durable, in-account agent execution.
 
 from __future__ import annotations
 
-import builtins
 import copy
 import threading
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 from botocore.exceptions import ClientError
 
@@ -157,7 +159,9 @@ class BaseCheckpointer(ABC):
         """Load a specific snapshot by thread ID and snapshot ID."""
 
     @abstractmethod
-    def list_snapshots(self, thread_id: str) -> builtins.list[Snapshot]:
+    def list_snapshots(
+        self, thread_id: str, limit: int | None = None
+    ) -> Sequence[Snapshot]:
         """List all snapshots for a thread in chronological order."""
 
     def fork_from_snapshot(
@@ -180,28 +184,46 @@ class BaseCheckpointer(ABC):
         meta["forked_from_thread"] = thread_id
         meta["forked_from_snapshot"] = snapshot_id
 
-        forked_cp_id = (
-            source.checkpoint_id
-            if source.checkpoint_id
-            else f"cp_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
-        )
+        # Forked thread must generate its own unique checkpoint ID pointing to source checkpoint as parent
+        new_cp_id = f"cp_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
+
+        forked_state = copy.deepcopy(source.state)
+        if override_inputs is not None:
+            if "inputs" in forked_state and isinstance(forked_state["inputs"], dict):
+                forked_state["inputs"].update(override_inputs)
+            else:
+                forked_state["inputs"] = copy.deepcopy(merged_inputs)
+
+            new_prompt = override_inputs.get("prompt") or override_inputs.get("goal")
+            if new_prompt:
+                forked_state["goal"] = new_prompt
+                if "messages" in forked_state and isinstance(forked_state["messages"], list):
+                    for m in forked_state["messages"]:
+                        if isinstance(m, dict) and m.get("role") == "user":
+                            m["content"] = new_prompt
+                            break
+            for k, v in override_inputs.items():
+                if k not in ("prompt", "goal", "messages"):
+                    forked_state[k] = copy.deepcopy(v)
+                elif k == "messages":
+                    forked_state["messages"] = copy.deepcopy(v)
 
         self.save(
             Checkpoint(
                 thread_id=new_thread_id,
-                checkpoint_id=forked_cp_id,
+                checkpoint_id=new_cp_id,
                 parent_checkpoint_id=source.checkpoint_id or None,
                 step=source.step,
-                state=copy.deepcopy(source.state),
+                state=copy.deepcopy(forked_state),
                 metadata=copy.deepcopy(meta),
             )
         )
 
         forked = Snapshot(
             thread_id=new_thread_id,
-            checkpoint_id=forked_cp_id,
+            checkpoint_id=new_cp_id,
             step=source.step,
-            state=copy.deepcopy(source.state),
+            state=copy.deepcopy(forked_state),
             inputs=merged_inputs,
             parent_snapshot_id=source.snapshot_id,
             metadata=meta,
@@ -314,9 +336,13 @@ class MemoryCheckpointer(BaseCheckpointer):
                     )
             return None
 
-    def list_snapshots(self, thread_id: str) -> builtins.list[Snapshot]:
+    def list_snapshots(
+        self, thread_id: str, limit: int | None = None
+    ) -> Sequence[Snapshot]:
         with self._lock:
             history = list(self._snapshots.get(thread_id, []))
+            if limit is not None:
+                history = history[-limit:]
             return [
                 Snapshot(
                     snapshot_id=s.snapshot_id,
@@ -482,15 +508,6 @@ class DynamoDBCheckpointer(BaseCheckpointer):
 
     def save_snapshot(self, snapshot: Snapshot) -> str:
         """Persist an immutable snapshot item and update thread snapshot index in DynamoDB."""
-        # Enforce immutability: check if snapshot already exists
-        existing = self.table.get_item(
-            Key={"pk": self._snapshot_pk(snapshot.thread_id, snapshot.snapshot_id)}
-        )
-        if "Item" in existing and existing["Item"]:
-            raise SnapshotImmutableError(
-                f"Snapshot '{snapshot.snapshot_id}' already exists and is immutable."
-            )
-
         item: dict[str, Any] = {
             "pk": self._snapshot_pk(snapshot.thread_id, snapshot.snapshot_id),
             "ns": self.namespace,
@@ -575,7 +592,9 @@ class DynamoDBCheckpointer(BaseCheckpointer):
         clean = _from_dynamo(item)
         return Snapshot.from_dict(clean)
 
-    def list_snapshots(self, thread_id: str) -> builtins.list[Snapshot]:
+    def list_snapshots(
+        self, thread_id: str, limit: int | None = None
+    ) -> Sequence[Snapshot]:
         """List snapshots for a thread in chronological order."""
         resp = self.table.get_item(Key={"pk": self._snapshots_index_pk(thread_id)})
         item = resp.get("Item")
@@ -585,6 +604,9 @@ class DynamoDBCheckpointer(BaseCheckpointer):
         entries = _from_dynamo(item.get("snapshots", []))
         if not entries:
             return []
+
+        if limit is not None:
+            entries = entries[-limit:]
 
         snapshots: list[Snapshot] = []
         for entry in entries:

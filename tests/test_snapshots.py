@@ -248,6 +248,11 @@ def test_memory_checkpointer_list_snapshots_chronological():
         "snap-thA-3",
     ]
 
+    # Verify limit parameter
+    list_a_limit = chk.list_snapshots("thread_A", limit=2)
+    assert len(list_a_limit) == 2
+    assert [s.snapshot_id for s in list_a_limit] == ["snap-thA-2", "snap-thA-3"]
+
     list_b = chk.list_snapshots("thread_B")
     assert len(list_b) == 1
     assert list_b[0].snapshot_id == "snap-thB-0"
@@ -496,6 +501,14 @@ def test_dynamodb_checkpointer_list_chronological():
             "snap-ddb-t1-2",
         ]
 
+        # Verify limit parameter on DynamoDB
+        list_t1_limit = chk.list_snapshots("thread_1", limit=2)
+        assert len(list_t1_limit) == 2
+        assert [s.snapshot_id for s in list_t1_limit] == [
+            "snap-ddb-t1-1",
+            "snap-ddb-t1-2",
+        ]
+
         list_t2 = chk.list_snapshots("thread_2")
         assert len(list_t2) == 1
         assert list_t2[0].snapshot_id == "snap-ddb-t2-0"
@@ -717,3 +730,25 @@ def test_react_agent_snapshot_capture_and_replay():
     assert forked_agent_snap.thread_id == "th-agent-forked"
     assert forked_agent_snap.parent_snapshot_id == "snap-agent-step1"
     assert forked_agent_snap.inputs["prompt"] == "Multiply 6 by 7 with high precision"
+
+    # Verify checkpoint forked with a distinct checkpoint ID and points to source checkpoint as parent
+    forked_cp = checkpointer.get("th-agent-forked")
+    assert forked_cp is not None
+    assert forked_cp.checkpoint_id != cps[1].checkpoint_id
+    assert forked_cp.parent_checkpoint_id == cps[1].checkpoint_id
+    assert forked_cp.state["goal"] == "Multiply 6 by 7 with high precision"
+
+    # Model response for replaying on the forked thread
+    model.responses.append(
+        ChatResult(
+            message=Message(
+                role="assistant",
+                content="The result is 42.0000 with high precision.",
+            )
+        )
+    )
+
+    # Replay/resume the agent on the forked thread with the new input
+    replay_result = agent.run("Multiply 6 by 7 with high precision", thread_id="th-agent-forked")
+    assert replay_result.finished is True
+    assert "42.0000" in replay_result.output

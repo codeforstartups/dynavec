@@ -530,3 +530,57 @@ def test_dynavec_client_integration(monkeypatch: pytest.MonkeyPatch):
 
         db.close()
         sink.close()
+
+
+def test_dynamodb_telemetry_sink_atexit():
+    """Verify DynamoDBTelemetrySink registers an atexit hook on init and unregisters on close."""
+    with mock_aws():
+        client = _create_mock_client()
+        create_telemetry_table(client, table_name="dynavec-telemetry")
+
+        sink = DynamoDBTelemetrySink(client=client, table_name="dynavec-telemetry")
+        assert hasattr(sink, "_atexit_handler")
+        assert sink._atexit_handler is not None
+
+        sink.close()
+        assert sink._atexit_handler is None
+
+
+def test_dynamodb_telemetry_recorder_syncs_dict_and_event():
+    """Verify recorder syncs dict and DynamoDBTelemetryEvent objects to in-memory ring buffer."""
+    with mock_aws():
+        client = _create_mock_client()
+        create_telemetry_table(client, table_name="dynavec-telemetry")
+
+        with DynamoDBTelemetryRecorder(
+            client=client,
+            table_name="dynavec-telemetry",
+            max_events=10,
+            buffer_size=5,
+            async_flush=False,
+        ) as rec:
+            # 1. Record via dict
+            rec.record(
+                {
+                    "query_id": "dict_q1",
+                    "namespace": "sync_ns",
+                    "top_k": 3,
+                    "latency_ms": 12.5,
+                }
+            )
+
+            # 2. Record via DynamoDBTelemetryEvent
+            ddb_event = DynamoDBTelemetryEvent(
+                query_id="ddb_q2",
+                namespace="sync_ns",
+                top_k=5,
+                latency_ms=25.0,
+            )
+            rec.record(ddb_event)
+
+            # In-memory buffer check: both should be present
+            mem_events = rec.events()
+            assert len(mem_events) == 2
+            q_ids = [e.query_id for e in mem_events]
+            assert "dict_q1" in q_ids
+            assert "ddb_q2" in q_ids

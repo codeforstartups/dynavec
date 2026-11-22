@@ -180,17 +180,22 @@ def create_telemetry_table(
             "WriteCapacityUnits": write_capacity_units,
         }
 
-    table_created = False
     try:
         ddb_client.create_table(**create_kwargs)
-        table_created = True
     except Exception as exc:  # noqa: BLE001
         if _client_error_code(exc) != "ResourceInUseException":
             raise ProvisioningError(f"Failed to create telemetry table: {exc}") from exc
 
-    if table_created and wait:
+    if wait:
+        import time
+
         try:
             ddb_client.get_waiter("table_exists").wait(TableName=table_name)
+            for _ in range(30):
+                desc = ddb_client.describe_table(TableName=table_name)
+                if desc.get("Table", {}).get("TableStatus") == "ACTIVE":
+                    break
+                time.sleep(0.5)
         except Exception:  # noqa: BLE001
             pass
 

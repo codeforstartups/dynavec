@@ -259,6 +259,11 @@ class DynamoDBTelemetrySink:
         self._active_futures: list[Future[None]] = []
         self._closed = False
 
+        import atexit
+
+        self._atexit_handler: Any = self.close
+        atexit.register(self._atexit_handler)
+
     def new_event(self, op: str = "search", **kw: Any) -> TelemetryEvent:
         event_id = kw.pop("id", None) or uuid.uuid4().hex[:12]
         query_id = kw.pop("query_id", None) or event_id
@@ -409,6 +414,14 @@ class DynamoDBTelemetrySink:
                         )
                         break
 
+                if unprocessed:
+                    dropped_count = sum(len(v) for v in unprocessed.values())
+                    logger.warning(
+                        "Exhausted retries writing telemetry batch; dropped %d unprocessed items to %s",
+                        dropped_count,
+                        self.table_name,
+                    )
+
     def flush(self) -> None:
         """Flush all buffered events and wait for in-flight asynchronous writes."""
         with self._lock:
@@ -506,6 +519,14 @@ class DynamoDBTelemetrySink:
         if self._closed:
             return
         self._closed = True
+        if hasattr(self, "_atexit_handler") and self._atexit_handler is not None:
+            import atexit
+
+            try:
+                atexit.unregister(self._atexit_handler)
+            except Exception:
+                pass
+            self._atexit_handler = None
         self.flush()
         self._executor.shutdown(wait=True, cancel_futures=False)
 
@@ -637,6 +658,42 @@ class DynamoDBTelemetryRecorder(TelemetryRecorder):
     ) -> None:
         if isinstance(event, TelemetryEvent):
             super().record(event)
+        elif isinstance(event, DynamoDBTelemetryEvent):
+            mem_event = TelemetryEvent(
+                id=event.query_id,
+                ts=time.time(),
+                op=event.op or "search",
+                namespace=event.namespace,
+                top_k=event.top_k,
+                stage_latencies=dict(event.stage_latencies),
+                result_ids=list(event.result_ids),
+                cache_hit=event.cache_hit,
+                latency_ms=event.latency_ms,
+                status=event.status,
+                error=event.error,
+                timestamp=event.timestamp,
+            )
+            super().record(mem_event)
+        elif isinstance(event, dict):
+            qid = str(event.get("id") or event.get("query_id") or uuid.uuid4().hex[:12])
+            ts_val = float(event.get("ts") or time.time())
+            op_val = str(event.get("op") or "search")
+            ns_val = str(event.get("namespace") or self.sink.namespace)
+            mem_event = TelemetryEvent(
+                id=qid,
+                ts=ts_val,
+                op=op_val,
+                namespace=ns_val,
+                top_k=event.get("top_k"),
+                stage_latencies=dict(event.get("stage_latencies") or {}),
+                result_ids=list(event.get("result_ids") or []),
+                cache_hit=event.get("cache_hit"),
+                latency_ms=float(event.get("latency_ms") or 0.0),
+                status=str(event.get("status") or "success"),
+                error=event.get("error"),
+                timestamp=event.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+            )
+            super().record(mem_event)
         self.sink.record(event)
 
     def flush(self) -> None:

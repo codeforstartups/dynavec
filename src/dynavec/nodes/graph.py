@@ -450,6 +450,12 @@ class SimpleGraph:
 
         return json.dumps(self.to_dict(), indent=indent)
 
+    def to_code(self) -> str:
+        """Export graph to clean, runnable Python SDK source code."""
+        from .codegen import export_graph_to_code
+
+        return export_graph_to_code(self)
+
     @classmethod
     def from_dict(
         cls,
@@ -530,6 +536,22 @@ class SimpleGraph:
 
         return cls.from_dict(
             json.loads(json_str),
+            registry=registry,
+            validate_ports=validate_ports,
+        )
+
+    @classmethod
+    def from_code(
+        cls,
+        code_str: str,
+        registry: Any = None,
+        validate_ports: bool = False,
+    ) -> SimpleGraph:
+        """Statically parse Python SDK source code into a SimpleGraph without code execution."""
+        from .codegen import import_graph_from_code
+
+        return import_graph_from_code(
+            code_str=code_str,
             registry=registry,
             validate_ports=validate_ports,
         )

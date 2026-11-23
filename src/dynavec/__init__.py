@@ -28,6 +28,8 @@ from .checkpoint import (
     Checkpoint,
     DynamoDBCheckpointer,
     MemoryCheckpointer,
+    Snapshot,
+    SnapshotImmutableError,
 )
 from .client import Dynavec
 from .config import DynavecConfig
@@ -195,6 +197,8 @@ __all__ = [
     "log_run_event",
     # Orchestration & Checkpointing (dynaflow)
     "Checkpoint",
+    "Snapshot",
+    "SnapshotImmutableError",
     "BaseCheckpointer",
     "MemoryCheckpointer",
     "DynamoDBCheckpointer",

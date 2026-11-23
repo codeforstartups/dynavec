@@ -116,6 +116,7 @@ from .nodes import (
     is_port_type_compatible,
     node_registry,
 )
+from .provisioning import create_telemetry_table, provision_all
 from .quantization import (
     OPQRotation,
     OptimizedProductQuantizer,
@@ -138,6 +139,13 @@ from .spfresh import (
     SPFreshConfig,
     SPFreshHotIndex,
     SPFreshRebalancer,
+)
+from .telemetry import (
+    DynamoDBTelemetryEvent,
+    DynamoDBTelemetryRecorder,
+    DynamoDBTelemetrySink,
+    TelemetryEvent,
+    TelemetryRecorder,
 )
 from .transforms import LambdaTransform, TransformContext, TransformPipeline
 
@@ -191,6 +199,13 @@ __all__ = [
     "StdoutSink",
     "InMemoryLogSink",
     "DynamoDBLogSink",
+    "TelemetryEvent",
+    "TelemetryRecorder",
+    "DynamoDBTelemetryEvent",
+    "DynamoDBTelemetrySink",
+    "DynamoDBTelemetryRecorder",
+    "create_telemetry_table",
+    "provision_all",
     "run_context",
     "node_context",
     "get_current_correlation",

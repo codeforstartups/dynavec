@@ -1035,9 +1035,17 @@ serve(rec, port=8779)          # JSON API at http://127.0.0.1:8779""") + """
 <p>Points at that API; falls back to sample data if unset:</p>
 """ + code("""cd dashboard
 npm install
-NEXT_PUBLIC_DYNAVEC_API=http://127.0.0.1:8779 npm run dev   # http://localhost:3000""") + """
+NEXT_PUBLIC_DYNAVEC_API=http://127.0.0.1:8779 \\
+NEXT_PUBLIC_DYNAVEC_TOKEN=<token-from-serve> \\
+  npm run dev   # http://localhost:3000""") + """
 <p>No AWS? <code>python examples/dashboard_demo.py</code> runs real searches against in-memory
 stand-ins and serves the API on <code>:8779</code> for the dashboard to read.</p>
+<h2>Security model</h2>
+<ul>
+  <li><strong>Server-side credentials only:</strong> AWS credentials stay inside the Python process and never reach the browser. All JSON responses are sanitized with <code>redact_secrets()</code>.</li>
+  <li><strong>Localhost binding by default:</strong> <code>serve()</code> refuses non-loopback hosts (such as <code>0.0.0.0</code>) unless <code>allow_remote=True</code> is passed explicitly.</li>
+  <li><strong>API token on every route:</strong> <code>serve()</code> auto-generates a per-session token (or reads <code>DYNAVEC_DASHBOARD_TOKEN</code> / <code>api_token=</code>) and requires it via <code>Authorization: Bearer</code> or <code>X-Dynavec-Token</code> on all <code>/api/*</code> endpoints. Non-loopback <code>Origin</code> headers are rejected with <code>403</code> unless listed in <code>allowed_origins</code>.</li>
+</ul>
 <h2>Tracing view</h2>
 <p>Shows a query-volume histogram, latency percentiles (p50/p95/p99), cache hit-rate, and a
 filterable traces table with per-trace drill-down:</p>

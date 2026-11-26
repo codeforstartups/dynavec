@@ -3,7 +3,14 @@ import { mockMetrics, mockTraces } from "./mock";
 
 // Point this at a running `dynavec.dashboard.serve(recorder)` API.
 // Falls back to sample data when unset or unreachable (dev / static preview).
+// AWS credentials always stay server-side in Python — never expose AWS_* keys
+// through NEXT_PUBLIC_* variables.
 const API_BASE = process.env.NEXT_PUBLIC_DYNAVEC_API || "";
+const API_TOKEN = process.env.NEXT_PUBLIC_DYNAVEC_TOKEN || "";
+
+function authHeaders(): HeadersInit {
+  return API_TOKEN ? { "X-Dynavec-Token": API_TOKEN } : {};
+}
 
 let _mockTraces: TraceEvent[] | null = null;
 function sampleTraces(): TraceEvent[] {
@@ -18,7 +25,10 @@ export function isLive(): boolean {
 export async function getMetrics(windowSeconds: number): Promise<Metrics> {
   if (API_BASE) {
     try {
-      const r = await fetch(`${API_BASE}/api/metrics?window=${windowSeconds}`, { cache: "no-store" });
+      const r = await fetch(`${API_BASE}/api/metrics?window=${windowSeconds}`, {
+        cache: "no-store",
+        headers: authHeaders(),
+      });
       if (r.ok) return (await r.json()) as Metrics;
     } catch { /* fall through to sample */ }
   }
@@ -32,7 +42,10 @@ export async function getTraces(filters: TraceFilters, limit = 100): Promise<Tra
       if (filters.op) q.set("op", filters.op);
       if (filters.status) q.set("status", filters.status);
       if (filters.namespace) q.set("namespace", filters.namespace);
-      const r = await fetch(`${API_BASE}/api/traces?${q}`, { cache: "no-store" });
+      const r = await fetch(`${API_BASE}/api/traces?${q}`, {
+        cache: "no-store",
+        headers: authHeaders(),
+      });
       if (r.ok) return (await r.json()) as TraceEvent[];
     } catch { /* fall through */ }
   }
@@ -46,7 +59,10 @@ export async function getTraces(filters: TraceFilters, limit = 100): Promise<Tra
 export async function getTrace(id: string): Promise<TraceEvent | null> {
   if (API_BASE) {
     try {
-      const r = await fetch(`${API_BASE}/api/trace/${id}`, { cache: "no-store" });
+      const r = await fetch(`${API_BASE}/api/trace/${id}`, {
+        cache: "no-store",
+        headers: authHeaders(),
+      });
       if (r.ok) return (await r.json()) as TraceEvent;
     } catch { /* fall through */ }
   }

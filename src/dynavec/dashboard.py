@@ -21,12 +21,59 @@ Vanilla JS + inline SVG charts (no CDN, no build step). Endpoints:
 
 from __future__ import annotations
 
+import hmac
+import ipaddress
 import json
+import os
+import secrets
+from collections.abc import Sequence
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from .logging import redact_secrets
 from .telemetry import TelemetryRecorder, aggregate, aggregate_eval
+
+_TOKEN_ENV_VAR = "DYNAVEC_DASHBOARD_TOKEN"
+_MAX_WINDOW_SECONDS = 31_536_000  # 1 year
+_MAX_LIMIT = 10_000
+
+
+def _is_loopback_host(host: str) -> bool:
+    """Return True if *host* resolves syntactically to a loopback address."""
+    cleaned = host.strip().lower()
+    if cleaned.startswith("[") and cleaned.endswith("]"):
+        cleaned = cleaned[1:-1]
+    if cleaned == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(cleaned).is_loopback
+    except ValueError:
+        return False
+
+
+def _is_allowed_origin(origin: str, allowed_origins: Sequence[str] | None = None) -> bool:
+    """Return True if *origin* is a loopback origin or explicitly allowlisted."""
+    if allowed_origins and origin in allowed_origins:
+        return True
+    parsed = urlparse(origin)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    return _is_loopback_host(parsed.hostname)
+
+
+def resolve_api_token(api_token: str | None = None) -> str:
+    """Resolve the dashboard API token from argument, env var, or random generation."""
+    if api_token is not None:
+        cleaned = api_token.strip()
+        if not cleaned:
+            raise ValueError("api_token must be a non-empty string")
+        return cleaned
+    env_token = os.environ.get(_TOKEN_ENV_VAR, "").strip()
+    if env_token:
+        return env_token
+    return secrets.token_urlsafe(32)
+
 
 _INDEX_HTML = r"""<!doctype html>
 <html lang="en"><head>
@@ -147,8 +194,10 @@ tr.row:hover{background:var(--accent-soft)}
 </div>
 <div class="drawer" id="drawer"><button class="close" onclick="closeDrawer()">&times;</button><div id="drawerbody"></div></div>
 <script>
+const TOKEN=__DYNAVEC_API_TOKEN__;
 let W=3600, AUTO=true, TIMER=null;
 const $=s=>document.querySelector(s);
+function apiFetch(url){return fetch(url,{cache:'no-store',headers:TOKEN?{'X-Dynavec-Token':TOKEN}:{}})}
 function fmt(n,d=0){return n==null?'—':Number(n).toLocaleString(undefined,{maximumFractionDigits:d})}
 function bars(vals,color){const n=vals.length,max=Math.max(1,...vals),w=100/n;
   let r=`<svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%;height:120px">`;
@@ -162,7 +211,7 @@ function latChart(m){const items=[['p50',m.p50,'#2f7d5b'],['p95',m.p95,'#e8623b'
   return r+'</div>'}
 function kpi(l,v,win){return `<div class="kpi"><div class="l">${l}</div><div class="v ${win?'win':''}">${v}</div></div>`}
 async function load(){
-  const m=await (await fetch('/api/metrics?window='+W)).json();
+  const m=await (await apiFetch('/api/metrics?window='+W)).json();
   $('#kpis').innerHTML=[
     kpi('Queries / min',fmt(m.qpm,1),true),
     kpi('p95 latency',fmt(m.p95,0)+'<small> ms</small>'),
@@ -180,7 +229,7 @@ async function loadTable(){
   if($('#fop').value)q.set('op',$('#fop').value);
   if($('#fstatus').value)q.set('status',$('#fstatus').value);
   if($('#fns').value)q.set('namespace',$('#fns').value);
-  const rows=await (await fetch('/api/traces?'+q)).json();
+  const rows=await (await apiFetch('/api/traces?'+q)).json();
   if(!rows.length){$('#table').innerHTML='<div class="empty">No traces yet. Run some searches with <span class="mono">Dynavec(..., telemetry=recorder)</span>.</div>';return}
   let h='<table><thead><tr><th>Start</th><th>Op</th><th>Namespace</th><th>Latency</th><th>Results</th><th>Cache</th><th>Rank</th><th>Status</th></tr></thead><tbody>';
   for(const e of rows){const t=new Date(e.ts*1000).toLocaleTimeString();
@@ -189,7 +238,7 @@ async function loadTable(){
     h+=`<tr class="row" onclick="openTrace('${e.id}')"><td class="mono">${t}</td><td><span class="pill ${e.op}">${e.op}</span></td><td>${e.namespace}</td><td class="mono">${fmt(e.latency_ms,1)} ms</td><td class="mono">${e.n_results}</td><td>${cache}</td><td class="mono">${rank}</td><td class="st-${e.status}">${e.status}</td></tr>`}
   $('#table').innerHTML=h+'</tbody></table>';
 }
-async function openTrace(id){const e=await (await fetch('/api/trace/'+id)).json();
+async function openTrace(id){const e=await (await apiFetch('/api/trace/'+id)).json();
   const row=(k,v)=>`<div class="k">${k}</div><div class="val">${v==null?'—':v}</div>`;
   $('#drawerbody').innerHTML=`<h3><span class="pill ${e.op}">${e.op}</span> trace</h3>
   <div class="mono" style="color:var(--muted);font-size:12px">${e.id} · ${new Date(e.ts*1000).toLocaleString()}</div>
@@ -209,7 +258,51 @@ load();schedule();
 </body></html>"""
 
 
-def _make_handler(recorder: TelemetryRecorder) -> type[BaseHTTPRequestHandler]:
+def _parse_int_param(
+    qs: dict[str, list[str]],
+    name: str,
+    default: int,
+    *,
+    min_value: int = 1,
+    max_value: int,
+) -> int:
+    raw = qs.get(name, [str(default)])[0]
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"invalid {name} parameter") from exc
+    if value < min_value or value > max_value:
+        raise ValueError(f"{name} must be between {min_value} and {max_value}")
+    return value
+
+
+def _extract_request_token(headers: Any) -> str | None:
+    if headers is None:
+        return None
+    auth = headers.get("Authorization")
+    if isinstance(auth, str):
+        parts = auth.strip().split(" ", 1)
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1].strip()
+            if token:
+                return token
+    header_token = headers.get("X-Dynavec-Token")
+    if isinstance(header_token, str):
+        token = header_token.strip()
+        if token:
+            return token
+    return None
+
+
+def _make_handler(
+    recorder: TelemetryRecorder,
+    *,
+    api_token: str | None = None,
+    allowed_origins: Sequence[str] | None = None,
+) -> type[BaseHTTPRequestHandler]:
+    rendered_html = _INDEX_HTML.replace("__DYNAVEC_API_TOKEN__", json.dumps(api_token or ""))
+    origin_allowlist = tuple(allowed_origins) if allowed_origins else ()
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args: Any) -> None:  # quiet
             pass
@@ -219,68 +312,198 @@ def _make_handler(recorder: TelemetryRecorder) -> type[BaseHTTPRequestHandler]:
             code: int,
             body: str | bytes,
             ctype: str = "application/json",
+            extra_headers: dict[str, str] | None = None,
         ) -> None:
             data = body.encode() if isinstance(body, str) else body
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            if extra_headers:
+                for key, value in extra_headers.items():
+                    self.send_header(key, value)
             self.end_headers()
-            self.wfile.write(data)
+            if data:
+                self.wfile.write(data)
+
+        def _cors_headers(self) -> tuple[bool, dict[str, str]]:
+            headers = getattr(self, "headers", None)
+            origin = headers.get("Origin") if headers is not None else None
+            if not origin:
+                return True, {}
+            if not _is_allowed_origin(origin, origin_allowlist):
+                return False, {}
+            return True, {
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Headers": "Authorization, X-Dynavec-Token, Content-Type",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Vary": "Origin",
+            }
+
+        def _send_json(
+            self,
+            code: int,
+            payload: Any,
+            extra_headers: dict[str, str] | None = None,
+        ) -> None:
+            safe_payload = redact_secrets(payload)
+            body = json.dumps(safe_payload)
+            if extra_headers:
+                self._send(code, body, "application/json", extra_headers=extra_headers)
+            else:
+                self._send(code, body)
+
+        def do_OPTIONS(self) -> None:
+            origin_ok, cors_headers = self._cors_headers()
+            if not origin_ok:
+                self._send_json(403, {"error": "forbidden origin"})
+                return
+            self._send(204, b"", "text/plain", extra_headers=cors_headers)
 
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
             path, qs = parsed.path, parse_qs(parsed.query)
             if path == "/" or path == "/index.html":
-                self._send(200, _INDEX_HTML, "text/html; charset=utf-8")
+                self._send(200, rendered_html, "text/html; charset=utf-8")
                 return
-            if path == "/api/metrics":
-                window = int(qs.get("window", ["3600"])[0])
-                self._send(200, json.dumps(aggregate(recorder.snapshot(), window)))
-                return
-            if path == "/api/traces":
-                evs = recorder.events(
-                    limit=int(qs.get("limit", ["100"])[0]),
-                    op=(qs.get("op", [None])[0] or None),
-                    namespace=(qs.get("namespace", [None])[0] or None),
-                    status=(qs.get("status", [None])[0] or None),
-                )
-                self._send(200, json.dumps([e.to_dict() for e in evs]))
-                return
-            if path.startswith("/api/trace/"):
-                ev = recorder.get(path.rsplit("/", 1)[-1])
-                if ev is None:
-                    self._send(404, json.dumps({"error": "not found"}))
+
+            if path.startswith("/api/"):
+                origin_ok, cors_headers = self._cors_headers()
+                if not origin_ok:
+                    self._send_json(403, {"error": "forbidden origin"})
                     return
-                self._send(200, json.dumps(ev.to_dict()))
+                if api_token is not None:
+                    provided = _extract_request_token(getattr(self, "headers", None))
+                    if provided is None or not hmac.compare_digest(provided, api_token):
+                        auth_headers = {**cors_headers, "WWW-Authenticate": "Bearer"}
+                        self._send_json(401, {"error": "unauthorized"}, extra_headers=auth_headers)
+                        return
+            else:
+                cors_headers = {}
+
+            try:
+                if path == "/api/metrics":
+                    window = _parse_int_param(qs, "window", 3600, max_value=_MAX_WINDOW_SECONDS)
+                    self._send_json(
+                        200,
+                        aggregate(recorder.snapshot(), window),
+                        extra_headers=cors_headers,
+                    )
+                    return
+                if path == "/api/traces":
+                    limit = _parse_int_param(qs, "limit", 100, max_value=_MAX_LIMIT)
+                    evs = recorder.events(
+                        limit=limit,
+                        op=(qs.get("op", [None])[0] or None),
+                        namespace=(qs.get("namespace", [None])[0] or None),
+                        status=(qs.get("status", [None])[0] or None),
+                    )
+                    self._send_json(
+                        200,
+                        [e.to_dict() for e in evs],
+                        extra_headers=cors_headers,
+                    )
+                    return
+                if path.startswith("/api/trace/"):
+                    ev = recorder.get(path.rsplit("/", 1)[-1])
+                    if ev is None:
+                        self._send_json(404, {"error": "not found"}, extra_headers=cors_headers)
+                        return
+                    self._send_json(200, ev.to_dict(), extra_headers=cors_headers)
+                    return
+                if path == "/api/eval/summary":
+                    window = _parse_int_param(qs, "window", 86400, max_value=_MAX_WINDOW_SECONDS)
+                    self._send_json(
+                        200,
+                        aggregate_eval(recorder.snapshot(), window),
+                        extra_headers=cors_headers,
+                    )
+                    return
+                if path == "/api/eval/runs":
+                    limit = _parse_int_param(qs, "limit", 50, max_value=_MAX_LIMIT)
+                    all_events = recorder.events(limit=recorder._events.maxlen or 10000)
+                    eval_runs = [
+                        e.to_dict()
+                        for e in all_events
+                        if e.eval_faithfulness is not None
+                        or e.eval_relevance is not None
+                        or e.eval_recall is not None
+                        or e.eval_mrr is not None
+                        or e.eval_ndcg is not None
+                    ][:limit]
+                    self._send_json(200, eval_runs, extra_headers=cors_headers)
+                    return
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)}, extra_headers=cors_headers)
                 return
-            if path == "/api/eval/summary":
-                window = int(qs.get("window", ["86400"])[0])
-                self._send(200, json.dumps(aggregate_eval(recorder.snapshot(), window)))
-                return
-            if path == "/api/eval/runs":
-                limit = int(qs.get("limit", ["50"])[0])
-                all_events = recorder.events(limit=recorder._events.maxlen or 10000)
-                eval_runs = [
-                    e.to_dict()
-                    for e in all_events
-                    if e.eval_faithfulness is not None
-                    or e.eval_relevance is not None
-                    or e.eval_recall is not None
-                    or e.eval_mrr is not None
-                    or e.eval_ndcg is not None
-                ][:limit]
-                self._send(200, json.dumps(eval_runs))
-                return
-            self._send(404, json.dumps({"error": "not found"}))
+
+            self._send_json(404, {"error": "not found"}, extra_headers=cors_headers)
 
     return Handler
 
 
-def serve(recorder: TelemetryRecorder, port: int = 8778, host: str = "127.0.0.1") -> None:
-    """Start the dashboard server (blocking) bound to localhost by default."""
-    httpd = HTTPServer((host, port), _make_handler(recorder))
-    print(f"dynavec observability dashboard: http://{host}:{port}/")
+def create_server(
+    recorder: TelemetryRecorder,
+    port: int = 8778,
+    host: str = "127.0.0.1",
+    *,
+    api_token: str | None = None,
+    allow_remote: bool = False,
+    allowed_origins: Sequence[str] | None = None,
+) -> tuple[HTTPServer, str]:
+    """Create a hardened dashboard ``HTTPServer`` and return ``(server, token)``.
+
+    By default, binding is restricted to loopback addresses (``127.0.0.1``,
+    ``localhost``, ``::1``) and all ``/api/*`` endpoints require a server-side
+    API token passed via ``Authorization: Bearer <token>`` or
+    ``X-Dynavec-Token: <token>``. Pass ``allow_remote=True`` only when
+    intentionally exposing the dashboard behind a trusted network boundary.
+    """
+    if not _is_loopback_host(host) and not allow_remote:
+        raise ValueError(
+            f"Refusing to bind dashboard to non-loopback host {host!r} without "
+            "allow_remote=True. Keep the dashboard bound to 127.0.0.1 or localhost."
+        )
+    token = resolve_api_token(api_token)
+    handler = _make_handler(
+        recorder,
+        api_token=token,
+        allowed_origins=allowed_origins,
+    )
+    return HTTPServer((host, port), handler), token
+
+
+def serve(
+    recorder: TelemetryRecorder,
+    port: int = 8778,
+    host: str = "127.0.0.1",
+    *,
+    api_token: str | None = None,
+    allow_remote: bool = False,
+    allowed_origins: Sequence[str] | None = None,
+) -> None:
+    """Start the dashboard server (blocking), bound to localhost with token auth."""
+    httpd, token = create_server(
+        recorder,
+        port=port,
+        host=host,
+        api_token=api_token,
+        allow_remote=allow_remote,
+        allowed_origins=allowed_origins,
+    )
+    bound_host_raw, bound_port = httpd.server_address[:2]
+    bound_host = (
+        bound_host_raw.decode()
+        if isinstance(bound_host_raw, (bytes, bytearray))
+        else bound_host_raw
+    )
+    print(f"dynavec observability dashboard: http://{bound_host}:{bound_port}/")
+    print(f"dynavec API token (X-Dynavec-Token / Bearer): {token}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         httpd.shutdown()
+    finally:
+        httpd.server_close()

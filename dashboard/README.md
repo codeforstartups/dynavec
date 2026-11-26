@@ -32,16 +32,23 @@ your app ──▶ Dynavec(..., telemetry=recorder)      # records real events (
 
 ```bash
 # 1) produce real telemetry + serve the API (no AWS needed)
-python examples/dashboard_demo.py            # API on http://127.0.0.1:8779
+DYNAVEC_DASHBOARD_TOKEN=dev-local-token python examples/dashboard_demo.py   # API on http://127.0.0.1:8779
 
 # 2) run the dashboard against it
 cd dashboard
 npm install
-NEXT_PUBLIC_DYNAVEC_API=http://127.0.0.1:8779 npm run dev   # http://localhost:3000
+NEXT_PUBLIC_DYNAVEC_API=http://127.0.0.1:8779 NEXT_PUBLIC_DYNAVEC_TOKEN=dev-local-token npm run dev   # http://localhost:3000
 
 # build a static export (deployable to any static host / GitHub Pages)
 npm run build        # -> dashboard/out/
 ```
+
+## Security model
+
+- **Server-side AWS credentials only:** The browser never calls AWS directly and never receives `AWS_*` credentials. All DynamoDB / S3 Vectors access stays inside the Python process, and every JSON API response is passed through `dynavec.logging.redact_secrets()`.
+- **Localhost binding by default:** `dynavec.dashboard.serve()` and `create_server()` refuse to bind to non-loopback hosts (such as `0.0.0.0`) unless you explicitly pass `allow_remote=True`.
+- **Mandatory API token:** Every `/api/*` endpoint requires a token in `Authorization: Bearer <token>` or `X-Dynavec-Token: <token>` (never in URL query strings). Set `api_token=...` or `DYNAVEC_DASHBOARD_TOKEN`, or let `serve()` auto-generate a random per-session token on startup.
+- **Origin & caching guardrails:** Cross-origin requests from non-loopback `Origin` headers are rejected with `403` unless explicitly listed in `allowed_origins`. All responses include `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`.
 
 ## File map
 
